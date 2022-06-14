@@ -1,4 +1,4 @@
-//===== Copyright © 1996-2005, Valve Corporation, All rights reserved. ======//
+//===== Copyright ?1996-2005, Valve Corporation, All rights reserved. ======//
 //
 // Purpose: 
 //
@@ -14,6 +14,7 @@
 #include "iasw_client_aim_target.h"
 #include "object_motion_blur_effect.h"
 #include "asw_shareddefs.h"
+#include "glow_outline_effect.h"
 
 class CNewParticleEffect;
 
@@ -47,6 +48,7 @@ public:
 	bool m_bMadeAimTarget;
 	bool m_bIsAimTarget;
 	bool m_bOnFire, m_bClientOnFire;
+	CGlowObject m_GlowObject;
 	CNewParticleEffect	*m_pBurningEffect;
 	CMotionBlurObject m_MotionBlurObject;
 };

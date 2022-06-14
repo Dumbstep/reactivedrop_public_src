@@ -27,6 +27,8 @@ using namespace vgui;
 
 extern ConVar asw_draw_hud;
 ConVar asw_draw_kills( "asw_draw_kills", "0", FCVAR_NONE, "", true, 0, true, 1 );
+ConVar dub_draw_spectators( "dub_draw_spectators", "1", FCVAR_NONE );
+ConVar dub_draw_spectators_alpha( "dub_draw_spectators_alpha", "255", FCVAR_NONE );
 ConVar asw_player_lb_color_r("asw_player_lb_color_r", "255", FCVAR_ARCHIVE, "The r value of the player name color in the range of 0 to 255", TRUE, 0, TRUE, 255);
 ConVar asw_player_lb_color_g("asw_player_lb_color_g", "255", FCVAR_ARCHIVE, "The g value of the player name color in the range of 0 to 255", TRUE, 0, TRUE, 255);
 ConVar asw_player_lb_color_b("asw_player_lb_color_b", "0", FCVAR_ARCHIVE, "The b value of the player name color in the range of 0 to 255", TRUE, 0, TRUE, 255);
@@ -74,6 +76,7 @@ private:
 #endif
 
 	void ClearLabels();
+	void SetSpectatorsLabel(vgui::Label* label, const char* szPlayerNames);
 	void SetLeaderboardLabel(vgui::Label *label, const char* entry, bool isPlayer);
 
 #ifdef USE_KILL_EVENT
@@ -184,13 +187,20 @@ void CASWHudKills::Reset()
 	ClearLabels();
 	if ( m_pKillsLabel )
 	{
-		wchar_t *localized = g_pVGuiLocalize->Find( "#asw_stats_tkills" );
-		if ( localized )
+		if ( dub_draw_spectators.GetBool() )
 		{
-			char text[256];
-			g_pVGuiLocalize->ConvertUnicodeToANSI( localized, text, sizeof( text ) );
-			m_pKillsLabel->SetText( VarArgs( "0 %s", text ) );
-		}	
+			m_pKillsLabel->SetText( "Spectators [ 0 ]" );
+		}
+		else
+		{
+			wchar_t *localized = g_pVGuiLocalize->Find( "#asw_stats_tkills" );
+			if ( localized )
+			{
+				char text[256];
+				g_pVGuiLocalize->ConvertUnicodeToANSI( localized, text, sizeof( text ) );
+				m_pKillsLabel->SetText( VarArgs( "0 %s", text ) );
+			}
+		}
 	}
 }
 
@@ -262,42 +272,100 @@ void CASWHudKills::OnThink()
 
 	qsort(scores.Base(), scores.Count(), sizeof(LeaderboardEntry), &LeaderboardSortFunc);
 
-	for (int i = 0; i < scores.Count(); i++)
-	{
-		LeaderboardEntry lbe = scores[i];
-		wchar_t *localized = g_pVGuiLocalize->Find( "#asw_xp_kills" );
-		if ( localized )
-		{
-			char text[256];
-			g_pVGuiLocalize->ConvertUnicodeToANSI( localized, text, sizeof( text ) );
-			const char* entry = VarArgs( "%s %d %s", lbe.name, lbe.score, text );
+	SetAlpha( dub_draw_spectators_alpha.GetInt() );
 
+	int iNumPlayers = 0;
+	if ( dub_draw_spectators.GetBool() )
+	{
+		char* szPlayerNames[32];
+		memset( szPlayerNames, NULL, sizeof(szPlayerNames) );
+		
+		if ( !g_PR )
+			return;
+		
+		for (int j = 1; j <= gpGlobals->maxClients; j++)
+		{
+			if ( g_PR->IsConnected( j ) && !g_PR->IsLocalPlayer( j ) )
+			{
+				CASW_Player* pPlayer = dynamic_cast< CASW_Player* >( UTIL_PlayerByIndex( j ) );
+				if ( pPlayer && pPlayer->GetSpectatingMarine() == ( pLocalPlayer->GetViewMarine() ? pLocalPlayer->GetViewMarine() : nullptr ) )
+				{
+					iNumPlayers++;
+					szPlayerNames[iNumPlayers] = ( char* )g_PR->GetPlayerName( j );
+				}
+			}
+		}
+		
+		for (int i = 1; i <= iNumPlayers; i++)
+		{
 			switch (i)
 			{
-			case 0:
-				SetLeaderboardLabel( m_pScoresLabel1, entry, lbe.isPlayer );
-				break;
 			case 1:
-				SetLeaderboardLabel( m_pScoresLabel2, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel1, szPlayerNames[i]);
 				break;
 			case 2:
-				SetLeaderboardLabel( m_pScoresLabel3, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel2, szPlayerNames[i]);
 				break;
 			case 3:
-				SetLeaderboardLabel( m_pScoresLabel4, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel3, szPlayerNames[i]);
 				break;
 			case 4:
-				SetLeaderboardLabel( m_pScoresLabel5, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel4, szPlayerNames[i]);
 				break;
 			case 5:
-				SetLeaderboardLabel( m_pScoresLabel6, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel5, szPlayerNames[i]);
 				break;
 			case 6:
-				SetLeaderboardLabel( m_pScoresLabel7, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel6, szPlayerNames[i]);
 				break;
 			case 7:
-				SetLeaderboardLabel( m_pScoresLabel8, entry, lbe.isPlayer );
+				SetSpectatorsLabel(m_pScoresLabel7, szPlayerNames[i]);
 				break;
+			case 8:
+				SetSpectatorsLabel(m_pScoresLabel8, szPlayerNames[i]);
+				break;
+			}
+		}
+	}
+	else
+	{
+		for (int i = 0; i < scores.Count(); i++)
+		{
+			LeaderboardEntry lbe = scores[i];
+			wchar_t *localized = g_pVGuiLocalize->Find( "#asw_xp_kills" );
+			if ( localized )
+			{
+				char text[256];
+				g_pVGuiLocalize->ConvertUnicodeToANSI( localized, text, sizeof( text ) );
+				const char* entry = VarArgs( "%s %d %s", lbe.name, lbe.score, text );
+
+				switch (i)
+				{
+				case 0:
+					SetLeaderboardLabel( m_pScoresLabel1, entry, lbe.isPlayer );
+					break;
+				case 1:
+					SetLeaderboardLabel( m_pScoresLabel2, entry, lbe.isPlayer );
+					break;
+				case 2:
+					SetLeaderboardLabel( m_pScoresLabel3, entry, lbe.isPlayer );
+					break;
+				case 3:
+					SetLeaderboardLabel( m_pScoresLabel4, entry, lbe.isPlayer );
+					break;
+				case 4:
+					SetLeaderboardLabel( m_pScoresLabel5, entry, lbe.isPlayer );
+					break;
+				case 5:
+					SetLeaderboardLabel( m_pScoresLabel6, entry, lbe.isPlayer );
+					break;
+				case 6:
+					SetLeaderboardLabel( m_pScoresLabel7, entry, lbe.isPlayer );
+					break;
+				case 7:
+					SetLeaderboardLabel( m_pScoresLabel8, entry, lbe.isPlayer );
+					break;
+				}
 			}
 		}
 	}
@@ -310,12 +378,21 @@ void CASWHudKills::OnThink()
 
 	if ( m_pKillsLabel )
 	{
-		wchar_t *localized = g_pVGuiLocalize->Find( "#asw_stats_tkills" );
-		if ( localized )
+		if ( dub_draw_spectators.GetBool() )
 		{
-			char text[256];
-			g_pVGuiLocalize->ConvertUnicodeToANSI( localized, text, sizeof( text ) );
-			m_pKillsLabel->SetText( VarArgs( "%d %s", killsTotal, text ) );
+			m_pKillsLabel->SetText( VarArgs( "Spectators [ %d ]", iNumPlayers ) );
+			m_pKillsLabel->SetFgColor( Color( 160, 115, 205, 255 ) );
+			m_pKillsLabel->SetAlpha( 255 );
+		}
+		else
+		{
+			wchar_t *localized = g_pVGuiLocalize->Find( "#asw_stats_tkills" );
+			if ( localized )
+			{
+				char text[256];
+				g_pVGuiLocalize->ConvertUnicodeToANSI( localized, text, sizeof( text ) );
+				m_pKillsLabel->SetText( VarArgs( "%d %s", killsTotal, text ) );
+			}
 		}
 	}
 }
@@ -329,7 +406,7 @@ void CASWHudKills::ApplySchemeSettings( vgui::IScheme *pScheme )
 
 bool CASWHudKills::ShouldDraw()
 {
-	return asw_draw_kills.GetBool() && CASW_HudElement::ShouldDraw();
+	return ( asw_draw_kills.GetBool() || dub_draw_spectators.GetBool() ) && CASW_HudElement::ShouldDraw();
 }
 
 #ifdef USE_KILL_EVENT
@@ -370,6 +447,16 @@ void CASWHudKills::OnKillEvent( CBaseEntity *pVictim, CBaseEntity *pAttacker, CB
 	}
 }
 #endif
+
+void CASWHudKills::SetSpectatorsLabel(vgui::Label* label, const char* szPlayerNames)
+{
+	if (label)
+	{
+		label->SetText( szPlayerNames );
+		label->SetVisible( true );
+		label->SetAlpha( 255 );
+	}
+}
 
 void CASWHudKills::SetLeaderboardLabel(vgui::Label *label, const char* entry, bool isPlayer)
 {

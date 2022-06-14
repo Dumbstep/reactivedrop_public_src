@@ -73,6 +73,8 @@ void CNB_Lobby_Tooltip::ApplySchemeSettings( vgui::IScheme *pScheme )
 	BaseClass::ApplySchemeSettings( pScheme );
 	
 	LoadControlSettings( "resource/ui/nb_lobby_tooltip.res" );
+
+	m_pItemDescription->SetCursor( vgui::dc_arrow );
 }
 
 void CNB_Lobby_Tooltip::PerformLayout()
@@ -190,7 +192,8 @@ void CNB_Lobby_Tooltip::OnTick()
 			V_UTF8ToUnicode( pDef->BriefingName, wszBuf, sizeof( wszBuf ) );
 			m_pTitle->SetText( wszBuf );
 
-			m_pPromotionIcon->SetImage( VarArgs( "briefing/rd_inventory/%s_%d", pDef->ItemSlot.Get(), details.m_iDefinition ) );
+			m_pPromotionIcon->SetImage( "" );
+			m_pPromotionIcon->SetImage( pDef->Icon );
 
 			V_UTF8ToUnicode( pDef->DisplayType, wszBuf, sizeof( wszBuf ) );
 			m_pPromotionLabel->SetText( wszBuf );

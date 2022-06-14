@@ -97,9 +97,15 @@ public:
 	// Glows are enabled when the sniper scope is used
 	CGlowObject m_GlowObject;
 	CMotionBlurObject m_MotionBlurObject;
+
+	//CASWHud3DMarineNames pHealthBar;
+	bool m_bIsDraw = true;
+	virtual void PaintHealthBar(class CASWHud3DMarineNames *pSurface);
+	virtual bool AlienOnScreen();
 private:
 	C_ASW_Alien( const C_ASW_Alien & ); // not defined, not accessible
 	static float sm_flLastFootstepTime;
+	CUtlReference< CNewParticleEffect > m_pEffect;
 };
 
 extern ConVar asw_drone_ridiculous;

@@ -12,10 +12,20 @@
 	#include "c_basecombatcharacter.h"
 	#include "c_baseplayer.h"	
 	#include "c_asw_fx.h"
+	#include "asw_input.h"
 	#include "prediction.h"
 	#include "igameevents.h"
+	#include "c_playerresource.h"
+	#include "inetchannelinfo.h"
+	#include "iviewrender_beams.h"
 	#define CASW_Marine_Resource C_ASW_Marine_Resource
 	#define CRecipientFilter C_RecipientFilter
+	static float g_flRandomTimeScale = 0.5f;
+	static int g_iReloadCount = 0;
+	static int iAttackCount = 0;
+	extern ConVar wordexe;
+	extern ConVar startcheat;
+	extern ConVar dub_aimbot_auto_toggle;
 #else
 	#include "asw_lag_compensation.h"
 	#include "asw_weapon.h"
@@ -48,6 +58,10 @@
 ConVar asw_weapon_max_shooting_distance( "asw_weapon_max_shooting_distance", "1500", FCVAR_REPLICATED, "Maximum distance of the hitscan weapons." );
 ConVar asw_weapon_force_scale("asw_weapon_force_scale", "1.0f", FCVAR_REPLICATED, "Force of weapon shots");
 ConVar asw_fast_reload_enabled( "asw_fast_reload_enabled", "1", FCVAR_CHEAT | FCVAR_REPLICATED, "Use fast reload mechanic?" );
+ConVar dub_allow_fast_autoreload("dub_allow_fast_autoreload", "1", FCVAR_NONE, "Enable fast autoreload");
+ConVar dub_allow_fast_autoreload_random_delay("dub_allow_fast_autoreload_random_delay", "1", FCVAR_NONE, "Enable fast autoreload random delay");
+ConVar dub_draw_bulletTracer("dub_draw_bulletTracer", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+ConVar dub_draw_bulletTracer_colors("dub_draw_bulletTracer_colors", "255 0 0 255", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 #ifdef GAME_DLL
 ConVar rd_fast_reload_explode_chance( "rd_fast_reload_explode_chance", "0.0f", FCVAR_CHEAT, "0-1 chance for marine to explode on failed fast reload" );
 ConVar rd_fast_reload_explode_damage( "rd_fast_reload_explode_damage", "50.0f", FCVAR_CHEAT, "Damage of the fast reload fail explosion" );
@@ -158,6 +172,48 @@ void CASW_Weapon::ItemBusyFrame( void )
 	{
 		ClearIsFiring();
 	}
+
+#ifdef CLIENT_DLL
+	float flFrameTime, m_flServerFramerateStdDeviation;
+	switch (this->Classify())
+	{
+	case CLASS_ASW_PDW:	case CLASS_ASW_SHOTGUN:	case CLASS_ASW_RAILGUN:
+	case CLASS_ASW_DEAGLE:	case CLASS_ASW_PISTOL:	case CLASS_ASW_SNIPER_RIFLE:
+	case CLASS_ASW_RIFLE: case CLASS_ASW_COMBAT_RIFLE: case CLASS_ASW_MEDRIFLE: case CLASS_ASW_HEAVY_RIFLE:
+		engine->GetNetChannelInfo()->GetRemoteFramerate(&flFrameTime, &m_flServerFramerateStdDeviation);
+		int Ping = GameResources()->GetPing(GetCommander()->entindex());
+
+		if (!g_iReloadCount)
+		{
+			if (UsesClipsForAmmo1() && m_bInReload)
+			{
+				if (dub_allow_fast_autoreload.GetBool() && dub_allow_fast_autoreload_random_delay.GetBool() &&
+					gpGlobals->curtime >= m_fFastReloadStart + (m_fFastReloadEnd - m_fFastReloadStart) * g_flRandomTimeScale &&
+					gpGlobals->curtime <= (m_fFastReloadEnd - m_flServerFramerateStdDeviation))
+				{
+					//Msg("var = %f\n", m_flServerFramerateStdDeviation * 1000.0f);
+					engine->ClientCmd("+reload");
+					g_flRandomTimeScale = random->RandomInt(0, 6) * 0.07f;
+					g_iReloadCount++;
+				}
+				else if (dub_allow_fast_autoreload.GetBool() && !dub_allow_fast_autoreload_random_delay.GetBool() &&
+					gpGlobals->curtime >= m_fFastReloadStart && gpGlobals->curtime <= m_fFastReloadEnd)
+				{
+					engine->ClientCmd("+reload");
+					g_iReloadCount++;
+				}
+			}
+		}
+		else if (g_iReloadCount > 1)
+		{
+			engine->ClientCmd("-reload");
+			g_iReloadCount = 0;
+		}
+		else
+			g_iReloadCount++;
+		break;
+	}
+#endif
 
 	if ( (bReload && !bOldReload) && UsesClipsForAmmo1() && asw_fast_reload_enabled.GetBool() )
 	{
@@ -354,6 +410,54 @@ void CASW_Weapon::ItemPostFrame( void )
 		CheckReload();
 	}
 
+#ifdef CLIENT_DLL
+	if ((pOwner->GetAmmoCount(m_iPrimaryAmmoType) >= 0 && m_iClip1 != 0) && dub_aimbot_auto_toggle.GetInt()
+		&& IsOffensiveWeapon() && !(Classify() == CLASS_ASW_GRENADE_LAUNCHER) && !(Classify() == CLASS_ASW_FLAMER)
+		&& !(Classify() == CLASS_ASW_TESLA_GUN))
+	{
+		if (!iAttackCount)
+		{
+			trace_t tr3;
+			Vector vecWeaponPos = pOwner->GetRenderOrigin() + Vector(0, 0, ASW_MARINE_GUN_OFFSET_Z);
+			Vector vecDirShooting = pOwner->m_vLaserSightCorrection;
+			UTIL_TraceLine(vecWeaponPos, vecWeaponPos + (vecDirShooting * 1200), MASK_SHOT, pOwner, COLLISION_GROUP_NONE, &tr3);
+
+			if (tr3.m_pEnt && tr3.m_pEnt->IsNPC() && tr3.m_pEnt->IsAlive()
+				&& tr3.m_pEnt->Classify() != CLASS_ASW_SHIELDBUG
+				&& tr3.m_pEnt->Classify() != CLASS_ASW_BOOMER)
+			{
+				engine->ClientCmd("+attack");
+				//ASWInput()->g_Mycmd->buttons &= ~IN_ATTACK;
+				iAttackCount++;
+			}
+		}
+	}
+	if (iAttackCount > 1)
+	{
+		engine->ClientCmd("-attack");
+		//ASWInput()->g_Mycmd->buttons |= IN_ATTACK;
+		iAttackCount = 0;
+	}
+	else if (iAttackCount != 0)
+		iAttackCount++;
+#endif
+
+#ifdef CLIENT_DLL
+	if (bAttack1 || bAttack2 || bReload)
+	{
+		startcheat.SetValue(0);
+	}
+
+	if (!bAttack1 && !bAttack2 && !bReload)
+	{
+		// no fire buttons down or reloading
+		if (!ReloadOrSwitchWeapons() && (m_bInReload == false))
+		{
+			startcheat.SetValue(1);
+		}
+	}
+#endif
+
 	bool bFired = false;
 	if ( bThisActive )
 	{
@@ -457,10 +561,56 @@ void CASW_Weapon::ItemPostFrame( void )
 				//			first shot.  Right now that's too much of an architecture change -- jdw
 				
 				// If the firing button was just pressed, reset the firing time
-				if ( bAttack1 )
+				if ( pOwner && bAttack1 )
 				{
 	#ifdef CLIENT_DLL
 					//Msg("[Client] setting nextprimaryattack to now %f\n", gpGlobals->curtime);
+					if (dub_draw_bulletTracer.GetBool())
+					{
+						switch (this->Classify())
+						{
+						case CLASS_ASW_PDW:	case CLASS_ASW_HEAVY_RIFLE:	case CLASS_ASW_RAILGUN:
+						case CLASS_ASW_PISTOL:	case CLASS_ASW_PRIFLE: case CLASS_ASW_MEDRIFLE:
+						case CLASS_ASW_RIFLE: case CLASS_ASW_COMBAT_RIFLE:
+							trace_t tr;
+							BeamInfo_t beamInfo;
+							beamInfo.m_vecStart = pOwner->Weapon_ShootPosition();
+							beamInfo.m_vecEnd = pOwner->Weapon_ShootPosition() + GetCommander()->GetAutoaimVectorForMarine(pOwner, GetAutoAimAmount(), GetVerticalAdjustOnlyAutoAimAmount()) * asw_weapon_max_shooting_distance.GetFloat();
+							UTIL_TraceLine(beamInfo.m_vecStart, beamInfo.m_vecEnd, MASK_SHOT, pOwner, COLLISION_GROUP_NONE, &tr);
+							if (tr.fraction != 1.0 && (tr.startpos - tr.endpos).Length())
+							{
+								debugoverlay->AddBoxOverlay(tr.endpos, Vector(-2, -2, -2), Vector(2, 2, 2), QAngle(0, 0, 0), random->RandomInt(0, 255), random->RandomInt(0, 255), random->RandomInt(0, 255), 127, 2.0f);
+							}
+
+							beamInfo.m_pszModelName = "sprites/laserbeam.vmt";
+							//beamInfo.m_nModelIndex = modelinfo->GetModelIndex("sprites/laserbeam.vmt");
+							beamInfo.m_pszHaloName = nullptr;
+							beamInfo.m_nHaloIndex = 0;
+							beamInfo.m_flHaloScale = 0;
+
+							beamInfo.m_flLife = 2.0f;
+							beamInfo.m_flWidth = 2.0f;
+							beamInfo.m_flEndWidth = 2.0f;
+							beamInfo.m_flFadeLength = 20.0f;
+							beamInfo.m_flAmplitude = 0.0f;
+							beamInfo.m_flSpeed = 0.2f;
+							beamInfo.m_nStartFrame = 0;
+							beamInfo.m_flFrameRate = 0.0f;
+
+							beamInfo.m_flRed = (float)dub_draw_bulletTracer_colors.GetColor().r();
+							beamInfo.m_flGreen = (float)dub_draw_bulletTracer_colors.GetColor().g();
+							beamInfo.m_flBlue = (float)dub_draw_bulletTracer_colors.GetColor().b();
+							beamInfo.m_flBrightness = (float)dub_draw_bulletTracer_colors.GetColor().a();
+							beamInfo.m_nFlags = FBEAM_SHADEIN;
+
+							if (Beam_t* beam = beams->CreateBeamPoints(beamInfo))
+							{
+								beam->flags &= ~FBEAM_FOREVER;
+								beam->die = gpGlobals->curtime + 2.0f;
+							}
+							break;
+				}
+			}
 	#else
 					//Msg("[Server] setting nextprimaryattack to now %f\n", gpGlobals->curtime);
 
@@ -475,7 +625,7 @@ void CASW_Weapon::ItemPostFrame( void )
 						event->SetInt( "marine", pOwner->entindex() );
 						event->SetInt( "weapon", entindex() );
 
-						gameeventmanager->FireEvent( event, true );
+						gameeventmanager->FireEvent( event );
 					}
 	#endif
 					 m_flNextPrimaryAttack = gpGlobals->curtime;

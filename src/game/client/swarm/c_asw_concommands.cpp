@@ -405,7 +405,106 @@ ConCommand asw_snow_test( "asw_snow_test", asw_snow_test_f, "Changes snow emitte
 */
 
 
+void RotateCameraLeft_f()
+{
+	CASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	CASW_Marine *pMarine = pPlayer ? pPlayer->GetViewMarine() : NULL;
+	if (pMarine)
+	{
+		int yaw = pPlayer->m_flMovementAxisYaw;
+		yaw += 90;
+		if (yaw == 360)
+			yaw = 0;
 
+		pPlayer->m_flMovementAxisYaw = yaw;
+	}
+	engine->ClientCmd("rotatecameraleft");
+}
+
+void RotateCameraRight_f()
+{
+	CASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	CASW_Marine *pMarine = pPlayer ? pPlayer->GetViewMarine() : NULL;
+	if (pMarine)
+	{
+		int yaw = pPlayer->m_flMovementAxisYaw;
+		yaw -= 90;
+		if (yaw == -90)
+			yaw = 270;
+
+		pPlayer->m_flMovementAxisYaw = yaw;
+	}
+	engine->ClientCmd("rotatecameraright");
+}
+static ConCommand rotatecameraleft_f("rotatecameraleft_f", RotateCameraLeft_f, "Rotates marine camera by 90 degrees", 0);
+static ConCommand rotatecameraright_f("rotatecameraright_f", RotateCameraRight_f, "Rotates marine camera by -90 degrees", 0);
+
+void dub_client_min_interp_ratio_f(const CCommand &args)
+{
+	static ConVar *pMin = dynamic_cast<ConVar*>(g_pCVar->FindCommandBase("sv_client_min_interp_ratio"));
+	static ConVar *pMax = dynamic_cast<ConVar*>(g_pCVar->FindCommandBase("sv_client_max_interp_ratio"));
+
+	if (args.ArgC() == 2)
+	{
+		if (atoi(args[1]) <= pMax->GetInt())
+		{
+			pMin->SetValue(atoi(args[1]));
+		}
+		else
+		{
+			Msg("Error, maximum limit exceeded\n");
+		}
+	}
+	else
+	{
+		Msg("Usage:\n  dub_client_min_interp_ratio [Value]\n");
+	}
+}
+ConCommand dub_client_min_interp_ratio("dub_client_min_interp_ratio", dub_client_min_interp_ratio_f, "This can be used to limit the value of cl_interp_ratio for connected clients", FCVAR_NONE);
+
+void dub_removeflags_f(const CCommand &args)
+{
+	if (args.ArgC() == 2)
+	{
+		ConVar *cvar = g_pCVar->FindVar(args[1]) ? g_pCVar->FindVar(args[1]) : null;
+		if (cvar != null)
+		{
+			cvar->RemoveFlags(FCVAR_CHEAT);
+			cvar->RemoveFlags(FCVAR_REPLICATED);
+			Msg("Convar %s flag has been removed\n", args[1]);
+		}
+		else if (ConCommand *cmd = g_pCVar->FindCommand(args[1]))
+		{
+			cmd->RemoveFlags(FCVAR_CHEAT);
+			cmd->RemoveFlags(FCVAR_REPLICATED);
+			Msg("Concommand %s flag has been removed\n", args[1]);
+		}
+		else
+			Msg("Not found %s\n", args[1]);
+	}
+	else
+	{
+		Msg("Usage:\n  dub_removeflags [command]\n");
+	}
+}
+ConCommand dub_removeflags("dub_removeflags", dub_removeflags_f, "Remove the cheat command flag", FCVAR_NONE);
+
+void dub_test_f(const CCommand& args)
+{
+	ConVar* cvar = g_pCVar->FindVar("cl_cmdrate");
+	if (cvar)
+	{
+		if (args.ArgC() == 1)
+		{
+			cvar->RemoveFlags(FCVAR_USERINFO);
+		}
+		else
+		{
+			cvar->SetValue(atoi(args[1]));
+		}
+	}
+}
+ConCommand dub_test("dub_test", dub_test_f);
 
 void asw_minimap_scale_f( const CCommand &args )
 {
@@ -585,21 +684,21 @@ ConCommand asw_mesh_emitter_test( "asw_mesh_emitter_test", asw_mesh_emitter_test
 
 void ShowPlayerList()
 {
-	if ( gpGlobals->maxClients <= 1 )
+	if (gpGlobals->maxClients <= 1)
 		return;
 
 	using namespace vgui;
 
-	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
 	if (!pPlayer)
 		return;
 
 	if (engine->IsLevelMainMenuBackground())		// don't show player list on main menu
-	{		
+	{
 		return;
 	}
-	vgui::Panel *pContainer = GetClientMode()->GetViewport()->FindChildByName("g_PlayerListFrame", true);
-	if (pContainer)	
+	vgui::Panel* pContainer = GetClientMode()->GetViewport()->FindChildByName("g_PlayerListFrame", true);
+	if (pContainer)
 	{
 		pContainer->SetVisible(false);
 		pContainer->MarkForDeletion();
@@ -610,32 +709,32 @@ void ShowPlayerList()
 	vgui::Frame* pFrame = NULL;
 
 	if (g_hBriefingFrame.Get())
-		pContainer = new PlayerListContainer( g_hBriefingFrame.Get(), "g_PlayerListFrame" );
+		pContainer = new PlayerListContainer(g_hBriefingFrame.Get(), "g_PlayerListFrame");
 	else
 	{
 		if (GetClientModeASW()->m_hCampaignFrame.Get())
 		{
-			pContainer = new PlayerListContainer( GetClientModeASW()->m_hCampaignFrame.Get(), "g_PlayerListFrame" );
+			pContainer = new PlayerListContainer(GetClientModeASW()->m_hCampaignFrame.Get(), "g_PlayerListFrame");
 		}
 		else
 		{
 			if (GetClientModeASW()->m_hMissionCompleteFrame.Get())
 			{
-				pContainer = new PlayerListContainer( GetClientModeASW()->m_hMissionCompleteFrame.Get(), "g_PlayerListFrame" );
+				pContainer = new PlayerListContainer(GetClientModeASW()->m_hMissionCompleteFrame.Get(), "g_PlayerListFrame");
 			}
 			else
 			{
-				pFrame = new PlayerListContainerFrame( GetClientMode()->GetViewport(), "g_PlayerListFrame" );
+				pFrame = new PlayerListContainerFrame(GetClientMode()->GetViewport(), "g_PlayerListFrame");
 				pContainer = pFrame;
 			}
 		}
 	}
 	HScheme scheme = vgui::scheme()->LoadSchemeFromFile("resource/SwarmSchemeNew.res", "SwarmSchemeNew");
-	pContainer->SetScheme(scheme);		
+	pContainer->SetScheme(scheme);
 
 	// the panel to show the info
-	PlayerListPanel *playerlistpanel = new PlayerListPanel( pContainer, "PlayerListPanel" );
-	playerlistpanel->SetVisible( true );
+	PlayerListPanel* playerlistpanel = new PlayerListPanel(pContainer, "PlayerListPanel");
+	playerlistpanel->SetVisible(true);
 
 	if (!pContainer)
 	{
@@ -647,7 +746,7 @@ void ShowPlayerList()
 		pContainer->SetVisible(true);
 		pContainer->SetEnabled(true);
 		pContainer->SetKeyBoardInputEnabled(false);
-		pContainer->SetZPos(200);		
+		pContainer->SetZPos(200);
 	}
 }
 
@@ -661,16 +760,19 @@ void ShowInGameBriefing()
 	if (!pPlayer)
 		return;
 
+	ConVarRef dub_draw_objectivemap_blips_max_distance("dub_draw_objectivemap_blips_max_distance");
+
 	if (engine->IsLevelMainMenuBackground())		// don't show player list on main menu
 	{		
 		return;
 	}
-	vgui::Panel *pContainer = GetClientMode()->GetViewport()->FindChildByName("InGameBriefingContainer", true);
+	vgui::Panel *pContainer = GetClientMode()->GetViewport()->FindChildByName("InGameBriefingContainer", true); // off
 	if (pContainer)	
 	{
 		pContainer->SetVisible(false);
 		pContainer->MarkForDeletion();
 		pContainer = NULL;
+		dub_draw_objectivemap_blips_max_distance.SetValue(0);
 		return;
 	}
 
@@ -705,7 +807,7 @@ void ShowInGameBriefing()
 	{
 		Msg("Error: ingame briefing frame was closed immediately on opening\n");
 	}
-	else
+	else // on
 	{
 		pFrame->RequestFocus();
 		pFrame->SetVisible(true);
@@ -713,6 +815,7 @@ void ShowInGameBriefing()
 		pFrame->SetKeyBoardInputEnabled(false);
 		pFrame->SetZPos(200);		
 		GetClientModeASW()->m_hInGameBriefingFrame = pFrame;
+		dub_draw_objectivemap_blips_max_distance.SetValue(2000);
 	}
 }
 

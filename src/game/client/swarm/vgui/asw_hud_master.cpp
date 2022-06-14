@@ -36,6 +36,7 @@ ConVar rd_draw_portraits( "rd_draw_portraits", "1", FCVAR_NONE );
 ConVar rd_draw_timer( "rd_draw_timer", "0", FCVAR_ARCHIVE, "Display the current mission time above the minimap" );
 ConVar rd_draw_timer_color( "rd_draw_timer_color", "255 255 255 255", FCVAR_ARCHIVE, "The color of the current mission time" );
 ConVar rd_draw_marine_health_counter( "rd_draw_marine_health_counter", "0", FCVAR_ARCHIVE, "Display a numeric counter for marine health on the HUD" );
+ConVar dub_hud_color( "dub_hud_color", "255 255 255 255", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
 
 using namespace vgui;
 
@@ -108,6 +109,11 @@ CASW_Hud_Master::CASW_Hud_Master( const char *pElementName ) :
 	m_flCurHealthPercent = 1.0f;
 	m_flPrevHealthPercent = 1.0f;
 	m_bFading = false;
+
+	m_iDeadID = vgui::surface()->CreateNewTextureID();
+	vgui::surface()->DrawSetTextureFile(m_iDeadID, "vgui/hud/gameui/overlay_dead", true, false);
+	m_iKnockedOutID = vgui::surface()->CreateNewTextureID();
+	vgui::surface()->DrawSetTextureFile(m_iKnockedOutID, "vgui/hud/gameui/overlay_knockedout", true, false);
 
 	m_pLblTimer = new vgui::Label( this, "LblTimer", "" );
 }
@@ -368,22 +374,24 @@ void CASW_Hud_Master::OnThink()
 				break;
 			}
 
+			m_SquadMateInfo[ nPosition ].pMarineRrs = pMR;
 			m_SquadMateInfo[ nPosition ].hMarine = pMarine;
 			m_SquadMateInfo[ nPosition ].bPositionActive = true;
 			m_SquadMateInfo[ nPosition ].MarineClass = pProfile->GetMarineClass();
 			m_SquadMateInfo[ nPosition ].nClassIcon = GetClassIcon( pMR );
-			m_SquadMateInfo[ nPosition ].flHealthFraction = ( pMarine && pMarine->m_bKnockedOut ) ? 0 : pMR->GetHealthPercent();
+			m_SquadMateInfo[nPosition].flHealthFraction = pMR->GetHealthPercent();
+			//m_SquadMateInfo[ nPosition ].flHealthFraction = ( pMarine && pMarine->m_bKnockedOut ) ? 0 : pMR->GetHealthPercent();
 			m_SquadMateInfo[ nPosition ].flInfestation = pMR->GetInfestedPercent();
 			m_SquadMateInfo[ nPosition ].bInhabited = pMR->IsInhabited();
 
 			pMR->GetDisplayName( m_SquadMateInfo[ nPosition ].wszMarineName, sizeof( m_SquadMateInfo[ nPosition ].wszMarineName ) );
 
-			COMPILE_TIME_ASSERT( NELEMS( m_SquadMateInfo[ nPosition ].wszMarineName ) > 24 );
+			COMPILE_TIME_ASSERT( NELEMS( m_SquadMateInfo[ nPosition ].wszMarineName ) > 9 );
 			// BenLubar: truncate long names for the HUD
-			if ( Q_wcslen( m_SquadMateInfo[ nPosition ].wszMarineName ) > 24 )
+			if ( Q_wcslen( m_SquadMateInfo[ nPosition ].wszMarineName ) > 9 )
 			{
-				m_SquadMateInfo[ nPosition ].wszMarineName[ 23 ] = 0x2026; // ...
-				m_SquadMateInfo[ nPosition ].wszMarineName[ 24 ] = 0;      // null terminator
+				m_SquadMateInfo[ nPosition ].wszMarineName[ 9 ] = 0x2026; // ...
+				m_SquadMateInfo[ nPosition ].wszMarineName[ 10 ] = 0;      // null terminator
 			}
 
 			if ( pMarine )			
@@ -448,6 +456,13 @@ void CASW_Hud_Master::OnThink()
 				}
 
 				bool bWalking = ( pPlayer->GetMarine() && pPlayer->GetMarine()->m_bWalking );
+				if ( bWalking )
+				{
+					const wchar_t *pwszMarineProfileName = NULL;
+					pwszMarineProfileName = g_pVGuiLocalize->Find(pProfile->GetShortName());
+					if (pMR->IsInhabited() && pMR->GetCommander())
+						Q_wcsncpy(m_SquadMateInfo[nPosition].wszMarineName, pwszMarineProfileName, sizeof(m_SquadMateInfo[nPosition].wszMarineName));
+				}
 
 				int nItemSelect = bWalking ? 1 : 0;
 				int nItemShift = nItemSelect == 0 ? 1 : 0;
@@ -505,9 +520,9 @@ void CASW_Hud_Master::OnThink()
 
 		if ( m_hHotbarOrderEffects[oldf].flRemoveAtTime > 0 && m_hHotbarOrderEffects[oldf].flRemoveAtTime < gpGlobals->curtime )
 		{
-			int iMarine = m_hHotbarOrderEffects[oldf].iEffectID;
+			int iMarine = m_hHotbarOrderEffects[oldf].iEffectID;	
 			C_BaseEntity* pEnt = ClientEntityList().GetEnt(iMarine);
-
+			
 			if ( pEnt && pEnt->Classify() == CLASS_ASW_MARINE )
 				pMarine = assert_cast<C_ASW_Marine*>(pEnt); // turn iMarine ent index into the marine
 			else
@@ -777,7 +792,7 @@ bool CASW_Hud_Master::LookupElementBounds( const char *elementName, int &x, int 
 			return false;
 		}
 
-		x = m_SquadMateInfo[nPanel].xpos;
+		x = m_SquadMateInfo[ nPanel ].xpos;
 		y = m_nSquadMates_y;
 		x += m_nSquadMate_ExtraItem_x;
 		y += m_nSquadMate_ExtraItem_y;
@@ -874,6 +889,14 @@ void CASW_Hud_Master::PaintLocalMarinePortrait()
 		);
 
 	float flHealthFraction = m_pLocalMarineResource->GetHealthPercent();
+	Color HealthBarColor;
+
+	if (flHealthFraction >= 0.6)
+		HealthBarColor = dub_hud_color.GetColor();
+	else if (flHealthFraction >= 0.3)
+		HealthBarColor = Color(255, 215, 0, 255);
+	else if (flHealthFraction < 0.3)
+		HealthBarColor = Color(220, 20, 60, 255);
  
 	// draw recent damage
 	surface()->DrawSetColor( m_colorDelay );
@@ -883,7 +906,7 @@ void CASW_Hud_Master::PaintLocalMarinePortrait()
 		m_nMarinePortrait_circle_bg_w * 0.5f,
 		m_nMarinePortrait_circle_bg_t * 0.5f,
 		0.75f * ( m_flMainProgress ), 0.75f * ( m_flDelayProgress ), true, 180, -180,
-		HUD_UV_COORDS( Sheet1, UV_marine_health_circle_FG_subtract ) );
+		HUD_UV_COORDS( Sheet1, UV_marine_health_circle_BG ) );
 
 	// draw infestation
 	if ( m_pLocalMarineResource->IsInfested() )
@@ -904,27 +927,27 @@ void CASW_Hud_Master::PaintLocalMarinePortrait()
 		float flUninfestedHealth = flHealthFraction - flInfestation;
 		if ( flUninfestedHealth > 0.0f )
 		{
-			surface()->DrawSetColor( Color( 255, 255, 255, 255 ) );
+			surface()->DrawSetColor( HealthBarColor );
 			ASWCircularProgressBar::DrawCircleSegmentAtPosition(
 				m_nMarinePortrait_circle_x + m_nMarinePortrait_circle_bg_w * 0.5f,
 				m_nMarinePortrait_circle_y + m_nMarinePortrait_circle_bg_t * 0.5f,
 				m_nMarinePortrait_circle_bg_w * 0.5f,
 				m_nMarinePortrait_circle_bg_t * 0.5f,
 				0, flUninfestedHealth * 0.75f, true, 180, -180,
-				HUD_UV_COORDS( Sheet1, UV_marine_health_circle_FG ) );
+				HUD_UV_COORDS( Sheet1, UV_marine_health_circle_BG ) );
 		}
 	}
 	else
 	{
 		// draw health bar
-		surface()->DrawSetColor( Color( 255, 255, 255, 255 ) );
+		surface()->DrawSetColor( HealthBarColor );
 		ASWCircularProgressBar::DrawCircleSegmentAtPosition(
 			m_nMarinePortrait_circle_x + m_nMarinePortrait_circle_bg_w * 0.5f,
 			m_nMarinePortrait_circle_y + m_nMarinePortrait_circle_bg_t * 0.5f,
 			m_nMarinePortrait_circle_bg_w * 0.5f,
 			m_nMarinePortrait_circle_bg_t * 0.5f,
 			0, flHealthFraction * 0.75f, true, 180, -180,
-			HUD_UV_COORDS( Sheet1, UV_marine_health_circle_FG ) );
+			HUD_UV_COORDS( Sheet1, UV_marine_health_circle_BG ) );
 	}
 
 	
@@ -1008,7 +1031,7 @@ void CASW_Hud_Master::PaintLocalMarinePortrait()
 					}
 					else if ( m_nLocalMarineMaxClips > i )
 					{
-						surface()->DrawSetColor( 128, 128, 128, 255 );
+						surface()->DrawSetColor( dub_hud_color.GetColor() );
 						surface()->DrawTexturedSubRect(
 							x,
 							m_nMarinePortrait_y + m_nMarinePortrait_clips_y,
@@ -1028,32 +1051,49 @@ void CASW_Hud_Master::PaintSquadMemberStatus( int nPosition )
 	int x = m_SquadMateInfo[ nPosition].xpos; //m_nSquadMates_x + nPosition * m_nSquadMates_spacing;
 	int y = m_nSquadMates_y;
 
+	// 绘制失能后的效果
+	if ( m_SquadMateInfo[ nPosition ].hMarine && m_SquadMateInfo[ nPosition ].hMarine->m_bKnockedOut )
+	{
+		surface()->DrawSetColor(Color(255, 255, 255, 255));
+		surface()->DrawSetTexture(m_iKnockedOutID);
+		surface()->DrawTexturedRect(x + (m_nSquadMate_bg_x - 15), y + m_nSquadMate_bg_y - 40,
+			x + (m_nSquadMate_bg_x - 15) + (m_nSquadMate_bg_w + 30), y + m_nSquadMate_bg_y + (m_nSquadMate_bg_t + 15));
+	}
+
 	// background
 	surface()->DrawSetColor( 255, 255, 255, asw_hud_alpha.GetInt() );
 	surface()->DrawSetTexture( m_nSheet1ID );
 	surface()->DrawTexturedSubRect(
-		x + m_nSquadMate_bg_x, y + m_nSquadMate_bg_y,
+		x + m_nSquadMate_bg_x + 10, y + m_nSquadMate_bg_y,
 		x + m_nSquadMate_bg_x + m_nSquadMate_bg_w, y + m_nSquadMate_bg_y + m_nSquadMate_bg_t,
 		HUD_UV_COORDS( Sheet1, UV_team_portrait_BG )
 		);
 
 	// class icon/special status
-	surface()->DrawSetColor( 255, 255, 255, 255 );
+	/*surface()->DrawSetColor( 255, 255, 255, 255 );
 	surface()->DrawTexturedSubRect(
 		x + m_nSquadMate_class_icon_x,
 		y + m_nSquadMate_class_icon_y,
 		x + m_nSquadMate_class_icon_x + m_nSquadMate_class_icon_w,
 		y + m_nSquadMate_class_icon_y + m_nSquadMate_class_icon_t,
 		HUD_UV_COORDS( Sheet1, m_SquadMateInfo[ nPosition ].nClassIcon )
-		);
+		);*/
+
 
 	// TODO: show infested progress
 	// TODO: Flash health bar when they get hit
-	float health_x = x + m_nSquadMate_health_x;
+	float health_x = x + m_nSquadMate_health_x + 15;
 	float health_y = y + m_nSquadMate_health_y;
 	float health_x2 = x + m_nSquadMate_health_x + m_nSquadMate_health_w;
-	float health_x2_progress = x + m_nSquadMate_health_x + m_nSquadMate_health_w * m_SquadMateInfo[ nPosition ].flHealthFraction;
+	float health_x2_progress = health_x + (m_nSquadMate_health_w - 15) * m_SquadMateInfo[nPosition].flHealthFraction;
 	float health_y2 = y + m_nSquadMate_health_y + m_nSquadMate_health_t;
+
+	if (m_SquadMateInfo[nPosition].flHealthFraction >= 0.6)
+		vgui::surface()->DrawSetColor(dub_hud_color.GetColor());
+	else if (m_SquadMateInfo[nPosition].flHealthFraction >= 0.3)
+		vgui::surface()->DrawSetColor(Color(255, 215, 0, 255));
+	else if (m_SquadMateInfo[nPosition].flHealthFraction < 0.3)
+		vgui::surface()->DrawSetColor(Color(220, 20, 60, 255));
 
 	vgui::Vertex_t health_bg_points[4] = 
 	{ 
@@ -1072,8 +1112,8 @@ void CASW_Hud_Master::PaintSquadMemberStatus( int nPosition )
 		vgui::Vertex_t( Vector2D(health_x2_progress, health_y2),Vector2D(flHealth_UV_x2, m_Sheet1[ UV_team_health_bar_FG ].t) ), 
 		vgui::Vertex_t( Vector2D(health_x, health_y2),			Vector2D(m_Sheet1[ UV_team_health_bar_FG ].u, m_Sheet1[ UV_team_health_bar_FG ].t) )
 	}; 
+	vgui::surface()->DrawTexturedPolygon(4, health_fg_points);
 
-	vgui::surface()->DrawTexturedPolygon( 4, health_fg_points );
 
 	if ( m_SquadMateInfo[ nPosition ].flInfestation > 0.0f )
 	{
@@ -1091,6 +1131,49 @@ void CASW_Hud_Master::PaintSquadMemberStatus( int nPosition )
 			vgui::Vertex_t( Vector2D(infest_start_x, health_y2),			Vector2D(infest_start_UV_x, m_Sheet1[ UV_team_health_bar_FG_infested ].t) )
 		}; 
 		vgui::surface()->DrawTexturedPolygon( 4, infest_fg_points );
+	}
+
+	// 绘制头像
+	if (m_pMostFragsAvatar[nPosition] == NULL)
+	{
+		m_pMostFragsAvatar[nPosition] = new CAvatarImage();
+		m_pMostFragsAvatar[nPosition]->SetAvatarSize(k_EAvatarSize184x184);
+	}
+
+	C_ASW_Marine_Resource *pMR = m_SquadMateInfo[nPosition].pMarineRrs;
+	if (pMR && pMR->GetCommander())
+	{
+		m_pMostFragsAvatar[nPosition]->SetAvatarSteamID(pMR->GetCommander()->GetSteamID());
+		m_hMostFragsImage[nPosition] = m_pMostFragsAvatar[nPosition]->GetID();
+		
+		if (pMR->GetMarineEntity() && pMR->GetMarineEntity()->GetHealth() > 0)
+		{
+			surface()->DrawSetColor(Color(255, 255, 255, 255));
+			surface()->DrawSetTexture(m_hMostFragsImage[nPosition]);
+			surface()->DrawTexturedRect(
+				x + m_nSquadMate_class_icon_x,
+				y + m_nSquadMate_class_icon_y,
+				x + m_nSquadMate_class_icon_x + m_nSquadMate_class_icon_w,
+				y + m_nSquadMate_class_icon_y + m_nSquadMate_class_icon_t
+				);
+		}
+		else
+		{
+			surface()->DrawSetColor(Color(255, 0, 0, 255));
+			surface()->DrawSetTexture(m_hMostFragsImage[nPosition]);
+			surface()->DrawTexturedRect(
+				x + m_nSquadMate_class_icon_x,
+				y + m_nSquadMate_class_icon_y,
+				x + m_nSquadMate_class_icon_x + m_nSquadMate_class_icon_w,
+				y + m_nSquadMate_class_icon_y + m_nSquadMate_class_icon_t
+				);
+
+			// 画红叉
+			surface()->DrawSetColor(Color(255, 255, 255, 255));
+			surface()->DrawSetTexture(m_iDeadID);
+			surface()->DrawTexturedRect(x + (m_nSquadMate_bg_x - 15), y + m_nSquadMate_bg_y - 15,
+				x + (m_nSquadMate_bg_x - 15) + (m_nSquadMate_bg_w + 30), y + m_nSquadMate_bg_y + (m_nSquadMate_bg_t + 40));
+		}
 	}
 
 	C_ASW_Weapon *pWeapon = m_SquadMateInfo[ nPosition ].pWeapon;
@@ -1134,9 +1217,9 @@ void CASW_Hud_Master::PaintSquadMemberStatus( int nPosition )
 			// just draw one clip icon, the quantity will be drawn as text
 			surface()->DrawSetColor( m_SquadMate_clips_full_color );
 			surface()->DrawTexturedSubRect(
-				x + m_nSquadMate_clips_x,
+				x + m_nSquadMate_clips_x + 3,
 				y + m_nSquadMate_clips_y,
-				x + m_nSquadMate_clips_x + m_nSquadMate_clips_w,
+				x + m_nSquadMate_clips_x + 3 + m_nSquadMate_clips_w,
 				y + m_nSquadMate_clips_y + m_nSquadMate_clips_t,
 				HUD_UV_COORDS( Sheet_Stencil, UV_hud_ammo_clip_full )
 				);
@@ -1146,7 +1229,7 @@ void CASW_Hud_Master::PaintSquadMemberStatus( int nPosition )
 			// draw up to 5 clip icons, filling them in if the player has that many clips
 			for ( int i = 0; i < 5; i++ )
 			{
-				int clip_x = x + m_nSquadMate_clips_x + m_nSquadMate_clips_spacing * i;
+				int clip_x = x + m_nSquadMate_clips_x + 3 + m_nSquadMate_clips_spacing * i;
 				if ( m_SquadMateInfo[ nPosition ].nClips > i )
 				{
 					surface()->DrawSetColor( m_SquadMate_clips_full_color );
@@ -1181,6 +1264,19 @@ void CASW_Hud_Master::PaintLocalMarineInventory()
 	if ( !m_pLocalMarine )
 		return;
 
+	C_ASW_Marine* pMarine = C_ASW_Player::GetLocalASWPlayer()->GetMarine();
+	CASW_Weapon *pWeapon = m_pLocalMarine->GetActiveASWWeapon();
+	if (pMarine && pWeapon)
+	{
+		surface()->DrawSetColor(255, 255, 255, 255);
+		surface()->DrawSetTexture(ASWEquipmentList()->GetEquipIconTexture(true, pWeapon->GetEquipmentListIndex()));
+
+		Vector MarineEdgeScreenPos;
+		debugoverlay->ScreenPosition(m_pLocalMarine->GetAbsOrigin(), MarineEdgeScreenPos);
+		surface()->DrawTexturedRect(MarineEdgeScreenPos.x - 20, MarineEdgeScreenPos.y - 110,
+			MarineEdgeScreenPos.x - 20 + 60, MarineEdgeScreenPos.y - 110 + 30);
+	}
+
 	for ( int i = ASW_INVENTORY_SLOT_PRIMARY; i <= ASW_TEMPORARY_WEAPON_SLOT; i++ )
 	{
 		CASW_Weapon *pWeapon = m_pLocalMarine->GetASWWeapon( i );
@@ -1193,7 +1289,10 @@ void CASW_Hud_Master::PaintLocalMarineInventory()
 			}
 			else
 			{
-				surface()->DrawSetColor( 66, 142, 192, 255 );		// light blue
+				if (i == ASW_INVENTORY_SLOT_EXTRA)
+					surface()->DrawSetColor( 66, 142, 192, 255 );		// light blue
+				else
+					surface()->DrawSetColor( dub_hud_color.GetColor() );
 			}
 			surface()->DrawSetTexture( ASWEquipmentList()->GetEquipIconTexture( !pInfo->m_bExtra, pWeapon->GetEquipmentListIndex() ) );
 			int x = YRES( pInfo->m_iHUDIconOffsetX );
@@ -1224,8 +1323,8 @@ void CASW_Hud_Master::PaintLocalMarineInventory()
 				}
 				case ASW_TEMPORARY_WEAPON_SLOT:
 				{
-					x += m_nTertiaryWeapon_x;
-					y += m_nTertiaryWeapon_y;
+					x = m_nTertiaryWeapon_x;
+					y = m_nTertiaryWeapon_y;
 					break;
 				}
 			}
@@ -1412,12 +1511,13 @@ void CASW_Hud_Master::PaintText()
 		// weapon name
 		surface()->DrawSetTextFont( m_hDefaultSmallFont );
 		surface()->DrawSetTextColor( 255, 255, 255, 255 );
-		surface()->DrawSetTextPos( m_nMarinePortrait_x + m_nMarinePortrait_weapon_name_x, m_nMarinePortrait_y + m_nMarinePortrait_weapon_name_y );
+		surface()->DrawSetTextPos( m_nMarinePortrait_x + m_nMarinePortrait_weapon_name_x,
+										 m_nMarinePortrait_y + m_nMarinePortrait_weapon_name_y );
 
-		if (m_pLocalMarineActiveWeapon->Classify() == CLASS_RD_WEAPON_GENERIC_OBJECT)
+		if ( m_pLocalMarineActiveWeapon->Classify() == CLASS_RD_WEAPON_GENERIC_OBJECT )
 		{
-			C_RD_Weapon_Generic_Object* pGenericObject = assert_cast<C_RD_Weapon_Generic_Object*>(m_pLocalMarineActiveWeapon);
-			surface()->DrawUnicodeString( pGenericObject->m_wszCarriedName) ;
+			C_RD_Weapon_Generic_Object *pGenericObject = dynamic_cast<C_RD_Weapon_Generic_Object *>( m_pLocalMarineActiveWeapon );
+			surface()->DrawUnicodeString( pGenericObject->m_wszCarriedName );
 		}
 		else
 		{
@@ -1498,7 +1598,7 @@ void CASW_Hud_Master::PaintText()
 			if ( pInfo->m_bShowCharges )
 			{
 				wchar_t wszQuantity[ 12 ];
-				V_snwprintf( wszQuantity, ARRAYSIZE( wszQuantity ), L"x%d", pExtraItem->Clip1() );
+				V_snwprintf(wszQuantity, ARRAYSIZE(wszQuantity), L"x%d", pExtraItem->Clip1());
 
 				surface()->DrawSetTextColor( m_SquadMate_ExtraItem_quantity_color );		
 				surface()->DrawSetTextFont( m_hDefaultSmallFont );	
@@ -1576,7 +1676,7 @@ void CASW_Hud_Master::PaintText()
 			wchar_t wszQuantity[ 12 ];
 			V_snwprintf( wszQuantity, ARRAYSIZE( wszQuantity ), L"x%d", pWeapon->Clip1() );
 	
-			surface()->DrawSetTextColor( ( pWeapon == m_pLocalMarineActiveWeapon ) ? Color( 255, 255, 255, 255 ) : Color( 66, 142, 192, 255 ) );
+			surface()->DrawSetTextColor( ( pWeapon == m_pLocalMarineActiveWeapon ) ? Color( 255, 255, 255, 255 ) : dub_hud_color.GetColor() );
 			surface()->DrawSetTextFont( m_hDefaultSmallFont );	
 			surface()->GetTextSize( m_hDefaultSmallFont, wszQuantity, w, t );
 			surface()->DrawSetTextPos( x, y );
@@ -1655,7 +1755,7 @@ void CASW_Hud_Master::PaintText()
 	{
 		if ( m_pLocalMarine->IsAlive() )
 		{
-			surface()->DrawSetColor( m_MarinePortrait_health_counter_color );
+			surface()->DrawSetColor( dub_hud_color.GetColor() );
 			surface()->DrawSetTexture( m_nSheet1ID );
 			surface()->DrawTexturedSubRect(
 					m_nMarinePortrait_x + m_nMarinePortrait_health_counter_icon_x,
@@ -1668,7 +1768,7 @@ void CASW_Hud_Master::PaintText()
 			wchar_t wszHealth[ 6 ];
 			V_snwprintf( wszHealth, ARRAYSIZE( wszHealth ), L"%d", m_nLocalMarineHealth );
 			surface()->DrawSetTextFont( m_hDefaultLargeFont );
-			surface()->DrawSetTextColor( m_MarinePortrait_health_counter_color );
+			surface()->DrawSetTextColor( dub_hud_color.GetColor() );
 			surface()->DrawSetTextPos( m_nMarinePortrait_health_counter_x + m_nMarinePortrait_x,
 				m_nMarinePortrait_health_counter_y + m_nMarinePortrait_y );
 			surface()->DrawUnicodeString( wszHealth );
@@ -1680,15 +1780,28 @@ void CASW_Hud_Master::PaintSquadMemberText( int nPosition )
 {
 	int x = m_SquadMateInfo[ nPosition ].xpos; //m_nSquadMates_x + nPosition * m_nSquadMates_spacing;
 	int y = m_nSquadMates_y;
+	
+	Color nNameColor = m_SquadMate_name_color;
+	extern ConVar asw_player_names;
+	C_ASW_Marine *pMarine = m_SquadMateInfo[nPosition].hMarine;
+
+	if (asw_player_names.GetInt() >= 3 && pMarine)
+	{
+		int nMarineResourceIndex = ASWGameResource()->GetMarineResourceIndex(pMarine->GetMarineResource());
+		if (nMarineResourceIndex >= 0 && nMarineResourceIndex < NELEMS(g_rgbaStatsReportPlayerColors))
+		{
+			nNameColor = g_rgbaStatsReportPlayerColors[nMarineResourceIndex];
+		}
+	}
 
 	surface()->DrawSetTextFont( m_hDefaultSmallFont );	
-	if ( m_SquadMateInfo[ nPosition ].flHealthFraction <= 0 )
+	if ( m_SquadMateInfo[ nPosition ].flHealthFraction <= 0  || ( m_SquadMateInfo[ nPosition ].hMarine && m_SquadMateInfo[ nPosition ].hMarine->m_bKnockedOut ) )
 	{
 		surface()->DrawSetTextColor( m_SquadMate_name_dead_color );
 	}
 	else
 	{
-		surface()->DrawSetTextColor( m_SquadMate_name_color );
+		surface()->DrawSetTextColor( nNameColor );
 	}
 	
 	surface()->DrawSetTextPos( x + m_nSquadMate_name_x,
@@ -1702,7 +1815,7 @@ void CASW_Hud_Master::PaintSquadMemberText( int nPosition )
 	{
 		static wchar_t wszBullets[ 6 ];
 		V_snwprintf( wszBullets, ARRAYSIZE( wszBullets ), L"x%d", m_SquadMateInfo[ nPosition ].nClips );
-		surface()->DrawSetTextPos( x + m_nSquadMate_clips_x + m_nSquadMate_clips_w,
+		surface()->DrawSetTextPos( x + m_nSquadMate_clips_x + 3 + m_nSquadMate_clips_w,
 			y + m_nSquadMate_clips_y );
 		surface()->DrawUnicodeString( wszBullets );
 	}
@@ -1715,14 +1828,15 @@ void CASW_Hud_Master::PaintSquadMemberText( int nPosition )
 		{
 			surface()->DrawSetTextColor( m_SquadMate_ExtraItem_quantity_color );
 			wchar_t wszQuantity[ 12 ];
-			V_snwprintf( wszQuantity, ARRAYSIZE( wszQuantity ), L"x%d", m_SquadMateInfo[ nPosition ].nExtraItemQuantity );
+			V_snwprintf( wszQuantity, sizeof( wszQuantity ), L"x%d", m_SquadMateInfo[ nPosition ].nExtraItemQuantity );
 			surface()->GetTextSize( m_hDefaultSmallFont, wszQuantity, w, t );
 			surface()->DrawSetTextPos( x + m_nSquadMate_ExtraItem_quantity_x - w,
 				y + m_nSquadMate_ExtraItem_quantity_y - t );
 			surface()->DrawUnicodeString( wszQuantity );
 		}
 
-		if ( ( !m_SquadMateInfo[ nPosition ].bInhabited && m_SquadMateInfo[ nPosition ].pExtraItemInfo->m_bOffhandActivate ) || m_SquadMateInfo[ nPosition ].pExtraItemInfo->m_bShowMultiplayerHotkey )
+		if ( ( !m_SquadMateInfo[ nPosition ].bInhabited && m_SquadMateInfo[ nPosition ].pExtraItemInfo->m_bOffhandActivate ) || (m_SquadMateInfo[ nPosition ].pExtraItemInfo->m_bShowMultiplayerHotkey && m_SquadMateInfo[nPosition].hMarine
+			&& !m_SquadMateInfo[nPosition].hMarine->IsInhabited()) )
 		{
 			// show hotkey for this marine's extra item
 			char szBinding[ 128 ];
@@ -1748,14 +1862,23 @@ void CASW_Hud_Master::PaintSquadMemberText( int nPosition )
 
 	if ( rd_draw_marine_health_counter.GetBool() )
 	{
-		wchar_t wszHealth[ 6 ];
-		V_snwprintf( wszHealth, ARRAYSIZE( wszHealth ), L"%d", m_SquadMateInfo[ nPosition ].iHealth );
+		surface()->DrawSetColor(dub_hud_color.GetColor());
+		surface()->DrawSetTexture(m_nSheet1ID);
+		surface()->DrawTexturedSubRect(
+			x + m_nSquadMate_name_x + m_nMarinePortrait_health_counter_icon_x - 32,
+			y + m_nSquadMate_name_y - 8,
+			x + m_nSquadMate_name_x + m_nMarinePortrait_health_counter_icon_x - 32 + m_nMarinePortrait_health_counter_icon_w,
+			y + m_nSquadMate_name_y - 8 + m_nMarinePortrait_health_counter_icon_t,
+			HUD_UV_COORDS(Sheet1, UV_hud_ammo_heal)
+			);
 
-		surface()->DrawSetTextFont( m_hDefaultSmallOutlineFont );
-		surface()->DrawSetTextColor( m_SquadMate_health_counter_color );
-		surface()->DrawSetTextPos( x + m_nSquadMate_health_counter_x,
-			y + m_nSquadMate_health_counter_y );
-		surface()->DrawUnicodeString( wszHealth );
+		wchar_t wszHealth[6];
+		_snwprintf(wszHealth, sizeof(wszHealth), L"%d", m_SquadMateInfo[nPosition].iHealth);
+		surface()->DrawSetTextFont(m_hDefaultLargeFont);
+		surface()->DrawSetTextColor(dub_hud_color.GetColor());
+		surface()->DrawSetTextPos(m_nMarinePortrait_health_counter_x + x + m_nSquadMate_name_x - 32,
+			y + m_nSquadMate_name_y - 13);
+		surface()->DrawUnicodeString(wszHealth);
 	}
 }
 
@@ -2059,6 +2182,7 @@ void CASW_Hud_Master::MsgFunc_ASWInvalidDesination( bf_read &msg )
 		pMarine->EmitSound("ASW_Weapon.InvalidDestination");
 	}
 }
+
 
 extern int g_asw_iPlayerListOpen;
 

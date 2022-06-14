@@ -27,9 +27,23 @@ ConVar joy_pan_camera("joy_pan_camera", "0", FCVAR_ARCHIVE);
 ConVar asw_ground_secondary("asw_ground_secondary", "1", FCVAR_NONE, "Set to 1 to make marines aim grenades at the floor instead of firing them straight");
 extern ConVar rd_ground_shooting;
 // BenLubar(spectator-mouse)
-ConVar rd_networked_mouse( "rd_networked_mouse", "1", FCVAR_DEVELOPMENTONLY, "Send the mouse position to the server for spectating" );
+ConVar rd_networked_mouse("rd_networked_mouse", "1", FCVAR_NONE, "Send the mouse position to the server for spectating");
+ConVar dub_forced_action("dub_forced_action", "0", FCVAR_CLIENTDLL);
+ConVar dub_no_action("dub_no_action", "1", FCVAR_CLIENTDLL);
+ConVar dub_no_jumpjet("dub_no_jumpjet", "0", FCVAR_CLIENTDLL);
+//ConVar dub_no_knocked("dub_no_knocked", "1", FCVAR_CLIENTDLL);
+ConVar dub_fakeLatency("dub_fakeLatency", "0", FCVAR_CLIENTDLL);
+ConVar dub_grenade_launcher_gravity_offset("dub_grenade_launcher_gravity_offset", "0", FCVAR_CLIENTDLL);
+ConVar dub_grenade_launcher_aim_to_marine("dub_grenade_launcher_aim_to_marine", "0", FCVAR_CLIENTDLL);
 
 static  kbutton_t	in_holdorder;
+
+#define CAMERA_DELAY 2
+#define CAMERA_DELAY_BUFFER CAMERA_DELAY * 2
+
+static short g_iDelayScreenW[CAMERA_DELAY_BUFFER], g_iDelayScreenH[CAMERA_DELAY_BUFFER];
+static short g_iDelayCameraX[CAMERA_DELAY_BUFFER], g_iDelayCameraY[CAMERA_DELAY_BUFFER];
+static int g_iDelayCount = 0;
 
 // JOYPAD ADDED
 
@@ -396,6 +410,7 @@ int CASWInput::KeyEvent( int down, ButtonCode_t code, const char *pszCurrentBind
 	return CInput::KeyEvent( down, code, pszCurrentBinding );
 }
 
+extern ConVar dub_aimbot;
 void CASWInput::ExtraMouseSample( float frametime, bool active )
 {
 	ASSERT_LOCAL_PLAYER_RESOLVABLE();
@@ -450,7 +465,7 @@ void CASWInput::ExtraMouseSample( float frametime, bool active )
 	VectorCopy( viewangles, GetPerUser().m_angPreviousViewAngles );
 
 	// Let the move manager override anything it wants to.
-	if ( GetClientMode()->CreateMove( frametime, cmd ) )
+	if (GetClientMode()->CreateMove(frametime, cmd))
 	{
 		// Get current view angles after the client mode tweaks with it
 		engine->SetViewAngles( cmd->viewangles );
@@ -466,10 +481,12 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	CUserCmd *cmd = &GetPerUser(nSlot).m_pCommands[ sequence_number % MULTIPLAYER_BACKUP];
 	CVerifiedUserCmd *pVerified = &GetPerUser(nSlot).m_pVerifiedCommands[ sequence_number % MULTIPLAYER_BACKUP];
 
+	//g_Mycmd = cmd;
 	cmd->Reset();
 
 	cmd->command_number = sequence_number;
-	cmd->tick_count = gpGlobals->tickcount;
+	cmd->tick_count = gpGlobals->tickcount + TIME_TO_TICKS(dub_fakeLatency.GetFloat());
+	//Msg("command_number = %d\ntick_count = %d\n", cmd->command_number, gpGlobals->tickcount);
 
 	QAngle viewangles;
 
@@ -503,9 +520,9 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 
 			if ( CASW_VGUI_Info_Message::HasInfoMessageOpen() || Holdout_Resupply_Frame::HasResupplyFrameOpen() )
 			{
-				cmd->forwardmove = 0;
+				/*cmd->forwardmove = 0;
 				cmd->sidemove = 0;
-				cmd->upmove = 0;
+				cmd->upmove = 0;*/
 			}
 		}
 
@@ -536,8 +553,8 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	if ( ASWGameResource() && pMarine )
 	{
 		C_ASW_Marine_Resource* pPMR = pMarine->GetMarineResource();
-		if (pPMR)
-			cmd->weaponsubtype = ASWGameResource()->GetMarineResourceIndex(pPMR);
+		if ( pPMR )
+			cmd->weaponsubtype = ASWGameResource()->GetMarineResourceIndex( pPMR );
 
 		// get light at the current marine
 		//Vector pos = pPlayer->GetMarine()->GetAbsOrigin() + Vector(0, 0, 40);
@@ -549,6 +566,7 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 		cmd->weaponsubtype = 0;
 		//cmd->light_level = 255;
 	}
+
 	// Set button and flag bits
 	cmd->buttons = GetButtonBits( true );
 
@@ -568,7 +586,7 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	C_ASW_Weapon *pWeapon = pMarine ? pMarine->GetActiveASWWeapon() : NULL;
 	const bool bGroundSecondary = pWeapon ? pWeapon->GroundSecondary() : false;
 	// asw - alter view angles for this move if it's one where we're firing off a ground grenade
-	if ( bGroundSecondary && cmd->buttons & IN_ATTACK2 || rd_ground_shooting.GetBool() )
+	if ( bGroundSecondary && cmd->buttons & IN_ATTACK2 && !dub_aimbot.GetBool() || rd_ground_shooting.GetBool() )
 	{
 		ASW_AdjustViewAngleForGroundShooting(viewangles);
 	}
@@ -578,7 +596,7 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	VectorCopy( viewangles, GetPerUser().m_angPreviousViewAngles );
 
 	// Let the move manager override anything it wants to.
-	if ( GetClientMode()->CreateMove( input_sample_frametime, cmd ) )
+	if (GetClientMode()->CreateMove(input_sample_frametime, cmd))
 	{
 		// Get current view angles after the client mode tweaks with it
 		engine->SetViewAngles( cmd->viewangles );
@@ -587,12 +605,31 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	GetPerUser().m_flLastForwardMove = cmd->forwardmove;
 
 	cmd->random_seed = MD5_PseudoRandom( sequence_number ) & 0x7fffffff;
+	//Msg("random_seed = %d\n", cmd->random_seed);
 
 	HLTVCamera()->CreateMove( cmd );
 
 	if ( pPlayer )
 	{
-		cmd->crosshairtrace = ASWInput()->GetCrosshairTracePos();
+		Vector vecCrosshairTracePos;
+		if (dub_grenade_launcher_gravity_offset.GetBool())
+		{
+			vecCrosshairTracePos = ASWInput()->GetCrosshairTracePos() + Vector(0, 0, dub_grenade_launcher_gravity_offset.GetFloat());
+		}
+		else if (dub_grenade_launcher_aim_to_marine.GetBool())
+		{
+			vecCrosshairTracePos = vec3_origin;
+			if (pMarine)
+			{
+				vecCrosshairTracePos = pMarine->AimtoMarine(pMarine) ? pMarine->AimtoMarine(pMarine)->GetAbsOrigin() : vec3_origin;
+			}
+		}
+		else
+		{
+			vecCrosshairTracePos = ASWInput()->GetCrosshairTracePos();
+		}
+
+		cmd->crosshairtrace = vecCrosshairTracePos;
 	}
 	else
 	{
@@ -624,7 +661,42 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 		}
 	}
 
-	cmd->forced_action = pMarine ? pMarine->GetForcedActionRequest() : 0;
+	//cmd->forced_action = dub_forced_action.GetBool() ? dub_forced_action.GetInt() : pMarine ? pMarine->GetForcedActionRequest() : 0;
+	if (pMarine)
+	{
+		if (dub_no_action.GetBool())
+		{
+			if (pMarine->GetForcedActionRequest() > 0 && pMarine->GetForcedActionRequest() <= 10)
+			{
+				if (dub_forced_action.GetBool())
+				{
+					cmd->forced_action = dub_forced_action.GetInt();
+					dub_forced_action.SetValue(0);
+				}
+				else
+					cmd->forced_action = 0;
+			}
+			else
+			{
+				if (dub_forced_action.GetBool())
+				{
+					cmd->forced_action = dub_forced_action.GetInt();
+					dub_forced_action.SetValue(0);
+				}
+				else if (dub_no_jumpjet.GetBool())
+				{
+					if (pMarine->GetForcedActionRequest() == 14 || pMarine->GetForcedActionRequest() == 15)
+						cmd->forced_action = 0;
+				}
+				else
+					cmd->forced_action = pMarine->GetForcedActionRequest();
+			}
+		}
+		else
+		{
+			cmd->forced_action = pMarine->GetForcedActionRequest();
+		}
+	}
 	cmd->sync_kill_ent = 0;
 
 	if ( pWeapon )
@@ -636,19 +708,42 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	if ( rd_networked_mouse.GetBool() )
 	{
 		// BenLubar: send the screen size and cursor position to the server
-		cmd->screenw = (short) ScreenWidth();
-		cmd->screenh = (short) ScreenHeight();
 		int mx, my;
-		ASWInput()->GetFullscreenMousePos( &mx, &my );
-		cmd->mousex = (short) mx;
-		cmd->mousey = (short) my;
+		ASWInput()->GetFullscreenMousePos(&mx, &my);
+		if (g_iDelayCount < CAMERA_DELAY)
+		{
+			g_iDelayScreenW[g_iDelayCount] = (short)ScreenWidth();
+			g_iDelayScreenH[g_iDelayCount] = (short)ScreenHeight();
+			cmd->screenw = (short)ScreenWidth();
+			cmd->screenh = (short)ScreenHeight();
+
+			g_iDelayCameraX[g_iDelayCount] = (short)mx;
+			g_iDelayCameraY[g_iDelayCount] = (short)my;
+			cmd->mousex = (short)mx;
+			cmd->mousey = (short)my;
+		}
+		else if (g_iDelayCount < CAMERA_DELAY_BUFFER)
+		{
+			cmd->screenw = g_iDelayScreenW[g_iDelayCount - CAMERA_DELAY];
+			cmd->screenh = g_iDelayScreenH[g_iDelayCount - CAMERA_DELAY];
+			g_iDelayScreenW[g_iDelayCount - CAMERA_DELAY] = (short)ScreenWidth();
+			g_iDelayScreenH[g_iDelayCount - CAMERA_DELAY] = (short)ScreenHeight();
+
+			cmd->mousex = g_iDelayCameraX[g_iDelayCount - CAMERA_DELAY];
+			cmd->mousey = g_iDelayCameraY[g_iDelayCount - CAMERA_DELAY];
+			g_iDelayCameraX[g_iDelayCount - CAMERA_DELAY] = (short)mx;
+			g_iDelayCameraY[g_iDelayCount - CAMERA_DELAY] = (short)my;
+		}
+		if (g_iDelayCount > CAMERA_DELAY_BUFFER - 2)
+			g_iDelayCount = CAMERA_DELAY;
+		g_iDelayCount++;
 	}
 	else
 	{
-		cmd->screenw = 0;
-		cmd->screenh = 0;
-		cmd->mousex = 0;
-		cmd->mousey = 0;
+		cmd->screenw = (short)ScreenWidth();
+		cmd->screenh = (short)ScreenHeight();
+		cmd->mousex = (short)ScreenWidth() / 2;
+		cmd->mousey = (short)ScreenHeight() / 2;
 	}
 
 	pVerified->m_cmd = *cmd;

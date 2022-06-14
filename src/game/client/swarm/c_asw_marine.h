@@ -14,6 +14,7 @@
 #include "beamdraw.h"
 #include "object_motion_blur_effect.h"
 #include "asw_deathmatch_mode.h"
+#include "glow_outline_effect.h"
 
 class C_ASW_Player;
 class C_ASW_Marine_Resource;
@@ -77,7 +78,7 @@ public:
 	void ForceVisibleFirstPerson( bool bForce );
 	byte m_PrevRenderAlpha;
 	bool m_bIsHiddenLocal;
-		
+
 	// networking
 	void NotifyShouldTransmit( ShouldTransmitState_t state );	
 	virtual void UpdateClientSideAnimation();
@@ -123,7 +124,7 @@ public:
 	C_ASW_Weapon* GetActiveASWWeapon(void) const;
 	C_ASW_Weapon* GetASWWeapon(int index) const;
 	virtual Vector			Weapon_ShootPosition();
-	int GetWeaponPositionForPickup( const char* szWeaponClass, bool bIsTemporary );	// returns which slot in the m_hWeapons array this pickup should go in	
+	int GetWeaponPositionForPickup( const char* szWeaponClass, bool bIsTemporary );	// returns which slot in the m_hWeapons array this pickup should go in
 	int GetWeaponIndex( CBaseCombatWeapon *pWeapon ) const;		// returns weapon's position in our myweapons array
 	Vector GetOffhandThrowSource( const Vector *vecStandingPos = NULL );
 	virtual bool IsFiring();
@@ -440,6 +441,19 @@ public:
 	CNetworkVar( int, m_iForcedActionRequest );
 	static C_ASW_Marine* GetLocalMarine();
 	static C_ASW_Marine* GetViewMarine();
+
+	// Glows are enabled when the sniper scope is used
+	CGlowObject m_GlowObject;
+
+	bool bHasParticle = false;
+	float m_fHordeEndTime = 0.0f;
+	float m_fNextFriendlyFireIconTime = 0.0f;
+	int m_fNextFriendlyFireIconXpos;
+	int m_fNextFriendlyFireIconYpos;
+	void CreateBeam(const Vector &vecStart, const Vector &vecEnd);
+	void ScreenToWorld(C_ASW_Player *pPlayer, float mousex, float mousey, int screenheight, int screenwidth, Vector& vecPickingRay);
+	Vector UTIL_DrawArc(const Vector &vecSrc, const Vector &vecThrowVelocity, float flGravity, const Vector &vecHullMins, const Vector &vecHullMaxs, int iCollisionMask, int iCollisionGroup, CBaseEntity *pIgnoreEnt, bool bDrawArc, int r, int g, int b, bool &bDidHitWorld, Vector vecCrosshair);
+	C_ASW_Marine* AimtoMarine(C_ASW_Marine* pLocalMarine);
 
 private:
 	CMotionBlurObject m_MotionBlurObject;

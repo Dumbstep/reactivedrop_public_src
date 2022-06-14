@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ?1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -108,6 +108,8 @@ void C_Fire::CreateFireParticles()
 	{
 		Warning("Failed to create a fire emitter\n");
 	}
+
+	m_flFirewallTime = gpGlobals->curtime + 30;
 }
 
 void C_Fire::UpdateFireParticles()
@@ -137,6 +139,11 @@ void C_Fire::UpdateFireParticles()
 			m_hFireTop->SetControlPoint( 0, GetAbsOrigin() );
 			m_hFireTop->SetControlPoint( 1, Vector( strength, strength, 0 ) );
 			m_hFireTop->SetControlPoint( 5, Vector( flSize, flSize, flSize ) );
+		}
+
+		if (m_nFireType == 1 && m_flFirewallTime - gpGlobals->curtime > 0)
+		{
+			debugoverlay->AddTextOverlay(GetAbsOrigin(), .01f, "%.2f", m_flFirewallTime - gpGlobals->curtime);
 		}
 	}
 }

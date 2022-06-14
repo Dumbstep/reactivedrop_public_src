@@ -515,14 +515,12 @@ void CASW_Player::AwardExperience()
 
 	CalculateEarnedXP();
 
-#ifdef CLIENT_DLL
 	ConVarRef rd_console_debug_xp( "rd_console_debug_xp" );
 
 	if ( rd_console_debug_xp.GetInt() > 0 )
 	{
 		Msg( "%s: AwardExperience: Pre XP is %d\n", IsServerDll() ? "S" : "C", m_iExperience );
 	}
-#endif
 	m_iExperience += m_iEarnedXP[ ASW_XP_TOTAL ];
 	m_iExperience = MIN( m_iExperience, ASW_XP_CAP * g_flPromotionXPScale[ GetPromotion() ] );
 
@@ -552,13 +550,92 @@ void CASW_Player::AwardExperience()
 	m_bHasAwardedXP = true;
 #endif
 
-#ifdef CLIENT_DLL
 	if ( rd_console_debug_xp.GetInt() > 0 )
 	{
 		Msg( "%s: Awarded %d XP for player %s (total is now %d)\n", IsServerDll() ? "S" : "C", m_iEarnedXP[ASW_XP_TOTAL], GetPlayerName(), m_iExperience );
 	}
-#endif
 }
+
+#ifdef CLIENT_DLL
+void dub_custom_exp_f(const CCommand &args)
+{
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+
+	if (args.ArgC() == 3)
+	{
+		int _iPromotion = atoi(args[1]);
+		int _iExperience = atoi(args[2]) - 2;
+
+		Assert(steamapicontext->SteamUserStats());
+		if (!SteamUserStats())
+		{
+			Msg("Error. Cannot access SteamUserStats()\n");
+			return;
+		}
+
+		SteamUserStats()->SetStat("promotion", _iPromotion);
+		SteamUserStats()->SetStat("level", atoi(args[2]));
+		SteamUserStats()->SetStat("level.xprequired", 0);
+		SteamUserStats()->StoreStats();
+		
+		if (GetMedalStore())
+		{
+			GetMedalStore()->SetPromotion(_iPromotion);
+			if (atoi(args[2]) == 1)
+			{
+				GetMedalStore()->SetExperience(0);
+				SteamUserStats()->SetStat("experience", 0);
+			}
+			else
+			{
+				GetMedalStore()->SetExperience(g_iLevelExperience[_iExperience] * g_flPromotionXPScale[_iPromotion]);
+				SteamUserStats()->SetStat("experience", g_iLevelExperience[_iExperience] * g_flPromotionXPScale[_iPromotion]);
+			}
+			GetMedalStore()->SaveMedalStore();
+		}
+
+		if (pPlayer)
+			pPlayer->RequestExperience();
+	}
+	else
+	{
+		Msg("Usage:\n   dub_custom_exp [Promotion] [Level]\n");
+	}
+}
+ConCommand dub_custom_exp("dub_custom_exp", dub_custom_exp_f, "Custom promotion and level", FCVAR_NONE);
+
+void dub_achievements_f(const CCommand &args)
+{
+	if (!SteamUserStats())
+		return;
+	
+	CAchievementMgr *pAchievementMgr = dynamic_cast<CAchievementMgr *>(engine->GetAchievementMgr());
+	if (!pAchievementMgr)
+		return;
+
+	int index = atoi(args[1]);
+	int iCount = pAchievementMgr->GetAchievementCount();
+	for (int i = 0; i < iCount; i++)
+	{
+		bool achievementEarned;
+		uint32 achievementUnlockTime;
+		const char *pAchievementName = pAchievementMgr->GetAchievementByDisplayOrder(i, STEAM_PLAYER_SLOT)->GetName();
+		SteamUserStats()->GetAchievementAndUnlockTime(pAchievementName, &achievementEarned, &achievementUnlockTime);
+
+		if (achievementEarned)
+		{
+			if (index == 2)
+				SteamUserStats()->ClearAchievement(pAchievementName);
+		}
+		else
+		{
+			if (index == 1)
+				SteamUserStats()->SetAchievement(pAchievementName);
+		}
+	}
+}
+ConCommand dub_achievements("dub_achievements", dub_achievements_f, "set 1 full achievements,set 2 clear achievements", FCVAR_NONE);
+#endif
 
 int GetWeaponLevelRequirement( const char *szWeaponClass )
 {

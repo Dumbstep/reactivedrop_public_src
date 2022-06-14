@@ -91,6 +91,14 @@ public:
 		return result;
 	}
 
+	Class_T		Classify(void) 
+	{
+		if (m_bInCavern)
+			return (Class_T)CLASS_NPC_ANTIIONGUARD_CAVERN;
+		else
+			return (Class_T)CLASS_NPC_ANTIIONGUARD_NORMAL;
+	}
+
 private:
 
 	bool m_bCavernBreed;

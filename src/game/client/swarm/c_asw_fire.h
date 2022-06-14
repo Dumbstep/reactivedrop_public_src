@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ?1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -36,6 +36,7 @@ public:
 	float m_flHeatLevel;
 	float m_flMaxHeat;
 	bool m_bEnabled;
+	float m_flFirewallTime;
 };
 
 #endif // C_ASW_FIRE_H

@@ -332,6 +332,9 @@ protected:
 	float m_flMainProgress;
 	float m_flDelayProgress;
 
+	// »­ºì²æ
+	int m_iDeadID;
+	int m_iKnockedOutID;
 
 	// data for squadmates
 
@@ -351,6 +354,7 @@ protected:
 		const CASW_WeaponInfo *pExtraItemInfoShift;
 		int nExtraItemQuantity;
 		int nEquipmentListIndex;
+		CHandle<C_ASW_Marine_Resource> pMarineRrs;
 		CHandle<C_ASW_Marine> hMarine;
 		int nExtraItemInventoryIndex;
 		float flInfestation;

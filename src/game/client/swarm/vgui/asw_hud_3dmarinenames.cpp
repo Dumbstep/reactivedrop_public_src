@@ -23,6 +23,7 @@
 #include "c_asw_door.h"
 #include "c_asw_game_resource.h"
 #include "c_asw_player.h"
+#include "c_asw_alien.h"
 #include "c_asw_marine.h"
 #include "asw_marine_profile.h"
 #include "c_asw_marine_resource.h"
@@ -1096,7 +1097,8 @@ bool CASWHud3DMarineNames::PaintHealthBar( C_ASW_Marine *pMarine, float xPos, fl
 	}
 
 	// colored part
-	Color rgbaBarBrightColor = Color(0,150,150,255);
+	extern ConVar dub_hud_color;
+	Color rgbaBarBrightColor = dub_hud_color.GetColor();
 	Color rgbaBarDarkColor = Color(0, 75, 75, 255);
 
 	if ( fHealth < 0.5f )
@@ -1733,6 +1735,15 @@ void CASWHud3DMarineNames::PaintTrackedHealth()
 			continue;
 
 		pTracked->PaintHealthBar( this );	
+	}
+
+	for ( int i = 0; i < IASW_Client_Aim_Target::AutoList().Count(); i++ )
+	{
+		C_ASW_Alien *pTracked = dynamic_cast<C_ASW_Alien* >( IASW_Client_Aim_Target::AutoList()[ i ] );
+		if ( !pTracked ) 
+			continue;
+
+		pTracked->PaintHealthBar( this );
 	}
 }
 

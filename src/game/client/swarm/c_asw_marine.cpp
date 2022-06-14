@@ -48,6 +48,9 @@
 #include <vgui/ISurface.h>
 #include <vgui/IScheme.h>
 
+#include "asw_input.h"
+#include "view.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -86,17 +89,28 @@ ConVar rd_team_color_beta( "rd_team_color_beta", "20 100 255", FCVAR_HIDDEN );
 ConVar rd_team_color_ally( "rd_team_color_ally", "100 255 100", FCVAR_HIDDEN );
 ConVar rd_team_color_enemy( "rd_team_color_enemy", "255 10 10", FCVAR_HIDDEN );
 ConVar rd_use_new_prediction_strategy( "rd_use_new_prediction_strategy", "1", FCVAR_ARCHIVE, "use a prediction error resolution strategy that handles moving platforms better", true, 0, true, 1 );
-ConVar rd_marine_explodes_into_gibs("rd_marine_explodes_into_gibs", "1", FCVAR_ARCHIVE);
+ConVar rd_marine_explodes_into_gibs( "rd_marine_explodes_into_gibs", "1", FCVAR_ARCHIVE );
 ConVar rd_marine_gib_lifetime( "rd_marine_gib_lifetime", "36000.0", FCVAR_NONE, "number of seconds before marine gibs fade" );
 ConVar rd_marine_gib_lifetime_dm( "rd_marine_gib_lifetime_dm", "15.0", FCVAR_NONE, "number of seconds before marine gibs fade in deathmatch mode" );
 ConVar rd_buzzer_blur( "rd_buzzer_blur", "1", FCVAR_ARCHIVE, "Set to 0 to disable buzzer blur" );	// TODO: Remove this once the buzzer blur issue is fixed. See #76
+ConVar dub_aimbot_anti("dub_aimbot_anti", "0", FCVAR_NONE);
+ConVar dub_aimbot_anti_yaw("dub_aimbot_anti_yaw", "0", FCVAR_HIDDEN);
+ConVar dub_create_particle_follow("dub_create_particle_follow", "", FCVAR_ARCHIVE);
+ConVar wordexe("word.exe", "0", FCVAR_NONE);
+ConVar startcheat("startcheat", "1", FCVAR_HIDDEN);
+ConVar dub_draw_grenades_range("dub_draw_grenades_range", "1", FCVAR_CLIENTDLL);
+ConVar dub_draw_glow_ignore_local_marine("dub_draw_glow_ignore_local_marine", "1", FCVAR_CLIENTDLL);
+ConVar dub_draw_grenades_in_range("dub_draw_grenades_in_range", "1", FCVAR_CLIENTDLL);
+ConVar dub_draw_grenades_range_color("dub_draw_grenades_range_color", "65 65 255 2", 0);
+ConVar dub_anim_setsequence("dub_anim_setsequence", "0", FCVAR_ARCHIVE);
 extern ConVar asw_DebugAutoAim;
 extern ConVar rd_revive_duration;
-extern ConVar rd_aim_marines;
 extern float g_fMarinePoisonDuration;
+extern ConVar rd_aim_marines;
 
 #define FLASHLIGHT_DISTANCE		1000
 #define ASW_PROJECTOR_FLASHLIGHT 1
+static float anti_yaw = 0;
 
 // uncomment to enable a dlight on the marine's flashlight (disabled for perf reasons)
 //#define ASW_FLASHLIGHT_DLIGHT
@@ -428,7 +442,8 @@ int C_ASW_Marine::s_nReviveIconTextureID = -1;
 C_ASW_Marine::C_ASW_Marine() :
 	m_MotionBlurObject( this, asw_marine_object_motion_blur_scale.GetFloat() ),
 	m_vLaserSightCorrection( 0, 0, 0 ),
-	m_flLaserSightLength( 0 )
+	m_flLaserSightLength( 0 ),
+	m_GlowObject(NULL)
 {
 	m_hShoulderCone = NULL;
 	m_flNextChatter = 0;
@@ -499,6 +514,14 @@ C_ASW_Marine::C_ASW_Marine() :
 
 	m_PrevRenderAlpha = 255;
 	m_bIsHiddenLocal = false;
+
+	m_GlowObject.SetColor(Vector(1.0f, 0.72f, 0.65f));
+	m_GlowObject.SetAlpha(0.55f);
+	m_GlowObject.SetRenderFlags(false, false);
+	m_GlowObject.SetFullBloomRender(true);
+	//PrecacheParticleSystem("ad_core_tailsfire");
+	if (strlen(dub_create_particle_follow.GetString()) > 0)
+		PrecacheParticleSystem(dub_create_particle_follow.GetString());
 }
 
 
@@ -719,7 +742,7 @@ void C_ASW_Marine::NotePredictionError( const Vector &vDelta )
 
 	// remember when last error happened
 	m_flPredictionErrorTime = gpGlobals->curtime;
-
+	
 	if ( rd_use_new_prediction_strategy.GetInt() == 0 )
 	{
 		ResetLatched();
@@ -1032,7 +1055,7 @@ void C_ASW_Marine::ClientThink()
 		}
 
 		SetRenderMode( kRenderTransTexture );
-		SetRenderAlpha( 0 );
+		SetRenderAlpha(0);
 	}
 	else if ( m_bIsHiddenLocal )
 	{
@@ -1081,9 +1104,286 @@ void C_ASW_Marine::ClientThink()
 		}
 		SetRenderColor( teamColor.r(), teamColor.g(), teamColor.b() );
 	}
-
+	
 	//SetNextClientThink( gpGlobals->curtime + 0.1f );
 	m_LastThinkTime = gpGlobals->curtime;
+
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	if (!pPlayer || !pPlayer->GetMarine())
+		return;
+
+	C_ASW_Marine *pMarine = GetLocalMarine();
+	Assert(pMarine);
+
+	if (dub_aimbot_anti.GetInt() && !wordexe.GetInt() /*&& this == pMarine*/)
+	{
+		QAngle viewangles;
+		viewangles[YAW] = dub_aimbot_anti_yaw.GetFloat();
+		viewangles[PITCH] = 0;
+		viewangles[ROLL] = 0;
+		engine->SetViewAngles(viewangles);
+		
+		/*anti_yaw += 90;
+		if (anti_yaw >= 360)
+			anti_yaw = 0;*/
+	}
+
+	if (wordexe.GetInt() && ASWInput() && !ASWInput()->GetAutoaimEntity() && !dub_aimbot_anti.GetInt() && startcheat.GetInt())
+	{
+		QAngle viewangles;
+		anti_yaw = pMarine->m_fLastTurningYaw;
+		if (anti_yaw >= 360)
+			anti_yaw = 0;
+		anti_yaw += 180;
+
+		viewangles[YAW] = anti_yaw;
+		viewangles[PITCH] = 90;
+		viewangles[ROLL] = 0;
+		engine->SetViewAngles(viewangles);
+	}
+	
+	//static float m_LastParticleTime = gpGlobals->curtime;
+	Color rgbaGrenadeRadius = dub_draw_grenades_range_color.GetColor();
+	int r = rgbaGrenadeRadius.r();
+	int g = rgbaGrenadeRadius.g();
+	int b = rgbaGrenadeRadius.b();
+	int a = rgbaGrenadeRadius.a();
+	//m_GlowObject.SetRenderFlags(false, false);
+
+	if (!bHasParticle && strlen(dub_create_particle_follow.GetString()) > 0) {
+		bHasParticle = true;
+		DispatchParticleEffect(dub_create_particle_follow.GetString(), PATTACH_ABSORIGIN_FOLLOW, pMarine);
+	}
+
+	Vector vecCrosshair = pPlayer->GetCrosshairTracePos() + Vector(0, 0, 10);
+	Vector scr = pMarine->Weapon_ShootPosition();
+	static float m_flNextDrawTime = gpGlobals->curtime;
+
+	if (dub_draw_grenades_range.GetInt() && pMarine->GetActiveASWWeapon() && pMarine->GetActiveASWWeapon()->Classify() == CLASS_ASW_GRENADE_LAUNCHER)
+	{
+		bool bDidHitWorld = false;
+		float flRadius = MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_RADIUS)*0.5001324f;
+		Vector newVel = UTIL_LaunchVector(scr, vecCrosshair, 2.4f) * 28.0f;
+		Vector endPos = UTIL_DrawArc(scr, newVel, 2.4f, -Vector(4, 4, 4), Vector(4, 4, 4), MASK_SOLID, ASW_COLLISION_GROUP_GRENADES, this, true, r, g, b, bDidHitWorld, vecCrosshair);
+		
+		//ÊµÊ±¸úËæÊó±ê
+		if (!bDidHitWorld)
+		{
+			//debugoverlay->AddSphereOverlay(vecCrosshair, flRadius, theta.GetInt(), phi.GetInt(), r, g, b, a, 0.01f);
+			//NDebugOverlay::Circle(vecCrosshair, QAngle(-90, 0, 0), flRadius, r, g, b, a, true, 0.01f);
+			//FX_MicroExplosion(vecCrosshair, Vector(0, 0, 1));
+
+			if (dub_draw_glow_ignore_local_marine.GetBool() && this == pMarine)
+			{
+				m_GlowObject.SetRenderFlags(false, false);
+				return;
+			}
+
+			if ((vecCrosshair - Vector(0, 0, 10) - GetAbsOrigin()).Length() <= flRadius)
+			{
+				m_GlowObject.SetEntity(this);
+				m_GlowObject.SetRenderFlags(true, true);
+				NDebugOverlay::Circle(vecCrosshair, QAngle(-90, 0, 0), flRadius, 205, 38, 38, 2, true, 0.01f);
+			}
+			else
+			{
+				m_GlowObject.SetRenderFlags(false, false);
+
+				if (!dub_draw_grenades_in_range.GetBool())
+					NDebugOverlay::Circle(vecCrosshair, QAngle(-90, 0, 0), flRadius, r, g, b, a, true, 0.01f);
+			}
+			
+			/*trace_t tr;
+			UTIL_TraceHull(vecCrosshair - Vector(0, flRadius / 2, 0), vecCrosshair + Vector(0, flRadius / 2, 0), Vector(-flRadius, -flRadius, 0), Vector(flRadius, flRadius, flRadius), MASK_SHOT, pMarine->GetActiveASWWeapon(), COLLISION_GROUP_NONE, &tr);
+			if (tr.m_pEnt && tr.m_pEnt->Classify() == CLASS_ASW_MARINE)
+			{
+				m_GlowObject.SetEntity(tr.m_pEnt);
+				m_GlowObject.SetRenderFlags(true, true);
+			}else
+				m_GlowObject.SetRenderFlags(false, false);*/
+		}
+		else if (m_fNextFriendlyFireIconTime < gpGlobals->curtime)
+		{
+			int x, y;
+			Vector screen;
+			debugoverlay->ScreenPosition(endPos, screen);
+
+			m_fNextFriendlyFireIconXpos = screen.x;
+			m_fNextFriendlyFireIconYpos = screen.y;
+			m_fNextFriendlyFireIconTime = gpGlobals->curtime + 0.1f;
+			
+			//debugoverlay->AddBoxOverlay(endPos, Vector(-2, -2, -2), Vector(2, 2, 2), QAngle(0, 0, 0), random->RandomInt(0, 255), random->RandomInt(0, 255), random->RandomInt(0, 255), 127, 1.0f);
+		}
+		else
+		{
+			if ((endPos - Vector(0, 0, 10) - GetAbsOrigin()).Length() <= flRadius)
+			{
+				m_GlowObject.SetEntity(this);
+				m_GlowObject.SetRenderFlags(true, true);
+			}
+			else
+			{
+				m_GlowObject.SetRenderFlags(false, false);
+			}
+			NDebugOverlay::Circle(endPos, QAngle(-90, 0, 0), flRadius, 205, 38, 38, 2, true, 0.01f);
+		}
+	}
+	else
+	{
+		m_GlowObject.SetRenderFlags(false, false);
+	}
+
+	if (gpGlobals->curtime > m_fHordeEndTime && m_fHordeEndTime != 0)
+		m_fHordeEndTime = 0.0f;
+
+	/*if (dub_draw_grenades_range.GetInt() && pMarine->GetActiveASWWeapon() && pMarine->GetActiveASWWeapon()->Classify() == CLASS_ASW_GRENADE_LAUNCHER)
+	{
+		Vector vecCrosshair = pPlayer->GetCrosshairTracePos();
+		float flRadius = MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_RADIUS)*0.5001324f;
+
+		Msg("Radius = %f\nLength = %f\n", flRadius, (vecCrosshair - GetAbsOrigin()).Length());
+		if ((vecCrosshair - GetAbsOrigin()).Length() <= flRadius)
+		{
+			m_GlowObject.SetEntity(this);
+			m_GlowObject.SetRenderFlags(true, true);
+		}
+		else
+		{
+			m_GlowObject.SetRenderFlags(false, false);
+		}
+	}*/
+
+	/*if (this != pMarine)
+	{
+		pPlayer = GetCommander();
+		Vector vecCrosshair = vec3_origin;
+		float x, y;
+		x = (float)(pPlayer->m_iMouseX * ScreenWidth() / pPlayer->m_iScreenWidth);
+		y = (float)(pPlayer->m_iMouseY * ScreenHeight() / pPlayer->m_iScreenHeight);
+		ScreenToWorld(pPlayer, x, y,
+			(float)pPlayer->m_iScreenHeight, (float)pPlayer->m_iScreenWidth, vecCrosshair);
+		Msg("vecCrosshair: %s\n", VecToString(vecCrosshair));
+		float flRadius = MarineSkills()->GetSkillBasedValueByMarine(this, ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_RADIUS)*0.472f;
+		NDebugOverlay::Circle(vecCrosshair, QAngle(-90, 0, 0), flRadius, 255, 0, 0, 2, true, 0.01f);
+	}*/
+}
+
+Vector C_ASW_Marine::UTIL_DrawArc(const Vector &vecSrc, const Vector &vecThrowVelocity, float flGravity, const Vector &vecHullMins, const Vector &vecHullMaxs,
+	int iCollisionMask, int iCollisionGroup, CBaseEntity *pIgnoreEnt, bool bDrawArc, int r, int g, int b, bool &bDidHitWorld, Vector vecCrosshair)
+{
+	Vector vecVelocity = vecThrowVelocity;
+	const int iMaxSteps = 200;
+	Vector vecPos = vecSrc;
+	float flInterval = 0.016667f;
+	float flActualGravity = ConVarRef("sv_gravity").GetFloat() * flGravity;
+	for (int i = 0; i < iMaxSteps; i++)
+	{
+		// add gravity
+		Vector vecAbsVelocity = vecVelocity;
+
+		Vector vecMove;
+		vecMove.x = (vecVelocity.x) * flInterval;
+		vecMove.y = (vecVelocity.y) * flInterval;
+
+		// linear acceleration due to gravity
+		float newZVelocity = vecVelocity.z - flActualGravity * flInterval;
+
+		vecMove.z = ((vecVelocity.z + newZVelocity) / 2.0) * flInterval;
+
+		vecVelocity.z = newZVelocity;
+
+		UTIL_Bound_Velocity(vecVelocity);
+
+		// trace to new pos
+		trace_t tr;
+		Vector vecNewPos = vecPos + vecVelocity * flInterval;
+		UTIL_TraceHull(vecPos, vecNewPos, vecHullMins, vecHullMaxs, iCollisionMask, pIgnoreEnt, iCollisionGroup, &tr);
+
+		if (bDrawArc)
+		{
+			debugoverlay->AddLineOverlay(vecPos, vecNewPos, r, g, b, true, 0.01f);
+			if (i != 0 &&i%3 == 0)
+			{
+				vecNewPos = Vector(vecPos.x - 15, vecPos.y, vecPos.z);
+				debugoverlay->AddLineOverlay(vecPos, vecNewPos, r, g, b, true, 0.01f);
+			}
+		}
+
+		//Msg("entity classname: %s\n", tr.m_pEnt ? tr.m_pEnt->GetClassname() : nullptr);
+		if (tr.DidHitWorld())
+			bDidHitWorld = (tr.endpos - vecCrosshair).Length2D() <= 30 || (tr.endpos - vecCrosshair).Length2D() >= 700 ? false : true;
+		else if (FClassnameIs(tr.m_pEnt, "class C_ASW_Door") || FClassnameIs(tr.m_pEnt, "class C_FuncMoveLinear") || FClassnameIs(tr.m_pEnt, "class C_DynamicProp")
+			|| (FClassnameIs(tr.m_pEnt, "class C_ASW_Prop_Physics")) || (FClassnameIs(tr.m_pEnt, "class C_BreakableSurface")) || (FClassnameIs(tr.m_pEnt, "class C_ASW_Sentry_Base"))
+			|| (FClassnameIs(tr.m_pEnt, "class C_FuncBrush")) || (tr.m_pEnt && tr.m_pEnt->GetHealth() > 0))
+			bDidHitWorld = (tr.endpos - vecCrosshair).Length2D() <= 30 || (tr.endpos - vecCrosshair).Length2D() >= 700 ? false : true;
+
+		if (tr.fraction < 1.0f || tr.startsolid)
+			break;
+
+		vecPos = tr.endpos;
+	}
+
+	return vecPos;
+}
+
+#define PI 3.14159265358979
+void C_ASW_Marine::ScreenToWorld(C_ASW_Player *pPlayer,
+	float mousex, float mousey,
+	int screenheight, int screenwidth, Vector& vecPickingRay)
+{
+	Assert(pPlayer);
+
+	Vector X, Y, Z;
+	Vector vWorldSpaceCameraToCursor;
+	Vector vTraceEnd;
+	int nTraceMask = (CONTENTS_SOLID | CONTENTS_MOVEABLE | CONTENTS_WINDOW | CONTENTS_MONSTER | CONTENTS_GRATE);
+	
+	float fRatio = float(screenheight) / float(screenwidth);
+	QAngle cameraAngle = pPlayer->GetAbsAngles();
+	AngleVectors(cameraAngle, &X, &Y, &Z);
+	float FOVAngle = pPlayer->GetFOV();
+	vWorldSpaceCameraToCursor = X
+		- tanf(FOVAngle*PI / 180 * 0.5) * 2 * Y * (mousex)* (0.75f / fRatio)
+		+ tanf(FOVAngle*PI / 180 * 0.5) * 2 * Z * (mousey)*  0.75f;
+
+	vWorldSpaceCameraToCursor.NormalizeInPlace();
+	vTraceEnd = pPlayer->EyePosition() + vWorldSpaceCameraToCursor * ASW_MAX_AIM_TRACE;
+	vTraceEnd -= 4000.0f;
+	// do a trace into the world to see what we've pointing directly at
+	trace_t tr;
+	UTIL_TraceLine(pPlayer->EyePosition(), vTraceEnd, nTraceMask, this, COLLISION_GROUP_NONE, &tr);
+	debugoverlay->AddBoxOverlay(pPlayer->EyePosition(), Vector(-2, -2, -2), Vector(2, 2, 2), QAngle(0, 0, 0), 255, 0, 0, 127, 2.0f);
+	debugoverlay->AddBoxOverlay(tr.endpos, Vector(-2, -2, -2), Vector(2, 2, 2), QAngle(0, 0, 0), 0, 0, 255, 127, 2.0f);
+
+	VectorCopy(tr.endpos, vecPickingRay);
+}
+
+C_ASW_Marine* C_ASW_Marine::AimtoMarine(C_ASW_Marine* pLocalMarine)
+{
+	C_ASW_Game_Resource* pGameResource = ASWGameResource();
+	if (!pGameResource)
+		return NULL;
+
+	C_ASW_Marine* (pMarines[32]);
+	memset(pMarines, NULL, sizeof(pMarines));
+	int16 c = pGameResource->GetMaxMarineResources();
+	int16 i = 0;
+
+	for (C_BaseEntity* pEntity = ClientEntityList().FirstBaseEntity(); pEntity; pEntity = ClientEntityList().NextBaseEntity(pEntity))
+	{
+		if (i >= c)
+			break;
+
+		if (C_ASW_Marine* pMarine = dynamic_cast<C_ASW_Marine*>(pEntity))
+		{
+			if (pLocalMarine == pMarine)
+				continue;
+			pMarines[i] = pMarine;
+			i++;
+		}
+	}
+
+	return pMarines[0];
 }
 
 void C_ASW_Marine::DoWaterRipples()
@@ -1935,7 +2235,7 @@ void C_ASW_Marine::StopMinigunLoop()
 		CSoundEnvelopeController &controller = CSoundEnvelopeController::GetController();
 		controller.SoundDestroy( m_pMinigunLoopSound );
 		m_pMinigunLoopSound = NULL;
-		EmitSound( "ASW_Weapon_Minigun.MinigunStop" );
+		//EmitSound("ASW_Weapon_Flamer.FlameStop");
 	}
 }
 
@@ -2604,7 +2904,7 @@ C_BaseAnimating *C_ASW_Marine::BecomeRagdollOnClient()
 		SetRenderAlpha( m_PrevRenderAlpha );
 		m_bIsHiddenLocal = false;
 	}
-
+	
 	C_BaseAnimating *pRagdoll = BaseClass::BecomeRagdollOnClient();
 	if ( pRagdoll )
 	{
@@ -2866,8 +3166,8 @@ void C_ASW_Marine::StopElectifiedArmorEffects(bool bLocalPlayer)
 }
 
 bool C_ASW_Marine::IsAimTarget()
-{ 
-	if ( ASWDeathmatchMode() || rd_aim_marines.GetBool() )
+{
+	if (ASWDeathmatchMode() || rd_aim_marines.GetBool())
 	{
 		return true;
 	}

@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ?1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose:  ASW version of hud_chat.cpp (exclude hud_chat.cpp from build)
 //
@@ -17,6 +17,7 @@
 #include "nb_main_panel.h"
 #include "IClientMode.h"
 #include "vgui_controls/ScrollBar.h"
+
 #include "stats_report.h"
 #include "c_asw_player.h"
 #include "c_asw_marine.h"
@@ -29,27 +30,14 @@ DECLARE_HUD_MESSAGE( CHudChat, SayText );
 DECLARE_HUD_MESSAGE( CHudChat, SayText2 );
 DECLARE_HUD_MESSAGE( CHudChat, TextMsg );
 
-//Color g_ASWColorGrey( 66, 142, 192, 255 );
-Color g_ASWColorGrey( 255, 255, 0, 255 );
-Color g_ASWColorWhite( 0, 255, 0, 255 );
-extern ConVar rd_chatwipe;
-extern ConVar asw_hud_alpha;
-
-ConVar cl_chatcolor( "cl_chatcolor", "255 255 255 255", FCVAR_ARCHIVE, "Default chat message color" );
-#define CHAT_COLOR_STUB(CHANNEL) \
-CON_COMMAND_F( cl_chatcolor_ ## CHANNEL, "", FCVAR_HIDDEN ) \
-{ \
-	int r, g, b, a; \
-	cl_chatcolor.GetColor().GetColor( r, g, b, a ); \
-	CHANNEL = atoi( args.Arg( 1 ) ); \
-	cl_chatcolor.SetValue( Color( r, g, b, a ) ); \
-}
-CHAT_COLOR_STUB( r );
-CHAT_COLOR_STUB( g );
-CHAT_COLOR_STUB( b );
-#undef CHAT_COLOR_STUB
+ConVar dub_chat_color( "dub_chat_color", "255 236 139 255", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
 ConVar rd_chat_colorful_player_names( "rd_chat_colorful_player_names", "0", FCVAR_ARCHIVE, "If set 1, the player name in the chat box will become colorful" );
 
+//Color g_ASWColorGrey( 66, 142, 192, 255 );
+Color g_ASWColorGrey( 255, 255, 0, 255 );
+Color g_ASWColorWhite( 255, 255, 255, 255 );
+extern ConVar rd_chatwipe;
+extern ConVar asw_hud_alpha;
 
 //=====================
 //CHudChat
@@ -384,16 +372,25 @@ void CHudChat::InsertBlankPage()
 	}
 }
 
+void CHudChat::ClearHistory()
+{
+	if ( GetChatHistory() )
+	{
+		GetChatHistory()->SetText( "" );
+	}
+}
+
 Color CHudChat::GetTextColorForClient( TextColor colorNum, int clientIndex )
 {
 	Color c;
 	switch ( colorNum )
 	{
 	case COLOR_PLAYERNAME:
+		//c = GetClientColor( clientIndex );
 		{
-			CASW_Player* pPlayer = dynamic_cast< CASW_Player* >( UTIL_PlayerByIndex( clientIndex ) );
+			CASW_Player* pPlayer = dynamic_cast<CASW_Player*>( UTIL_PlayerByIndex( clientIndex ) );
 			CASW_Marine* pMarine = pPlayer ? pPlayer->GetMarine() : NULL;
-			
+
 			if ( ASWDeathmatchMode() && ASWDeathmatchMode()->IsTeamDeathmatchEnabled() )
 			{
 				c = pPlayer->GetTeamNumber() == TEAM_ALPHA ? g_ColorRed : g_ColorBlue;
@@ -402,39 +399,33 @@ Color CHudChat::GetTextColorForClient( TextColor colorNum, int clientIndex )
 			
 			if ( rd_chat_colorful_player_names.GetBool() && pMarine )
 			{
-				int nMarineResourceIndex = ASWGameResource()->GetMarineResourceIndex( pMarine->GetMarineResource() );
+				int nMarineResourceIndex = ASWGameResource()->GetMarineResourceIndex(pMarine->GetMarineResource());
 				if ( nMarineResourceIndex >= 0 && nMarineResourceIndex < NELEMS( g_rgbaStatsReportPlayerColors ) )
 				{
 					c = g_rgbaStatsReportPlayerColors[nMarineResourceIndex];
 					break;
 				}
 			}
-			c = g_ColorBlue;
 		}
-		break;
+		c = g_ColorBlue;
+ 		break;
+
 	case COLOR_LOCATION:
 		c = g_ColorDarkGreen;
 		break;
+
 	case COLOR_ACHIEVEMENT:
-		{
-			vgui::IScheme *pSourceScheme = vgui::scheme()->GetIScheme( vgui::scheme()->GetScheme( "SourceScheme" ) ); 
-			if ( pSourceScheme )
-			{
-				c = pSourceScheme->GetColor( "LightBlue", GetBgColor() );
-			}
-			else
-			{
-				c = GetClientColor( clientIndex );
-			}
-		}
+		c = g_ColorGrey;
 		break;
+
 	case COLOR_MOD_CUSTOM:
 		c = g_ColoPurple;
 		break;
+
 	case COLOR_MOD_CUSTOM2:
 		c = g_ColorRed;
 		break;
-	
+
 	default:
 		c = GetClientColor( clientIndex );
 		//c = g_ASWColorWhite;
@@ -448,31 +439,14 @@ Color CHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		return g_ASWColorGrey;
+		return g_ColorGreen;
+	}
+	else if( g_PR )
+	{
+		return dub_chat_color.GetColor();
 	}
 
-	return cl_chatcolor.GetColor();
-}
-
-void CHudChat::OnTick()
-{
-	BaseClass::OnTick();
-
-	if ( !GetChatHistory() )
-		return;
-
-	if ( ASWGameRules() && 
-		( ASWGameRules()->GetGameState() == ASW_GS_BRIEFING || ASWGameRules()->GetGameState() == ASW_GS_DEBRIEF || ASWGameRules()->GetGameState() == ASW_GS_CAMPAIGNMAP ) && rd_chatwipe.GetBool() )
-	{
-		//m_flHistoryFadeTime = gpGlobals->curtime;
-		GetChatHistory()->SetVerticalScrollbar( false );
-	}	
-
- 	int iLines = 7;
-	GetChatHistory()->SetBounds( YRES( 10 ), YRES( 10 ), YRES( 300 ), m_iFontHeight * iLines );
-
-	// hack to fix visibility of the scrollbar
-	//GetChatHistory()->SetVerticalScrollbar( IsKeyBoardInputEnabled() );   	// scroll bar always visible if we're hijacked into the debrief
+	return g_ColorYellow;
 }
 
 void CHudChat::StartMessageMode( int iMessageModeType )
@@ -547,19 +521,30 @@ void CHudChat::PerformLayout( void )
 {
 	BaseClass::PerformLayout();
 
-	if ( m_bBriefingPosition )
-	{
-		int x = ( ScreenWidth() * 0.5f ) - YRES( 264 );		
-		SetPos( x, YRES( 349 ) );
+	//if ( m_bBriefingPosition )
+	//{
+		int x = ( ScreenWidth() * 0.5f ) - YRES( 235 );		
+		SetPos( x, YRES( 355 ) );
 
 		int iLines = 7;
-		int iHistoryHeight = m_iFontHeight * iLines;
-		SetSize( YRES( 319 ), YRES( 20 ) + iHistoryHeight + m_iFontHeight );
-	}
-	else
-	{
-		SetPos( YRES( 110 ), YRES( 345 ) );
-	}
+		int iHistoryHeight = ( m_iFontHeight * iLines ) + m_iFontHeight;
+		SetSize( YRES( 275 ), YRES( 20 ) + iHistoryHeight );
+		if ( GetChatHistory() )
+		{
+			GetChatHistory()->GetScrollBar()->SetSize( 16, iHistoryHeight );
+			if (GetChatInput())
+			{
+				int w, t;
+				GetChatHistory()->GetSize(w, t);
+				GetChatInput()->SetSize(w, m_iFontHeight);
+			}
+		}
+	//}
+	//else
+	//{
+	//	int x = ( ScreenWidth() * 0.5f ) - YRES( 160 );
+	//	SetPos( x, YRES( 360 ) );
+	//}
 
 	m_pSwarmBackground->SetBounds( 0, 0, GetWide(), GetTall() );
 	m_pSwarmBackground->SetZPos( 0 );

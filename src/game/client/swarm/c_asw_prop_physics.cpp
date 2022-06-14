@@ -1,4 +1,4 @@
-//===== Copyright © 1996-2005, Valve Corporation, All rights reserved. ======//
+//===== Copyright ?1996-2005, Valve Corporation, All rights reserved. ======//
 //
 // Purpose: 
 //
@@ -33,6 +33,7 @@ END_RECV_TABLE()
 // Purpose: 
 //-----------------------------------------------------------------------------
 C_ASW_Prop_Physics::C_ASW_Prop_Physics( void ) :
+	m_GlowObject( this, Vector( 1.0f, 0.0f, 0.0f ), 0.0f, false, false ),
 	m_MotionBlurObject( this, asw_phys_prop_motion_blur_scale.GetFloat() )
 {
 	m_bClientOnFire = false;
@@ -89,6 +90,16 @@ void C_ASW_Prop_Physics::UpdateFireEmitters()
 			StopSound("ASWFire.BurningFlesh");
 			if ( C_BaseEntity::IsAbsQueriesValid() )
 				EmitSound("ASWFire.StopBurning");
+		}
+	}
+
+	int nModelIndex = modelinfo->GetModelIndex("models/swarmprops/barrelsandcrates/swarm_toxicbarrelmesh.mdl");
+	if ( GetModelIndex() && GetModelIndex() == nModelIndex )
+	{
+		if ( !m_GlowObject.IsRendering() )
+		{
+			m_GlowObject.SetRenderFlags( true, true );
+			m_GlowObject.SetAlpha( 0.8f );
 		}
 	}
 }

@@ -24,6 +24,9 @@
 #include "c_asw_egg.h"
 #include "props_shared.h"
 #include "c_asw_player.h"
+#include "asw_hud_3dmarinenames.h"
+#include "c_asw_scanner_info.h"
+#include "asw_hud_minimap.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -40,8 +43,12 @@ ConVar asw_alien_shadows("asw_alien_shadows", "0", 0, "If set to one, aliens wil
 ConVar asw_alien_footstep_interval( "asw_alien_footstep_interval", "0.25", 0, "Minimum interval between alien footstep sounds. Used to keep them from piling up and preventing others from playing." );
 ConVar asw_breakable_aliens( "asw_breakable_aliens", "1", 0, "If set, aliens can break into ragdoll gibs" );
 ConVar rd_max_drone_death_particles( "rd_max_drone_death_particles", "25", FCVAR_ARCHIVE, "Maximum number of drone blood particle being created per 1 frame" );
+ConVar dub_draw_aliens_glow("dub_draw_aliens_glow", "0", 0, "Draw glow object in the aliens.");
+ConVar dub_draw_aliens_glow_color("dub_draw_aliens_glow_color", "255 255 255 255", 0, "glow object color");
+ConVar dub_draw_aliens_healthbar("dub_draw_aliens_healthbar", "1", 0);
 extern ConVar asw_override_footstep_volume;
 extern ConVar asw_alien_debug_death_style;
+extern ConVar asw_marine_labels_cursor_maxdist;
 
 IMPLEMENT_NETWORKCLASS_ALIASED( ASW_Alien, DT_ASW_Alien )
 
@@ -73,7 +80,7 @@ IMPLEMENT_AUTO_LIST( IClientAimTargetsAutoList );
 float C_ASW_Alien::sm_flLastFootstepTime = 0.0f;
 
 C_ASW_Alien::C_ASW_Alien() : 
-m_GlowObject( this ),
+m_GlowObject(this, Vector(1.0f, 1.0f, 1.0f), 1.0f, false, false),
 m_MotionBlurObject( this, 0.0f )
 {
 	m_bStepSideLeft = false;
@@ -85,16 +92,6 @@ m_MotionBlurObject( this, 0.0f )
 	m_bClientOnFire = false;
 	m_vecLastRenderedPos = vec3_origin;
 	m_pBurningEffect = NULL;
-
-	m_GlowObject.SetColor( Vector( 0.3f, 0.6f, 0.1f ) );
-	m_GlowObject.SetAlpha( 0.55f );
-	m_GlowObject.SetRenderFlags( false, false );
-	m_GlowObject.SetFullBloomRender( true );
-
-	// reactivedrop: workaround to fix aliens red blood
-	// m_bloodColor is not networked
-	// so setting SetBloodColor() on server doesn't affect client 
-	SetBloodColor(BLOOD_COLOR_GREEN);
 }
 
 
@@ -372,8 +369,12 @@ C_BaseAnimating * C_ASW_Alien::BecomeRagdollOnClient( void )
 	}
 
 	//Msg("[C] C_ASW_Alien::BecomeRagdollOnClient on fire? %d / %d", ( GetFlags() & FL_ONFIRE ), m_bOnFire.Get());
+	/*if (this->Classify() == CLASS_ASW_SHIELDBUG && m_nDeathStyle == kDIE_BREAKABLE)
+		m_nDeathStyle = kDIE_FANCY;*/
+
 	C_BaseAnimating* pEnt = BaseClass::BecomeRagdollOnClient();
 	C_ASW_ClientRagdoll* pRagdoll = dynamic_cast<C_ASW_ClientRagdoll*>(pEnt);
+
 	if (pRagdoll)
 	{
 		if ( asw_alien_debug_death_style.GetBool() )
@@ -382,6 +383,7 @@ C_BaseAnimating * C_ASW_Alien::BecomeRagdollOnClient( void )
 		}
 
 		C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+		C_ASW_Marine *pMarine = pPlayer ? pPlayer->GetViewMarine() : NULL;
 
 		pRagdoll->m_nDeathStyle = m_nDeathStyle;
 		pRagdoll->AddEffects(EF_NOSHADOW);
@@ -434,11 +436,10 @@ C_BaseAnimating * C_ASW_Alien::BecomeRagdollOnClient( void )
 			if ( aliensParticlesThisFrame < rd_max_drone_death_particles.GetInt() )
 			{
 				pRagdoll->AddFlag( FL_ONFIRE );
-
-				CNewParticleEffect *pBurningEffect = pRagdoll->ParticleProp()->Create( "ent_on_fire", PATTACH_ABSORIGIN_FOLLOW );
-				if ( pBurningEffect )
+				CNewParticleEffect	*pBurningEffect = pRagdoll->ParticleProp()->Create( "ent_on_fire", PATTACH_ABSORIGIN_FOLLOW );
+				if (pBurningEffect)
 				{
-					Vector vecOffest1 = ( pRagdoll->WorldSpaceCenter() - pRagdoll->GetAbsOrigin() ) + Vector( 0, 0, 16 );
+					Vector vecOffest1 = (pRagdoll->WorldSpaceCenter() - pRagdoll->GetAbsOrigin()) + Vector( 0, 0, 16 );
 					pPlayer->ParticleProp()->AddControlPoint( pBurningEffect, 1, pRagdoll, PATTACH_ABSORIGIN_FOLLOW, NULL, vecOffest1 );
 				}
 			}
@@ -449,22 +450,22 @@ C_BaseAnimating * C_ASW_Alien::BecomeRagdollOnClient( void )
 			{
 				pRagdoll->m_bElectroShock = true;
 			}
-
-			if ( pPlayer )
+			
+			if (pPlayer && AlienOnScreen())
 			{
 				// if we're going to ragdoll, create a big blood spurt now so players get feedback about killing this alien
 				QAngle	vecAngles;
-				if ( m_vecForce == vec3_origin )
+				if (m_vecForce == vec3_origin)
 				{
-					m_vecForce = Vector( RandomFloat( 1, 100 ), RandomFloat( 1, 100 ), 100.0f );
+					m_vecForce = Vector(RandomFloat(1, 100), RandomFloat(1, 100), 100.0f);
 				}
-				VectorAngles( m_vecForce, vecAngles );
+				VectorAngles(m_vecForce, vecAngles);
 				Vector vecForward, vecRight, vecUp;
-				AngleVectors( vecAngles, &vecForward, &vecRight, &vecUp );
+				AngleVectors(vecAngles, &vecForward, &vecRight, &vecUp);
 
 				const char *pchEffectName = NULL;
 
-				switch ( m_nDeathStyle )
+				switch (m_nDeathStyle)
 				{
 				case kDIE_TUMBLEGIB:
 				case kDIE_RAGDOLLFADE:
@@ -485,19 +486,18 @@ C_BaseAnimating * C_ASW_Alien::BecomeRagdollOnClient( void )
 
 				if ( aliensParticlesThisFrame < rd_max_drone_death_particles.GetInt() )
 				{
-					CUtlReference< CNewParticleEffect > pEffect;
-					pEffect = pPlayer->ParticleProp()->Create( pchEffectName, PATTACH_ABSORIGIN_FOLLOW );
+					m_pEffect = pPlayer->ParticleProp()->Create(pchEffectName, PATTACH_ABSORIGIN_FOLLOW);
 
-					if ( pEffect )
+					if ( m_pEffect )
 					{
-						pPlayer->ParticleProp()->AddControlPoint( pEffect, 1, pRagdoll, PATTACH_CUSTOMORIGIN );
-						pEffect->SetControlPoint( 1, WorldSpaceCenter() );//origin - pMarine->GetAbsOrigin()
-						pEffect->SetControlPointOrientation( 1, vecForward, vecRight, vecUp );
-						pEffect->SetControlPointEntity( 0, pRagdoll );
+						ParticleProp()->AddControlPoint(m_pEffect, 1, pRagdoll, PATTACH_CUSTOMORIGIN);
+						m_pEffect->SetControlPoint(1, WorldSpaceCenter());//origin - pMarine->GetAbsOrigin()
+						m_pEffect->SetControlPointOrientation(1, vecForward, vecRight, vecUp);
+						m_pEffect->SetControlPointEntity(0, pRagdoll);
 					}
 					else
 					{
-						Warning( "Could not create effect for alien death: %s", pchEffectName );
+						Warning("Could not create effect for alien death: %s", pchEffectName);
 					}
 				}
 			}
@@ -633,6 +633,15 @@ void C_ASW_Alien::ClientThink()
 		//Msg( "%f - ElectroStunEffect\n", gpGlobals->curtime );
 	}
 
+	/*if (m_iMaxHealth == 0 && GetHealth() > 0)
+	{
+		m_iMaxHealth = GetHealth();
+	}
+	else */if (GetHealth() > GetMaxHealth())
+	{
+		m_iMaxHealth = GetHealth();
+	}
+
 	UpdateFireEmitters();
 
 	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
@@ -643,6 +652,170 @@ void C_ASW_Alien::ClientThink()
 	else
 	{
 		m_GlowObject.SetRenderFlags( false, false );
+	}
+
+	Color rgbaGlow = dub_draw_aliens_glow_color.GetColor();
+	float r = (float)rgbaGlow.r() / 255;
+	float g = (float)rgbaGlow.g() / 255;
+	float b = (float)rgbaGlow.b() / 255;
+	float a = (float)rgbaGlow.a() / 255;
+
+	/*char *p = strtok(s, " ");
+	while (p)
+	{
+	printf("%s\n", p);
+	p = strtok(NULL, " ");
+	}*/
+
+	m_GlowObject.SetColor(Vector(r, g, b));
+	m_GlowObject.SetAlpha(a);
+
+	if (pPlayer && dub_draw_aliens_glow.GetInt() && !m_GlowObject.IsRendering() && AlienOnScreen())
+		m_GlowObject.SetRenderFlags(true, true);
+
+
+
+	Vector alienScreenPos, marineScreenPos;
+	/*debugoverlay->ScreenPosition(pMarine->GetAbsOrigin(), marineScreenPos);
+	debugoverlay->ScreenPosition(this->GetAbsOrigin(), alienScreenPos);
+	Vector vecSurroundMins, vecSurroundMaxs;
+	CollisionProp()->WorldSpaceSurroundingBounds(&vecSurroundMins, &vecSurroundMaxs);*/
+
+	//if (this->IsAlive())
+	//{
+	//	//pHealthBar->PaintAlienHealthBar(this, alienScreenPos.x - vecSurroundMaxs.x, alienScreenPos.y, vecSurroundMaxs.y);
+	//	color24 rgbColor = { 255, 100, 100 };
+	//	float m_fHealthFraction = GetHealth() / (float)GetMaxHealth();
+	//	pHealthBar.PaintGenericBar(this->GetRenderOrigin(), m_fHealthFraction, Color(255, 100, 100, 210), 2.0f);
+	//}
+
+	//this->ShouldDraw(1);
+
+	if (AlienOnScreen())
+	{
+	
+		if (!m_bIsDraw)
+		{
+			RemoveEffects(EF_NODRAW);
+			m_bIsDraw = true;
+		}
+		if (!ShouldDraw())
+			SetRenderMode(kRenderNormal);
+	}
+	else
+	{
+		if (m_bIsDraw)
+		{
+			AddEffects(EF_NODRAW);
+			m_bIsDraw = false;
+		}
+	}
+
+	CASW_Marine *pMarine = pPlayer->GetMarine();
+	if (pMarine && IsAlive() && Classify() == CLASS_ASW_PARASITE && !GetMoveParent() && (GetSequence() != 4) && (GetAbsOrigin() - pMarine->GetAbsOrigin()).Length2D() <= 600)
+	{
+		NDebugOverlay::Line(pMarine->GetAbsOrigin(), GetAbsOrigin(), 0, 255, 255, true, 0.01f);
+	}
+}
+
+bool C_ASW_Alien::AlienOnScreen()
+{
+	C_ASW_Player *pLocal = C_ASW_Player::GetLocalASWPlayer();
+	if (!pLocal)
+		return false;
+	
+	Vector screenPos, vecCameraFocus;
+	Vector vAlienPos = this->GetRenderOrigin();
+	QAngle ang;
+	int omx, omy;
+	bool bAlienOnScreen = false;
+	ASWInput()->ASW_GetCameraLocation(pLocal, vecCameraFocus, ang, omx, omy, false);
+
+	if (!!debugoverlay->ScreenPosition(vAlienPos, screenPos))
+	{
+		Vector offset;
+		AngleVectors(ang, &offset);
+		if (::input->CAM_IsThirdPerson())
+		{
+			offset *= ASWInput()->ASW_GetCameraDist();
+		}
+
+		vecCameraFocus += offset;
+		Vector dir = vAlienPos - vecCameraFocus;
+		VectorNormalize(dir);
+		vAlienPos = vecCameraFocus + dir * 500;
+	}
+
+	if (!debugoverlay->ScreenPosition(vAlienPos, screenPos))
+	{
+		const int nMaxX = ScreenWidth() + YRES(50);
+		const int nMaxY = ScreenHeight() + YRES(50);
+		const int nMinX = 0 + YRES(50);
+		const int nMinY = 0 + YRES(25);
+		bAlienOnScreen = (screenPos.x >= 0) && (screenPos.x <= nMaxX) &&
+			(screenPos.y >= 0) && (screenPos.y <= nMaxY);
+	}
+
+	return bAlienOnScreen;
+}
+
+extern ConVar asw_blip_color_alien;
+extern ConVar asw_blip_color_drone;
+extern ConVar asw_blip_color_shieldbug;
+extern ConVar asw_blip_color_antlionguard;
+void C_ASW_Alien::PaintHealthBar(CASWHud3DMarineNames *pSurface)
+{
+	if (!dub_draw_aliens_healthbar.GetInt())
+		return;
+
+	Color RGBcolor;
+	switch (this->Classify())
+	{
+	case CLASS_ASW_DRONE:
+		if (GetModelScale() > 1.0)
+		{
+			RGBcolor = asw_blip_color_drone.GetColor();
+			break;
+		}
+		else
+			return;
+	case CLASS_ASW_SHIELDBUG:
+		RGBcolor = asw_blip_color_shieldbug.GetColor();
+		break;
+	default:
+		if (FClassnameIs(this, "class C_ASW_Alien"))
+		{
+			RGBcolor = asw_blip_color_alien.GetColor();
+			break;
+		}
+		else if (FClassnameIs(this, "class C_NPC_AntlionGuard"))
+		{
+			RGBcolor = asw_blip_color_antlionguard.GetColor();
+			break;
+		}
+		else
+			return;
+	}
+
+	if (IsAlive() && AlienOnScreen() /*&& !strstr(ConVarRef("rd_challenge").GetString(), "fun")*/)
+	{
+		for (C_BaseEntity * pChild = FirstMoveChild(); pChild;)
+		{
+			if (FStrEq(pChild->GetClassname(), "env_sprite"))
+			{
+				if (Classify() == CLASS_NPC_ANTIIONGUARD_CAVERN)
+				{
+					if (strstr(ConVarRef("rd_challenge").GetString(), "fun"))
+						return;
+				}
+				else
+					return;
+			}
+
+			pChild = NextMovePeer();
+		}
+		float m_fHealthFraction = clamp(GetHealth() / (float)GetMaxHealth(), 0.0f, 1.0f);
+		pSurface->PaintGenericBar(this->GetRenderOrigin(), m_fHealthFraction, RGBcolor, 1.5f, Vector2D(0, 10));
 	}
 }
 

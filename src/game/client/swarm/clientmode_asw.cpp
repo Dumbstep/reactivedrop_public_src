@@ -75,8 +75,7 @@ ConVar asw_hear_pos_debug("asw_hear_pos_debug", "0", FCVAR_NONE, "Shows audio he
 ConVar asw_hear_height("asw_hear_height", "0", FCVAR_NONE, "If set, hearing audio position is this many units above the marine.  If number is negative, then hear position is number of units below the camera." );
 ConVar asw_hear_fixed("asw_hear_fixed", "0", FCVAR_NONE, "If set, hearing audio position is locked in place.  Use asw_set_hear_pos to set the fixed position to the current audio location." );
 
-ConVar rd_tree_sway_enabled("rd_tree_sway_enabled", "1", FCVAR_ARCHIVE, "If set, some trees sway in the wind.", true, 0, true, 1);
-ConVar rd_tree_sway_strength("rd_tree_sway_strength", "8", FCVAR_ARCHIVE, "How strong is the wind. 0-16", true, 0, true, 16);
+ConVar asw_tree_sway_enabled("asw_tree_sway_enabled", "0", FCVAR_NONE, "If set, trees sway in the wind.", true, 0, true, 1);
 
 Vector g_asw_vec_fixed_cam(-276.03076, -530.74951, -196.65625);
 QAngle g_asw_ang_fixed_cam(42.610226, 90.289375, 0);
@@ -89,6 +88,7 @@ Vector g_asw_vec_last_hear_pos = vec3_origin;
 
 ConVar default_fov( "default_fov", "75", FCVAR_CHEAT );
 ConVar fov_desired( "fov_desired", "75", FCVAR_USERINFO, "Sets the base field-of-view.", true, 1.0, true, 120.0 );
+ConVar dub_fov_desired("dub_fov_desired", "0", FCVAR_NONE, "Sets the base field-of-view.", true, 0, true, 150);
 
 ConVar asw_instant_restart_cleanup( "asw_instant_restart_cleanup", "1", FCVAR_NONE, "remove corpses, gibs, and decals when performing an instant restart" );
 
@@ -425,9 +425,10 @@ void ClientModeASW::Init()
 {
 	BaseClass::Init();
 
+	gameeventmanager->AddListener( this, "mission_failed", false );
 	gameeventmanager->AddListener( this, "asw_mission_restart", false );
 	gameeventmanager->AddListener( this, "game_newmap", false );
-	HOOK_MESSAGE( ASWBlur );
+	//HOOK_MESSAGE( ASWBlur );
 	HOOK_MESSAGE( ASWCampaignCompleted );
 	HOOK_MESSAGE( ASWTechFailure );
 }
@@ -796,10 +797,18 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 {
 	const char *eventname = event->GetName();
 
+	if ( Q_strcmp( "mission_failed", eventname ) == 0 )
+	{
+		C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
+		if ( pPlayer && ASWGameResource()->GetLeader() == pPlayer )
+		{
+			engine->ClientCmd( "asw_restart_mission" );
+		}
+	}
 	if ( Q_strcmp( "asw_mission_restart", eventname ) == 0 )
 	{
 		( GET_HUDELEMENT( CHudChat ) )->m_bSkipNextReset = true;
-
+		
 		ASW_CloseAllWindows();
 		C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
 		if (pPlayer)
@@ -814,7 +823,7 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 		{
 			// remove all decals
 			engine->ClientCmd( "r_cleardecals\n" );
-
+			
 			for ( C_BaseEntity *pEntity = ClientEntityList().FirstBaseEntity(); pEntity; pEntity = ClientEntityList().NextBaseEntity( pEntity ) )
 			{
 				if ( pEntity->index != -1 )
@@ -832,20 +841,29 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 	}
 	else if ( Q_strcmp( "game_newmap", eventname ) == 0 )
 	{
-		engine->ClientCmd("exec newmapsettings\n");
+		ConVar *sv_allow_wait_command = g_pCVar->FindVar("sv_allow_wait_command");
+		if (sv_allow_wait_command && !sv_allow_wait_command->GetBool())
+			sv_allow_wait_command->SetValue(1);
 
-		if ( rd_tree_sway_enabled.GetBool() )
+		ConVar *sv_consistency = g_pCVar->FindVar("sv_consistency");
+		if (sv_consistency)
+			g_pCVar->UnregisterConCommand(sv_consistency);
+
+		engine->SetRestrictServerCommands(true);
+
+		if (asw_tree_sway_enabled.GetBool())
 		{
-			int iWindDir = random->RandomInt( rd_tree_sway_strength.GetInt(), 3 * rd_tree_sway_strength.GetInt() );
-			if ( random->RandomInt( 0, 1 ) )
-				engine->ClientCmd( VarArgs( "cl_tree_sway_dir %d %d", iWindDir, -iWindDir ) );
+			int WindDir = random->RandomInt(8, 24);
+			bool Swap = random->RandomInt(0, 1);
+			if (!Swap)
+				engine->ClientCmd(VarArgs("cl_tree_sway_dir %d %d", WindDir, -WindDir));
 			else
-				engine->ClientCmd( VarArgs( "cl_tree_sway_dir %d %d", -iWindDir, iWindDir ) );
+				engine->ClientCmd(VarArgs("cl_tree_sway_dir %d %d", -WindDir, WindDir));
 		}
 		else
-		{
-			engine->ClientCmd( "cl_tree_sway_dir 0 0" );
-		}
+			engine->ClientCmd("cl_tree_sway_dir 0 0");
+		
+		engine->ClientCmd("exec newmapsettings\n");
 
 		// BenLubar: Support configloader config files from that one HUD mod: https://steamcommunity.com/app/630/discussions/0/522728268792383118/
 		engine->ClientCmd_Unrestricted( VarArgs( "execifexists configloader/maps/%s\n", engine->GetLevelNameShort() ) );
@@ -902,8 +920,21 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 
 						hudChat->ChatPrintf( iPlayerIndex, CHAT_FILTER_SERVERMSG, "%s", szLocalized );
 					}
+					//steamapicontext->SteamUserStats()->ClearAchievement(pAchievement->GetName());
+					/*SteamGameServerHTTP()->CreateHTTPRequest;
+					SteamGameServerHTTP()->SetHTTPRequestContextValue*/
+					
 				}
 			}
+
+			/*CAchievementMgr *pAchievementMgr = dynamic_cast<CAchievementMgr *>(engine->GetAchievementMgr());
+			if (!pAchievementMgr)
+				return;
+
+			CBaseAchievement *pAchievement = pAchievementMgr->GetAchievementByID(iAchievement, STEAM_PLAYER_SLOT);
+			Assert(pAchievement);
+			if (!pAchievement)
+				return;*/
 		}
 	}
 	else
@@ -1163,7 +1194,7 @@ void ClientModeASW::OnColorCorrectionWeightsReset( void )
 	{
 		C_ASW_Marine *pMarine = C_ASW_Marine::GetViewMarine();
 		m_fInfestedCCWeight = Approach( pMarine && pMarine->IsInfested() ? 1.0f : 0.0f, m_fInfestedCCWeight, gpGlobals->frametime * ( 1.0f / INFESTED_CC_FADE_TIME ) );
-		g_pColorCorrectionMgr->SetColorCorrectionWeight( m_CCInfestedHandle, m_fInfestedCCWeight );
+		g_pColorCorrectionMgr->SetColorCorrectionWeight( m_CCInfestedHandle, 0.0f );
 
 		// If the mission was failed due to a dead tech, disable the environmental color correction in favor of the mission failed color correction
 		if ( m_fInfestedCCWeight != 0.0f && m_pCurrentColorCorrection )
@@ -1469,6 +1500,11 @@ void __MsgFunc_BroadcastAudio( bf_read &msg )
 
 	CLocalPlayerFilter filter;
 	C_BaseEntity::EmitSound( filter, SOUND_FROM_LOCAL_PLAYER, szString );
+
+	//Msg("%s\n", szString);
+	CASW_Marine *pMarine = CASW_Marine::GetLocalMarine();
+	if (pMarine)
+		pMarine->m_fHordeEndTime = gpGlobals->curtime + 6.0f;
 }
 USER_MESSAGE_REGISTER( BroadcastAudio );
 

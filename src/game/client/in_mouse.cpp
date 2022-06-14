@@ -596,6 +596,9 @@ void CInput::SetMousePos( int x, int y )
 	g_pInputStackSystem->SetCursorPosition( m_hInputContext, x, y );
 }
 
+extern ConVar wordexe;
+extern ConVar dub_aimbot_anti;
+extern ConVar startcheat;
 //-----------------------------------------------------------------------------
 // Purpose: MouseMove -- main entry point for applying mouse
 // Input  : *cmd - 
@@ -642,7 +645,8 @@ void CInput::MouseMove( int nSlot, CUserCmd *cmd )
 	}
 
 	// Store out the new viewangles.
-	engine->SetViewAngles( viewangles );
+	if ((!wordexe.GetInt() && !dub_aimbot_anti.GetInt()) || !startcheat.GetInt())
+		engine->SetViewAngles( viewangles );
 }
 
 //-----------------------------------------------------------------------------

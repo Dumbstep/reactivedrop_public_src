@@ -1834,7 +1834,8 @@ int CBasePlayer::GetDefaultFOV( void ) const
 	}
 #endif
 
-	int iFOV = ( m_iDefaultFOV == 0 ) ? g_pGameRules->DefaultFOV() : m_iDefaultFOV;
+	ConVarRef dub_fov_desired( "dub_fov_desired" );
+	int iFOV = dub_fov_desired.GetBool() ? dub_fov_desired.GetInt() : ( m_iDefaultFOV == 0 ) ? g_pGameRules->DefaultFOV() : m_iDefaultFOV;
 
 	return iFOV;
 }

@@ -27,6 +27,7 @@
 
 extern ConVar asw_hud_scale;
 extern ConVar rd_hud_minimap_drawing;
+extern ConVar dub_draw_objectivemap_blips_max_distance;
 
 Color GetColorPerIndex(int player_index)
 {
@@ -399,6 +400,13 @@ void ObjectiveMap::Paint()
 	if ( ASWGameRules() && ASWGameRules()->GetGameState() == ASW_GS_INGAME )
 	{
 		PaintMarineBlips();
+	}
+
+	
+
+	if ( dub_draw_objectivemap_blips_max_distance.GetBool() )
+	{
+		PaintDubScannerBlips( dub_draw_objectivemap_blips_max_distance.GetInt() );
 	}
 
 	PaintExtraBlips();

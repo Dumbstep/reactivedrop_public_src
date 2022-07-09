@@ -65,6 +65,7 @@
 #include "tier2/fileutils.h"
 #include "vpklib/packedstore.h"
 #include "vgui/ILocalize.h"
+#include "iregistry.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1489,7 +1490,7 @@ bool UTIL_ASW_CommanderLevelAtLeast( CASW_Player *pPlayer, int iLevel, int iProm
 		iActualLevel = rd_override_commander_level.GetInt();
 	}
 
-	if ( iPromotion != iActualPromotion )
+	if ( iPromotion != -1 && iPromotion != iActualPromotion )
 	{
 		return iPromotion < iActualPromotion;
 	}
@@ -1522,6 +1523,11 @@ static void LoadKeyValues( KeyValues *pKV, const char *fileName, const char *szP
 		buf2.SeekPut( CUtlBuffer::SEEK_HEAD, V_strlen( pszBuf ) );
 
 		pBuf = &buf2;
+	}
+	else if ( buf.TellPut() >= 3 && !V_strncmp( (const char *)buf.Base(), "\xEF\xBB\xBF", 3 ) )
+	{
+		// We've got a byte order mark in UTF-8. KeyValues will get confused by this.
+		buf.SeekGet( CUtlBuffer::SEEK_HEAD, 3 );
 	}
 
 	CUtlString fullFileName = CUtlString::PathJoin( szPath, fileName );
@@ -1637,6 +1643,11 @@ bool UTIL_RD_AddLocalizeFile( const char *fileName, const char *pPathID, bool bI
 			pszLanguageReplacement = rd_dedicated_server_language.GetString();
 		}
 #endif
+		else if ( registry )
+		{
+			// If we failed to load the Steam API and we're not a dedicated server, attempt to grab the language for Steam itself from the Windows registry, or fall back to English.
+			pszLanguageReplacement = registry->ReadString( "HKEY_CURRENT_USER\\SOFTWARE\\Valve\\Steam", "Language", "english" );
+		}
 
 		strncpy_s( szPath, fileName, pszLanguageToken - fileName );
 		strcat_s( szPath, pszLanguageReplacement );
@@ -1699,8 +1710,6 @@ const char *UTIL_RD_EResultToString( EResult eResult )
 		return "k_EResultFail";
 	case k_EResultNoConnection:
 		return "k_EResultNoConnection";
-	case (EResult)4:
-		return "k_EResultNoConnectionRetry";
 	case k_EResultInvalidPassword:
 		return "k_EResultInvalidPassword";
 	case k_EResultLoggedInElsewhere:
@@ -1939,6 +1948,12 @@ const char *UTIL_RD_EResultToString( EResult eResult )
 		return "k_EResultParseFailure";
 	case k_EResultNoVerifiedPhone:
 		return "k_EResultNoVerifiedPhone";
+	case k_EResultInsufficientBattery:
+		return "k_EResultInsufficientBattery";
+	case k_EResultChargerRequired:
+		return "k_EResultChargerRequired";
+	case k_EResultCachedCredentialInvalid:
+		return "k_EResultCachedCredentialInvalid";
 	}
 }
 

@@ -100,6 +100,8 @@
 	#include "eventqueue.h"
 	#include "ai_dynamiclink.h"
 	#include "asw_spawn_selection.h"
+	#include "asw_door.h"
+	#include "ScriptGameEventListener.h"
 #endif
 #include "fmtstr.h"
 #include "game_timescale_shared.h"
@@ -119,6 +121,7 @@
 #include "rd_missions_shared.h"
 #include "rd_workshop.h"
 #include "rd_lobby_utils.h"
+#include "matchmaking/imatchframework.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -138,7 +141,7 @@ extern ConVar old_radius_damage;
 	extern ConVar asw_medal_barrel_kills;
 	extern ConVar rd_killingspree_time_limit;
 	extern ConVar rd_quake_sounds;
-	extern ConVar rda_marine_backpack;
+	extern ConVar rd_server_marine_backpacks;
 	ConVar asw_objective_slowdown_time( "asw_objective_slowdown_time", "1.8", FCVAR_CHEAT, "Length of time that the slowdown effect lasts." );
 	ConVar asw_marine_explosion_protection("asw_marine_explosion_protection", "0.5", FCVAR_CHEAT, "Reduction of explosion radius against marines");
 	ConVar asw_door_explosion_boost("asw_door_explosion_boost", "2.0", FCVAR_CHEAT, "Sets damage scale for grenades vs doors");
@@ -323,6 +326,17 @@ static void UpdateMatchmakingTagsCallback( IConVar *pConVar, const char *pOldVal
 		return;
 	}
 
+	KeyValues *pSettings = g_pMatchFramework->GetMatchSession()->GetSessionSettings();
+
+	// The matchmaking library knows if we're on a dedicated server but does not automatically add that information to the Steam lobby.
+	if ( V_strcmp( pSettings->GetString( "server/server" ), pSettings->GetString( "options/server" ) ) )
+	{
+		KeyValues::AutoDelete pUpdate( "update" );
+		pUpdate->SetString( "update/options/server", pSettings->GetString( "server/server" ) );
+		g_pMatchFramework->GetMatchSession()->UpdateSessionSettings( pUpdate );
+	}
+
+	// mm_max_players gets updated after it's read for the lobby, so we need to update the slot count here as well.
 	SteamMatchmaking()->SetLobbyMemberLimit( UTIL_RD_GetCurrentLobbyID(), gpGlobals->maxClients );
 	UTIL_RD_UpdateCurrentLobbyData( "members:numSlots", gpGlobals->maxClients );
 
@@ -515,6 +529,8 @@ ConVar rd_points_delay( "rd_points_delay", "1.5", FCVAR_REPLICATED, "Number of s
 ConVar rd_points_delay_max( "rd_points_delay_max", "5", FCVAR_REPLICATED, "Maximum number of seconds that the score can remain still without decaying.", true, 0, false, 0 );
 ConVar rd_points_decay( "rd_points_decay", "0.97", FCVAR_REPLICATED, "Amount that score change decays by per tick.", true, 0, true, 0.999 );
 ConVar rd_points_decay_tick( "rd_points_decay_tick", "0.01", FCVAR_REPLICATED, "Number of seconds between score decay ticks.", true, 0, false, 0 );
+
+ConVar rd_skip_all_dialogue( "rd_skip_all_dialogue", "0", FCVAR_ARCHIVE | FCVAR_USERINFO, "Tell the server not to send audio from asw_voiceover_dialogue." );
 
 // ASW Weapons
 // Rifle
@@ -1392,8 +1408,10 @@ const char* CAlienSwarm::GetGameDescription( void )
 	return m_szGameDescription; 
 }
 
-CAlienSwarm::CAlienSwarm()
+CAlienSwarm::CAlienSwarm() : m_ActorSpeakingUntil( DefLessFunc( string_t ) )
 {
+	m_bShuttingDown = false;
+
 	// fixes a memory leak on dedicated server where model vertex data
 	// is not freed on map transition and remains locked, leading to increased
 	// memory usage and cache trashing over time
@@ -1538,8 +1556,14 @@ void CAlienSwarm::FullReset()
 	V_memset( m_szApproximatePingLocation.GetForModify(), 0, sizeof( m_szApproximatePingLocation ) );
 	m_bObtainedPingLocation = false;
 
-	ConVarRef sv_cheats( "sv_cheats" );
-	if ( !sv_cheats.GetBool() )
+	m_ActorSpeakingUntil.Purge();
+
+	if ( !sv_cheats )
+	{
+		sv_cheats = cvar->FindVar( "sv_cheats" );
+	}
+
+	if ( sv_cheats && !sv_cheats->GetBool() )
 	{
 		if ( CAI_BaseNPC::m_nDebugBits & bits_debugDisableAI )
 		{
@@ -2914,6 +2938,13 @@ void CAlienSwarm::RestartMission( CASW_Player *pPlayer, bool bForce, bool bSkipF
 		}
 	}
 
+	if ( !bSkipFail && GetGameState() == ASW_GS_INGAME && gpGlobals->curtime - ASWGameRules()->m_fMissionStartedTime > 30.0f )
+	{
+		// They've been playing a bit... go to the mission fail screen instead!
+		ASWGameRules()->MissionComplete( false );
+		return;
+	}
+
 	// notify players of our mission restart
 	IGameEvent *event = gameeventmanager->CreateEvent( "asw_mission_restart" );
 	if ( event )
@@ -2921,13 +2952,6 @@ void CAlienSwarm::RestartMission( CASW_Player *pPlayer, bool bForce, bool bSkipF
 		m_iMissionRestartCount++;
 		event->SetInt( "restartcount", m_iMissionRestartCount );
 		gameeventmanager->FireEvent( event );
-	}
-
-	if ( !bSkipFail && GetGameState() == ASW_GS_INGAME && gpGlobals->curtime - ASWGameRules()->m_fMissionStartedTime > 30.0f )
-	{
-		// They've been playing a bit... go to the mission fail screen instead!
-		ASWGameRules()->MissionComplete( false );
-		return;
 	}
 
 	StopStim();
@@ -2948,14 +2972,11 @@ void CAlienSwarm::RestartMission( CASW_Player *pPlayer, bool bForce, bool bSkipF
 	if ( ASWGameResource() )
 		ASWGameResource()->RememberLeaderID();
 
-	if ( !asw_instant_restart.GetBool() || gEntList.FindEntityByClassname( NULL, "asw_challenge_thinker" ) )
+	if ( !asw_instant_restart.GetBool() )
 	{
 		if ( asw_instant_restart_debug.GetBool() )
 		{
-			if ( !asw_instant_restart.GetBool() )
-				Msg( "Not performing instant restart - disabled by convar.\n" );
-			else
-				Msg( "Not performing instant restart - current challenge uses vscript.\n" );
+			Msg( "Not performing instant restart - disabled by convar.\n" );
 		}
 
 		if ( GetCampaignSave() )
@@ -3672,6 +3693,8 @@ void CAlienSwarm::OnSteamRelayNetworkStatusChanged( SteamRelayNetworkStatus_t *p
 
 void CAlienSwarm::Think()
 {
+	if ( m_bShuttingDown ) return;
+
 	if ( !m_bObtainedPingLocation && SteamNetworkingUtils() )
 	{
 		SteamNetworkPingLocation_t location;
@@ -3846,7 +3869,9 @@ inline unsigned int ThreadShutdown(void* pParam)
 	return 0;
 }
 
-void CAlienSwarm::Shutdown() {
+void CAlienSwarm::Shutdown() 
+{
+	m_bShuttingDown = true;
 	CreateSimpleThread(ThreadShutdown, engine);
 }
 
@@ -3926,9 +3951,17 @@ void CAlienSwarm::OnServerHibernating()
 	}
 }
 
+ConVar asw_respawn_marine_enable( "asw_respawn_marine_enable", "0", FCVAR_CHEAT, "Enables respawning marines.", true, 0, true, 1 );
+
 // Respawn a dead marine.
 void CAlienSwarm::Resurrect( CASW_Marine_Resource * RESTRICT pMR, CASW_Marine *pRespawnNearMarine )  
 {
+	if ( !asw_respawn_marine_enable.GetBool() )
+	{
+		Msg( "Respawning marines is not enabled on this server.\n" );
+		return;
+	}
+
 	//AssertMsg1( !pMR->IsAlive() && 
 	//((gpGlobals->curtime - pMR->m_fDeathTime) >= asw_marine_resurrection_interval.GetFloat() ),
 	//"Tried to respawn %s before its time!", pMR->GetProfile()->GetShortName() );
@@ -4003,20 +4036,7 @@ void CAlienSwarm::Resurrect( CASW_Marine_Resource * RESTRICT pMR, CASW_Marine *p
 		return;
 
 	// WISE FWOM YOUW GWAVE!
-	if ( !SpawnMarineAt( pMR, vecChosenSpawnPos + Vector(0,0,1), QAngle(0,0,0 ), true ) )
-	{
-		Msg( "Failed to resurrect marine %s\n", pMR->GetProfile()->GetShortName() );
-		return;
-	}
-	else
-	{
-		CASW_Marine *pMarine = pMR->GetMarineEntity();
-		AssertMsg1( pMarine, "SpawnMarineAt failed to populate marine resource %s with a marine entity!\n", pMR->GetProfile()->GetShortName() );
-		// switch commander to the marine if he hasn't already got one selected
-		if ( !pMR->GetCommander()->GetMarine() )
-			pMR->GetCommander()->SwitchMarine(0 );
-		pMarine->PerformResurrectionEffect();
-	}
+	ScriptResurrect( pMR, vecChosenSpawnPos );
 }
 
 // Respawn a dead marine. DEPRECATED, UNUSED
@@ -4046,6 +4066,31 @@ void CAlienSwarm::Resurrect( CASW_Marine_Resource * RESTRICT pMR )
 			pMR->GetCommander()->SwitchMarine(0 );
 		pMarine->PerformResurrectionEffect();
 	}
+}
+
+CASW_Marine* CAlienSwarm::ScriptResurrect( CASW_Marine_Resource* RESTRICT pMR, Vector vecSpawnPos, bool bEffect )
+{
+	CASW_Marine* pMarine = NULL;
+	
+	if ( !pMR || GetGameState() != ASW_GS_INGAME ) return NULL;
+
+	if ( !SpawnMarineAt( pMR, vecSpawnPos + Vector( 0, 0, 1 ), QAngle( 0, 0, 0 ), true ) )
+	{
+		Msg( "Failed to resurrect marine %s\n", pMR->GetProfile()->GetShortName() );
+		return NULL;
+	}
+	else
+	{
+		pMarine = pMR->GetMarineEntity();
+		AssertMsg1( pMarine, "SpawnMarineAt failed to populate marine resource %s with a marine entity!\n", pMR->GetProfile()->GetShortName() );
+		if ( !pMR->GetCommander()->GetMarine() )
+			pMR->GetCommander()->SwitchMarine( 0 );
+		
+		if ( bEffect )
+			pMarine->PerformResurrectionEffect();
+	}
+
+	return pMarine;
 }
 
 void CAlienSwarm::MarineInvuln()
@@ -4213,7 +4258,7 @@ void CAlienSwarm::GiveStartingWeaponToMarine(CASW_Marine* pMarine, int iEquipInd
 		pWeapon->SetWeaponVisible(false);
 	}
 
-	if (rda_marine_backpack.GetBool() && iSlot == 1)
+	if (rd_server_marine_backpacks.GetBool() && iSlot == 1)
 	{
 		//pMarine->RemoveBackPackModel();
 		pMarine->CreateBackPackModel(pWeapon);
@@ -4254,6 +4299,7 @@ void CAlienSwarm::InitDefaultAIRelationships()
 	// set up faction relationships
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_MARINES, FACTION_ALIENS, D_HATE, 0 );
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_MARINES, FACTION_MARINES, D_LIKE, 0 );
+	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_MARINES, FACTION_BAIT, D_NEUTRAL, 0 );
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_MARINES, FACTION_NEUTRAL, D_NEUTRAL, 0 );
 
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_ALIENS, FACTION_ALIENS, D_LIKE, 0 );
@@ -4263,6 +4309,7 @@ void CAlienSwarm::InitDefaultAIRelationships()
 
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_NEUTRAL, FACTION_NEUTRAL, D_NEUTRAL, 0 );
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_NEUTRAL, FACTION_MARINES, D_NEUTRAL, 0 );
+	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_NEUTRAL, FACTION_BAIT, D_NEUTRAL, 0 );
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_NEUTRAL, FACTION_ALIENS, D_NEUTRAL, 0 );
 
 	int iNumClasses = GameRules() ? GameRules()->NumEntityClasses() : LAST_SHARED_ENTITY_CLASS;
@@ -7000,6 +7047,12 @@ void CAlienSwarm::OnSkillLevelChanged( int iNewLevel )
 		}
 	}
 
+	CBaseEntity *pDoor = NULL;
+	while ( ( pDoor = gEntList.FindEntityByClassname( pDoor, "asw_door" ) ) != NULL )
+	{
+		assert_cast< CASW_Door * >( pDoor )->UpdateDoorHealthOnMissionStart( m_iMissionDifficulty );
+	}
+
 	if ( gameeventmanager )
 	{
 		IGameEvent * event = gameeventmanager->CreateEvent( "difficulty_changed" );
@@ -8123,8 +8176,12 @@ void CAlienSwarm::CheckDeathmatchFinish()
 
 void CAlienSwarm::OnSVCheatsChanged()
 {
-	ConVarRef sv_cheats( "sv_cheats" );
-	if ( sv_cheats.GetBool() )
+	if ( !sv_cheats )
+	{
+		sv_cheats = cvar->FindVar( "sv_cheats" );
+	}
+
+	if ( sv_cheats && sv_cheats->GetBool() )
 	{
 		m_bCheated = true;
 	}
@@ -8722,6 +8779,53 @@ static void CreateCake( const char *mapname )
 	{
 		origin = Vector( 312, 2186, 156 );
 	}
+#ifdef RD_6A_CAMPAIGNS
+	else if ( FStrEq( mapname, "rd-acc1_infodep" ) )
+	{
+		origin = Vector( 3232, 4240, 300 );
+	}
+	else if ( FStrEq( mapname, "rd-acc2_powerhood" ) )
+	{
+		origin = Vector( 512, 725, 296 );
+	}
+	else if ( FStrEq( mapname, "rd-acc3_rescenter" ) )
+	{
+		origin = Vector( 2528, 3424, -92 );
+	}
+	else if ( FStrEq( mapname, "rd-acc4_confacility" ) )
+	{
+		origin = Vector( 352, -2640, 492 );
+	}
+	else if ( FStrEq( mapname, "rd-acc5_j5connector" ) )
+	{
+		origin = Vector( 1448, 1712, 233 );
+	}
+	else if ( FStrEq( mapname, "rd-acc6_labruins" ) )
+	{
+		origin = Vector( 704, 824, -500 );
+	}
+	else if ( FStrEq( mapname, "rd-ad1_newbeginning" ) ) // pending rename
+	{
+	}
+	else if ( FStrEq( mapname, "rd-ad2_nexussubnode" ) ) // pending rename
+	{
+	}
+	else if ( FStrEq( mapname, "rd-ad3_darkpath_classic" ) ) // pending rename
+	{
+	}
+	else if ( FStrEq( mapname, "rd-ad3_fuel_junction" ) ) // pending rename
+	{
+	}
+	else if ( FStrEq( mapname, "rd-ad3_neon_carnage" ) ) // pending rename
+	{
+	}
+	else if ( FStrEq( mapname, "rd-ad4_forbidden_outpost" ) ) // pending rename
+	{
+	}
+	else if ( FStrEq( mapname, "rd-ad2_anomaly" ) ) // pending rename
+	{
+	}
+#endif
 
 	if ( origin.IsZeroFast() )
 		return;
@@ -8888,14 +8992,18 @@ void CAlienSwarm::LevelInitPostEntity()
 	if (pFire)
 		pFire->Spawn();
 
-	ConVar *var = (ConVar *)cvar->FindVar( "sv_cheats" );
-	if ( var )
+	if ( !sv_cheats )
 	{
-		m_bCheated = var->GetBool();
+		sv_cheats = cvar->FindVar( "sv_cheats" );
+	}
+
+	if ( sv_cheats )
+	{
+		m_bCheated = sv_cheats->GetBool();
 		static bool s_bInstalledCheatsChangeCallback = false;
 		if ( !s_bInstalledCheatsChangeCallback )
 		{
-			var->InstallChangeCallback( CheatsChangeCallback );
+			sv_cheats->InstallChangeCallback( CheatsChangeCallback );
 			s_bInstalledCheatsChangeCallback = true;
 		}
 	}
@@ -9166,18 +9274,18 @@ void CAlienSwarm::SaveConvar( const ConVarRef & cvar )
 	m_SavedConvars[ cvar.GetName() ] = AllocPooledString( cvar.GetString() );
 }
 
-void CAlienSwarm::RevertSingleConvar( ConVarRef cvar )
+void CAlienSwarm::RevertSingleConvar( ConVarRef & ref )
 {
-	Assert( cvar.IsValid() );
+	Assert( ref.IsValid() );
 
-	if ( !HaveSavedConvar( cvar ) )
+	if ( !HaveSavedConvar( ref ) )
 	{
 		// don't have a saved value
 		return;
 	}
 
-	string_t & saved = m_SavedConvars[ cvar.GetName() ];
-	cvar.SetValue( STRING( saved ) );
+	string_t & saved = m_SavedConvars[ ref.GetName() ];
+	ref.SetValue( STRING( saved ) );
 	saved = NULL_STRING;
 }
 
@@ -9278,7 +9386,8 @@ void CAlienSwarm::ResetChallengeConVars()
 
 	FOR_EACH_VEC( names, i )
 	{
-		RevertSingleConvar( names[i] );
+		ConVarRef ref( names[i] );
+		RevertSingleConvar( ref );
 	}
 }
 
@@ -9315,6 +9424,39 @@ public:
 	CASW_Challenge_Thinker()
 	{
 		m_iszScriptThinkFunction = AllocPooledString( "Update" );
+	}
+
+	virtual void RunVScripts()
+	{
+		if ( ValidateScriptScope() )
+		{
+			// https://github.com/ReactiveDrop/reactivedrop_public_src/issues/138
+			// We need to make sure our scope includes every value that might be looked up from it.
+			// If we don't, global variables will be inherited by our scope and functions will be run twice.
+
+			HSCRIPT hScope = GetScriptScope();
+			Assert( hScope );
+			for ( int i = 0; i < NUM_SCRIPT_GAME_EVENTS; i++ )
+			{
+				g_pScriptVM->SetValue( hScope, CFmtStr( "OnGameEvent_%s", g_ScriptGameEventList[i] ), SCRIPT_VARIANT_NULL );
+			}
+			g_pScriptVM->SetValue( hScope, "OnTakeDamage_Alive_Any", SCRIPT_VARIANT_NULL );
+			g_pScriptVM->SetValue( hScope, "UserConsoleCommand", SCRIPT_VARIANT_NULL );
+			g_pScriptVM->SetValue( hScope, "OnMissionStart", SCRIPT_VARIANT_NULL );
+			g_pScriptVM->SetValue( hScope, "OnGameplayStart", SCRIPT_VARIANT_NULL );
+		}
+
+		BaseClass::RunVScripts();
+	}
+
+	virtual void UpdateOnRemove()
+	{
+		if ( GetScriptScope() )
+		{
+			g_pScriptVM->SetValue( "g_ModeScript", SCRIPT_VARIANT_NULL );
+		}
+
+		BaseClass::UpdateOnRemove();
 	}
 };
 

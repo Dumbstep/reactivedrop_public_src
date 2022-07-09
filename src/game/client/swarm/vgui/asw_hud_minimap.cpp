@@ -69,6 +69,7 @@ ConVar asw_scanner_background("asw_scanner_background", "1", FCVAR_NONE, "Draw b
 ConVar asw_scanner_classic("asw_scanner_classic", "0", FCVAR_NONE, "Scanner has white blips, is always pinging.");
 ConVar rd_hud_minimap_drawing("rd_hud_minimap_drawing", "1", FCVAR_NONE, "Allow drawing on the minimap.");
 
+ConVar asw_use_blip_colors("asw_use_blip_colors", "1", FCVAR_NONE, "Set to 1 to use custom blip colors");
 ConVar asw_blip_color_alien("asw_blip_color_alien", "250 110 110 255", FCVAR_NONE);
 ConVar asw_blip_color_boomer("asw_blip_color_boomer", "250 110 110 255", FCVAR_NONE);
 ConVar asw_blip_color_buzzer("asw_blip_color_buzzer", "250 110 110 255", FCVAR_NONE);
@@ -81,6 +82,16 @@ ConVar asw_blip_color_shaman("asw_blip_color_shaman", "250 110 110 255", FCVAR_N
 ConVar asw_blip_color_shieldbug("asw_blip_color_shieldbug", "250 110 110 255", FCVAR_NONE);
 ConVar asw_blip_color_antlionguard("asw_blip_color_antlionguard", "250 110 110 255", FCVAR_NONE);
 ConVar dub_draw_objectivemap_blips_max_distance("dub_draw_objectivemap_blips_max_distance", "2000", FCVAR_NONE);
+
+ConVar asw_blip_color_used_marine("asw_blip_color_used_marine", "255 255 0", FCVAR_NONE, "Blip color of used marine");
+ConVar asw_blip_color_other_marine("asw_blip_color_other_marine", "0 192 0", FCVAR_NONE, "Blip color of other marines");
+ConVar asw_blip_color_other_marine_use_classtype("asw_blip_color_other_marine_use_classtype", "0", FCVAR_NONE, "Set to 1 to use other marines coloring by their class");
+ConVar asw_blip_color_marine_officer("asw_blip_color_marine_officer", "0 192 0", FCVAR_NONE, "Blip color of officer marines");
+ConVar asw_blip_color_marine_special("asw_blip_color_marine_special", "0 0 192", FCVAR_NONE, "Blip color of special weapon marines");
+ConVar asw_blip_color_marine_medic("asw_blip_color_marine_medic", "192 0 0", FCVAR_NONE, "Blip color of medic marines");
+ConVar asw_blip_color_marine_tech("asw_blip_color_marine_tech", "192 142 0", FCVAR_NONE, "Blip color of tech marines");
+ConVar asw_draw_blips_real_time("asw_draw_blips_real_time", "1", FCVAR_ARCHIVE, "Draw alien blips in realtime.", true, 0, true, 1);
+ConVar asw_draw_scanner_rings("asw_draw_scanner_rings", "1", FCVAR_NONE);
 
 // was 0.75f..
 #define ASW_SCREENSHOT_SCALE 1.0f
@@ -184,6 +195,7 @@ void MsgFunc_ASWMapLine(bf_read &msg)
 		pMiniMap->m_MapLines.AddToTail(line);
 	}
 }
+
 
 // v.x * X + v.y * Y + v.z = 0
 // based on https://stackoverflow.com/a/45268241
@@ -325,46 +337,87 @@ void CASWMap::ClearBlips(void)
 void CASWMap::PaintMarineBlips( bool bRotate )
 {
 	C_ASW_Game_Resource *pGameResource = ASWGameResource();
-	if (pGameResource)
+	if ( pGameResource )
 	{
+		C_ASW_Marine* pLocalMarine = NULL;
+		C_ASW_Player* pLocalPlayer = C_ASW_Player::GetLocalASWPlayer();
+		if ( pLocalPlayer )
+			pLocalMarine = pLocalPlayer->GetViewMarine();
+
 		// paint the blips
-		for (int i = 0; i < ASW_MAX_MARINE_RESOURCES; i++)
+		for ( int i = 0; i < ASW_MAX_MARINE_RESOURCES; i++ )
 		{
 			C_ASW_Marine_Resource *pMR = pGameResource->GetMarineResource(i);
-			if (pMR)
+			if ( pMR )
 			{
 				C_ASW_Marine *pMarine = pMR->GetMarineEntity();
-				if (pMarine && pMarine->GetHealth() > 0)
+				if ( pMarine && pMarine->GetHealth() > 0 )
 				{
-					if (rd_paint_marine_blips.GetInt() == 2)
+					if ( rd_paint_marine_blips.GetInt() == 2 && ASWDeathmatchMode() ) // if 2 we paint our blip for all modes and team mates' blips for TDM
 					{
-						C_ASW_Player *pLocal = C_ASW_Player::GetLocalASWPlayer();
-						if (pLocal)
+						switch ( ASWDeathmatchMode()->GetGameMode() )
 						{
-							if (rd_paint_marine_blips.GetInt() == 2 && ASWDeathmatchMode()) // if 2 we paint our blip for all modes and team mates' blips for TDM
+						case GAMEMODE_DEATHMATCH:
+						case GAMEMODE_INSTAGIB:
+						case GAMEMODE_GUNGAME:
+						default:
+							if ( pLocalMarine != pMarine )
+								continue;	// don't render any marine except ours
+							break;
+						case GAMEMODE_TEAMDEATHMATCH:
+							if ( pLocalMarine  && pLocalMarine->GetTeamNumber() != pMarine->GetTeamNumber() )
+								continue;	// don't render blip for enemy team marines
+							break;
+						}
+					}
+					
+					Color blipColor;
+					bool bClassColorings = asw_blip_color_other_marine_use_classtype.GetBool();
+					if ( !bClassColorings )
+					{
+						blipColor = ( pLocalMarine != pMarine ) ? asw_blip_color_other_marine.GetColor() : asw_blip_color_used_marine.GetColor();
+					}
+					else
+					{
+						if ( pLocalMarine == pMarine )
+						{
+							blipColor = asw_blip_color_used_marine.GetColor();
+						}
+						else
+						{
+							CASW_Marine_Profile* pProfile = pMR->GetProfile();
+							if ( pProfile )
 							{
-								C_ASW_Marine *pLocalMarine = pLocal->GetViewMarine();
-
-								switch (ASWDeathmatchMode()->GetGameMode())
+								switch ( pProfile->GetMarineClass() )
 								{
-								case GAMEMODE_DEATHMATCH:
-								case GAMEMODE_INSTAGIB:
-								case GAMEMODE_GUNGAME:
 								default:
-									if (pLocalMarine != pMarine)
-										continue;	// don't render any marine except ours
+								case MARINE_CLASS_UNDEFINED:
+								case MARINE_CLASS_NCO:
+									blipColor = asw_blip_color_marine_officer.GetColor();
 									break;
-								case GAMEMODE_TEAMDEATHMATCH:
-									if (pLocalMarine  && pLocalMarine->GetTeamNumber() != pMarine->GetTeamNumber())
-										continue;	// don't render blip for enemy team marines
+								case MARINE_CLASS_SPECIAL_WEAPONS:
+									blipColor = asw_blip_color_marine_special.GetColor();
+									break;
+								case MARINE_CLASS_MEDIC:
+									blipColor = asw_blip_color_marine_medic.GetColor();
+									break;
+								case MARINE_CLASS_TECH:
+									blipColor = asw_blip_color_marine_tech.GetColor();
 									break;
 								}
+							}
+							else
+							{
+								//should never happen but in case need to initialise blipColor
+								blipColor = asw_blip_color_used_marine.GetColor();
 							}
 						}
 					}
 
-					PaintWorldBlip(pMarine->GetAbsOrigin(), pMarine->GetBlipStrength(), pMarine->IsInfested() ? Color(255, 192, 0, 255) : pMarine->m_bKnockedOut ? Color(250, 0, 0, 255) : Color(0, 192, 0, 255));
-					PaintWorldFacingArc(pMarine->GetAbsOrigin(), !bRotate ? pMarine->ASWEyeAngles().y : pMarine->ASWEyeAngles().y + 90 - (ASWInput() ? ASWInput()->ASW_GetCameraYaw() : 90), pMarine->IsInfested() ? Color(255, 192, 0, 255 - 127.0f * pMarine->GetBlipStrength()) : pMarine->m_bKnockedOut ? Color(250, 0, 0, 255 - 127.0f * pMarine->GetBlipStrength()) : Color(0, 192, 0, 255 - 127.0f * pMarine->GetBlipStrength()));
+					Color blipColorTr = pMarine->m_bKnockedOut ? Color(250, 0, 0, 255 - 127.0f * pMarine->GetBlipStrength()) : Color(blipColor.r(), blipColor.g(), blipColor.b(), 255 - 127.0f * pMarine->GetBlipStrength());
+
+					PaintWorldBlip( pMarine->GetAbsOrigin(), pMarine->GetBlipStrength(), pMarine->m_bKnockedOut ? Color(250, 0, 0, 255) : blipColor );
+					PaintWorldFacingArc( pMarine->GetAbsOrigin(), !bRotate ? pMarine->ASWEyeAngles().y : pMarine->ASWEyeAngles().y + 90 - (ASWInput() ? ASWInput()->ASW_GetCameraYaw() : 90), blipColorTr );
 				}
 			}
 		}
@@ -380,6 +433,11 @@ void CASWMap::PaintExtraBlips()
 }
 
 void CASWMap::PaintWorldBlip(const Vector &worldpos, float fBlipStrength, Color BlipColor, MapBlipTexture_t nBlipTexture /*= MAP_BLIP_TEXTURE_NORMAL*/)
+{
+	PaintWorldBlip( worldpos, fBlipStrength, BlipColor, 0, nBlipTexture );
+}
+
+void CASWMap::PaintWorldBlip(const Vector& worldpos, float fBlipStrength, Color BlipColor, int radius, MapBlipTexture_t nBlipTexture /*= MAP_BLIP_TEXTURE_NORMAL*/)
 {
 	int nStrengthIndex = clamp<int>(fBlipStrength * 7, 0, 7);
 
@@ -434,6 +492,11 @@ void CASWMap::PaintWorldBlip(const Vector &worldpos, float fBlipStrength, Color 
 		Vertex_t(Vector2D(Dest1X, Dest2Y), Vector2D(0, 1))
 	};
 	surface()->DrawTexturedPolygon(4, points);
+
+	if ( radius > 0 && fBlipStrength < 0.5f && nBlipTexture == MAP_BLIP_TEXTURE_NORMAL )
+	{
+		surface()->DrawOutlinedCircle( blip_centre.x + 0.5f, blip_centre.y + 0.25f, radius * 2.0f * ( 0.5f - fBlipStrength * fBlipStrength ), radius * 10 );
+	}
 }
 
 void CASWMap::PaintWorldFacingArc(const Vector &worldpos, float fFacingYaw, Color FacingColor)
@@ -685,7 +748,7 @@ void CASWHudMinimap::OnThink()
 	C_ASW_Player *local = C_ASW_Player::GetLocalASWPlayer();
 	if (local)
 	{
-		if (m_bDrawingMapLines && gpGlobals->curtime >= m_fLastMapLine + MAP_LINE_INTERVAL)
+		if (m_bDrawingMapLines && gpGlobals->realtime >= m_fLastMapLine + MAP_LINE_INTERVAL)
 		{
 			if (IsWithinMapBounds(m_iMouseX, m_iMouseY))
 			{
@@ -1042,63 +1105,85 @@ void CASWHudMinimap::PaintScannerBlips()
 	Color red(250, 110, 110, 255);
 	Color blue(66, 142, 192, 255);
 	Color white(255, 255, 255, 255);
-	Color drawaliencolor;
 
 	CASW_Player *pPlayer = CASW_Player::GetLocalASWPlayer();
-	if (pPlayer)
+	if ( pPlayer )
 	{
-		for (int i = 0; i < ASW_SCANNER_MAX_BLIPS; i++)	//todo: draw overflow blips
+		int blipSize = 0;
+		Color blipColor = red;
+		for ( int i = 0; i < ASW_SCANNER_MAX_BLIPS; i++ )	//todo: draw overflow blips
 		{
-			if (pScanner->m_ClientBlipIndex[i] != 0)
+			if ( pScanner->m_ClientBlipIndex[i] != 0 )
 			{
-				Vector vecWorldPos(0, 0, 0);
-				C_BaseEntity* pClientEnt = C_BaseEntity::Instance(pScanner->m_ClientBlipIndex[i]);
-
-				if (pClientEnt && pClientEnt->GetMoveParent())
-					continue;
-
-				if (pClientEnt)
+				Vector vecWorldPos( 0, 0, 0 );
+				C_BaseEntity* pClientEnt = C_BaseEntity::Instance( pScanner->m_ClientBlipIndex[i] );
+				if ( pClientEnt )
 				{
-					switch (pClientEnt->Classify())
+					if ( asw_use_blip_colors.GetBool() )
 					{
-					case CLASS_ASW_DRONE:
-						drawaliencolor = asw_blip_color_drone.GetColor();
-						break;
-					case CLASS_ASW_SHIELDBUG:
-						drawaliencolor = asw_blip_color_shieldbug.GetColor();
-						break;
-					case CLASS_ASW_PARASITE:
-						drawaliencolor = asw_blip_color_parasite.GetColor();
-						break;
-					case CLASS_ASW_BOOMER:
-						drawaliencolor = asw_blip_color_boomer.GetColor();
-						break;
-					case CLASS_ASW_QUEEN:
-						drawaliencolor = asw_blip_color_queen.GetColor();
-						break;
-					case CLASS_ASW_BUZZER:
-						drawaliencolor = asw_blip_color_buzzer.GetColor();
-						break;
-					case CLASS_ASW_RANGER:
-						drawaliencolor = asw_blip_color_ranger.GetColor();
-						break;
-					case CLASS_ASW_SHAMAN:
-						drawaliencolor = asw_blip_color_shaman.GetColor();
-						break;
-					default:
-						drawaliencolor = asw_blip_color_alien.GetColor();
-						if (FClassnameIs(pClientEnt, "class C_NPC_AntlionGuard"))
+						switch ( ( int )pClientEnt->Classify() )
 						{
-							drawaliencolor = asw_blip_color_antlionguard.GetColor();
+						case CLASS_ASW_DRONE:
+							blipSize = 3;
+							blipColor = asw_blip_color_drone.GetColor();
+							break;
+						case CLASS_ASW_SHIELDBUG:
+							blipSize = 10;
+							blipColor = asw_blip_color_shieldbug.GetColor();
+							break;
+						case CLASS_ASW_PARASITE:
+							blipSize = 1;
+							if ( pClientEnt->GetBody() == 0 )
+							{
+								blipColor = asw_blip_color_parasite.GetColor();
+							}
+							else
+							{
+								blipColor = asw_blip_color_parasite_defanged.GetColor();
+							}
+							break;
+						case CLASS_ASW_BOOMER:
+							blipSize = 8;
+							blipColor = asw_blip_color_boomer.GetColor();
+							break;
+						case CLASS_ASW_QUEEN:
+							blipSize = 12;
+							blipColor = asw_blip_color_queen.GetColor();
+							break;
+						case CLASS_ASW_BUZZER:
+							blipSize = 2;
+							blipColor = asw_blip_color_buzzer.GetColor();
+							break;
+						case CLASS_ASW_SHAMAN:
+							blipSize = 4;
+							blipColor = asw_blip_color_shaman.GetColor();
+							break;
+						case CLASS_ASW_RANGER:
+							blipSize = 6;
+							blipColor = asw_blip_color_ranger.GetColor();
+							break;
+						default:
+							if ( pClientEnt->CollisionProp()->OBBMins() == Vector( -30, -30, 0 ) && pClientEnt->CollisionProp()->OBBMaxs() == Vector( 30, 30, 110 ) ) //hack!!
+							{
+								blipColor = asw_blip_color_antlionguard.GetColor();
+								blipSize = 9;
+								break;
+							}
+							blipSize = 8;
+							blipColor = asw_blip_color_alien.GetColor();
+							break;
 						}
-						break;
 					}
-				}
 
-				if (pClientEnt)
-				{
-					vecWorldPos.x = pClientEnt->GetAbsOrigin().x;
-					vecWorldPos.y = pClientEnt->GetAbsOrigin().y;
+					if ( asw_draw_blips_real_time.GetBool() )
+					{
+						vecWorldPos = pClientEnt->GetAbsOrigin();
+					}
+					else
+					{
+						vecWorldPos.x = pScanner->m_fClientBlipX[i];
+						vecWorldPos.y = pScanner->m_fClientBlipY[i];
+					}
 				}
 				else
 				{
@@ -1108,9 +1193,9 @@ void CASWHudMinimap::PaintScannerBlips()
 				//float f = abs(0.5f - pScanner->m_fBlipStrength[i]) * 2.0f;	// fade in/out
 				float f = 1.0f - pScanner->m_fBlipStrength[i];	// just fade out
 
-				PaintWorldBlip(vecWorldPos, f,
-					(pScanner->m_BlipType[i] == 1) ? blue : drawaliencolor,
-					MapBlipTexture_t(pScanner->m_BlipType[i]));		// draw the blip in blue triangle if it's a computer/button panel	
+			PaintWorldBlip( vecWorldPos, f,
+				( pScanner->m_BlipType[i] == 1 ) ? blue : ( asw_scanner_classic.GetBool() ? white : blipColor ), blipSize,
+				MapBlipTexture_t( pScanner->m_BlipType[i] ) );		// draw the blip in blue triangle if it's a computer/button panel	
 			}
 		}
 	}

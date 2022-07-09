@@ -273,6 +273,10 @@ BEGIN_DATADESC( CASW_Player )
 	DEFINE_FIELD( m_angMarineAutoAimFromClient, FIELD_VECTOR ),
 END_DATADESC()
 
+BEGIN_ENT_SCRIPTDESC( CASW_Player, CBasePlayer, "The player entity." )
+	DEFINE_SCRIPTFUNC( ResurrectMarine, "Resurrect the marine" )
+END_SCRIPTDESC()
+
 // -------------------------------------------------------------------------------- //
 
 void ASW_GetNumAIAwake(const char* szClass, int &iAwake, int &iAsleep, int &iNormal, int &iEfficient, int &iVEfficient, int &iSEfficient, int &iDormant)
@@ -3132,7 +3136,7 @@ CBaseEntity* CASW_Player::FindPickerEntity()
 
 const Vector& CASW_Player::GetCrosshairTracePos()
 {
-	if ( GetASWControls() != 1 )
+	if ( GetASWControls() != 1 && GetMarine() )
 	{
 		trace_t tr;
 		Vector forward;
@@ -3148,4 +3152,25 @@ const Vector& CASW_Player::GetCrosshairTracePos()
 	}
 
 	return m_vecCrosshairTracePos;
+}
+
+HSCRIPT CASW_Player::ResurrectMarine( const Vector position, bool bEffect )
+{
+	CASW_Marine* pMarine = NULL;
+	const int numMarineResources = ASWGameResource()->GetMaxMarineResources();
+
+	for ( int i = 0; i < numMarineResources; i++ )
+	{
+		CASW_Marine_Resource* pMR = ASWGameResource()->GetMarineResource( i );
+		if ( pMR && pMR->GetHealthPercent() <= 0 ) // if marine exists, is dead
+		{
+			if ( this == pMR->GetCommander() )
+			{
+				pMarine = ASWGameRules()->ScriptResurrect( pMR, position, bEffect );
+				return ToHScript( pMarine ); // don't do two in a frame
+			}
+		}
+	}
+
+	return ToHScript( pMarine );
 }

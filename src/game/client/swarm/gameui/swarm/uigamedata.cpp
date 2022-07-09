@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -45,7 +45,7 @@
 #include "VPasswordEntry.h"
 // vgui controls
 #include "vgui/ILocalize.h"
-
+#include "vgui/ISystem.h"
 
 
 #ifndef _X360
@@ -206,9 +206,6 @@ bool CUIGameData::m_bModuleShutDown = false;
 
 //=============================================================================
 CUIGameData::CUIGameData() :
-#if !defined( _X360 ) && !defined( NO_STEAM )
-	m_CallbackPersonaStateChanged( this, &CUIGameData::Steam_OnPersonaStateChanged ),
-#endif
 	m_CGameUIPostInit( false )
 {
 	m_LookSensitivity = 1.0f;
@@ -439,7 +436,7 @@ void CUIGameData::ExecuteOverlayCommand( char const *szCommand )
 	}
 	else
 	{
-		DisplayOkOnlyMsgBox( NULL, "#L4D360UI_SteamOverlay_Title", "#L4D360UI_SteamOverlay_Text" );
+		DisplayOkOnlyMsgBox( NULL, "#RDUI_SteamOverlay_Title", "#RDUI_SteamOverlay_Text" );
 	}
 #else
 	ExecuteNTimes( 5, DevWarning( "ExecuteOverlayCommand( %s ) is unsupported\n", szCommand ) );
@@ -447,20 +444,24 @@ void CUIGameData::ExecuteOverlayCommand( char const *szCommand )
 #endif
 }
 
-void CUIGameData::ExecuteOverlayUrl( char const *szUrl, bool bModal )
+void CUIGameData::ExecuteOverlayUrl( char const *szUrl, bool bModal, bool bOpenInBrowserIfOverlayDisabled )
 {
 #if !defined( _X360 ) && !defined( NO_STEAM )
-    if ( SteamFriends() && SteamUtils() && SteamUtils()->IsOverlayEnabled() )
-    {
-        SteamFriends()->ActivateGameOverlayToWebPage( szUrl, bModal ? k_EActivateGameOverlayToWebPageMode_Modal : k_EActivateGameOverlayToWebPageMode_Default );
-    }
-    else
-    {
-        DisplayOkOnlyMsgBox( NULL, "#L4D360UI_SteamOverlay_Title", "#L4D360UI_SteamOverlay_Text" );
-    }
+	if ( SteamFriends() && SteamUtils() && SteamUtils()->IsOverlayEnabled() )
+	{
+		SteamFriends()->ActivateGameOverlayToWebPage( szUrl, bModal ? k_EActivateGameOverlayToWebPageMode_Modal : k_EActivateGameOverlayToWebPageMode_Default );
+	}
+	else if ( bOpenInBrowserIfOverlayDisabled )
+	{
+		vgui::system()->ShellExecute( "open", szUrl );
+	}
+	else
+	{
+		DisplayOkOnlyMsgBox( NULL, "#RDUI_SteamOverlay_Title", "#RDUI_SteamOverlay_Text" );
+	}
 #else
-    ExecuteNTimes( 5, DevWarning( "ExecuteOverlayCommand( %s ) is unsupported\n", szCommand ) );
-    Assert( !"ExecuteOverlayCommand" );
+	ExecuteNTimes( 5, DevWarning( "ExecuteOverlayCommand( %s ) is unsupported\n", szCommand ) );
+	Assert( !"ExecuteOverlayCommand" );
 #endif
 }
 

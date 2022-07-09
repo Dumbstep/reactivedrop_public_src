@@ -1,4 +1,4 @@
-//====== Copyright © 1996-2003, Valve Corporation, All rights reserved. =======
+//====== Copyright ?1996-2003, Valve Corporation, All rights reserved. =======
 //
 // Purpose: Game rules for Alien Swarm
 //
@@ -129,7 +129,8 @@ public:
 	virtual const char *GetGameDescription( void );
 	virtual void			OnServerHibernating();
 	virtual void			Shutdown();
-	
+	bool m_bShuttingDown;
+
 	// briefing roster functions
 	virtual bool			RosterSelect( CASW_Player *pPlayer, int RosterIndex, int nPreferredSlot=-1 );
 	virtual void			RosterDeselect( CASW_Player *pPlayer, int RosterIndex);
@@ -183,6 +184,8 @@ public:
 	void Resurrect( CASW_Marine_Resource * RESTRICT pMR, CASW_Marine *pRespawnNearMarine );
 	//resurects on the next spawn point
 	void Resurrect( CASW_Marine_Resource * RESTRICT pMR );
+	//resurects on the spawn point
+	CASW_Marine* ScriptResurrect( CASW_Marine_Resource* RESTRICT pMR, Vector vecSpawnPos, bool bEffect = true );
 
 	// cheats
 	bool m_bMarineInvuln;
@@ -376,9 +379,9 @@ public:
 #endif	// GAME_DLL above
 
 	CUtlStringMap<string_t> m_SavedConvars;
-	bool HaveSavedConvar( const ConVarRef &cvar );
+	bool HaveSavedConvar( const ConVarRef & cvar );
 	void SaveConvar( const ConVarRef & cvar );
-	void RevertSingleConvar( ConVarRef cvar );
+	void RevertSingleConvar( ConVarRef & cvar );
 	void RevertSavedConvars();
 
 	// stim music
@@ -480,6 +483,7 @@ public:
 #ifdef GAME_DLL
 	// BenLubar: add game-specific vscript functions
 	virtual void RegisterScriptFunctions();
+	CUtlMap<string_t, float> m_ActorSpeakingUntil;
 #endif
 
 	// mission

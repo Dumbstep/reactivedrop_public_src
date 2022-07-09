@@ -109,7 +109,8 @@ public:
 	void AddBlip( const MapBlip_t &blip );
 	void ClearBlips( void );
 
-	void PaintWorldBlip(const Vector &worldpos, float fBlipStrength, Color BlipColor, MapBlipTexture_t nBlipTexture = MAP_BLIP_TEXTURE_NORMAL);
+	void PaintWorldBlip(const Vector& worldpos, float fBlipStrength, Color BlipColor, MapBlipTexture_t nBlipTexture = MAP_BLIP_TEXTURE_NORMAL);
+	void PaintWorldBlip(const Vector& worldpos, float fBlipStrength, Color BlipColor, int radius, MapBlipTexture_t nBlipTexture = MAP_BLIP_TEXTURE_NORMAL);
 	void PaintWorldFacingArc(const Vector &worldpos, float fFacingYaw, Color FacingColor);
 
 protected:

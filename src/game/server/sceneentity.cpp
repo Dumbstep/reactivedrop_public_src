@@ -1699,10 +1699,18 @@ void CSceneEntity::DispatchStartSpeak( CChoreoScene *scene, CBaseFlex *actor, CC
 	// Emit sound
 	if ( actor )
 	{
-		CPASAttenuationFilter filter( actor, iSoundlevel );		
+		CPASAttenuationFilter filter( actor, iSoundlevel );
+		for ( int i = 1; i <= gpGlobals->maxClients; i++ )
+		{
+			if ( !CBaseEntity::Instance( i ) )
+				continue;
 
-
-
+			const char *szSkipDialogue = engine->GetClientConVarValue( i, "rd_skip_all_dialogue" );
+			if ( szSkipDialogue && atoi( szSkipDialogue ) )
+			{
+				filter.RemoveRecipientByPlayerIndex( i );
+			}
+		}
 
 		if ( m_pRecipientFilter )
 		{
@@ -2479,11 +2487,11 @@ void CSceneEntity::PrefetchAnimBlocks( CChoreoScene *scene )
 							{
 								// Now look up the animblock
 								mstudioseqdesc_t &seqdesc = pStudioHdr->pSeqdesc( seq );
-								for ( int i = 0 ; i < seqdesc.groupsize[ 0 ] ; ++i )
+								for ( int j = 0 ; j < seqdesc.groupsize[ 0 ] ; ++j )
 								{
-									for ( int j = 0; j < seqdesc.groupsize[ 1 ]; ++j )
+									for ( int k = 0; k < seqdesc.groupsize[ 1 ]; ++k )
 									{
-										int animation = seqdesc.anim( i, j );
+										int animation = seqdesc.anim( j, k );
 										int baseanimation = pStudioHdr->iRelativeAnim( seq, animation );
 										mstudioanimdesc_t &animdesc = pStudioHdr->pAnimdesc( baseanimation );
 
@@ -2502,14 +2510,14 @@ void CSceneEntity::PrefetchAnimBlocks( CChoreoScene *scene )
 											++resident;
 											if ( spew > 1 )
 											{
-												Msg( "%s:%s[%i:%i] was resident\n", pStudioHdr->pszName(), animdesc.pszName(), i, j );
+												Msg( "%s:%s[%i:%i] was resident\n", pStudioHdr->pszName(), animdesc.pszName(), j, k );
 											}
 										}
 										else
 										{
 											if ( spew != 0 )
 											{
-												Msg( "%s:%s[%i:%i] async load\n", pStudioHdr->pszName(), animdesc.pszName(), i, j );
+												Msg( "%s:%s[%i:%i] async load\n", pStudioHdr->pszName(), animdesc.pszName(), j, k );
 											}
 										}
 									}

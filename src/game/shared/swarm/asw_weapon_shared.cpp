@@ -307,7 +307,7 @@ void CASW_Weapon::ItemBusyFrame( void )
 				//Msg( "S: %f - %f - %f RELOAD MISSED! -- Progress = %f\n", gpGlobals->curtime, fFastStart, fFastEnd, flProgress );
 				m_fFastReloadEnd = 0;
 				m_fFastReloadStart = 0;
-
+				
 				CBaseCombatCharacter *pOwner = GetOwner();
 				if ( pOwner )
 				{
@@ -321,6 +321,13 @@ void CASW_Weapon::ItemBusyFrame( void )
 				//pMarine->DoAnimationEvent( PLAYERANIMEVENT_RELOAD_FAIL );
 
 #ifdef GAME_DLL
+				IGameEvent * event = gameeventmanager->CreateEvent( "fast_reload_fail" );
+				if ( event )
+				{
+					event->SetInt( "marine", pMarine->entindex() );
+					gameeventmanager->FireEvent( event, true );
+				}
+				
 				pMarine->m_nFastReloadsInARow = 0;
 
 				if (rd_fast_reload_explode_chance.GetFloat() > 0)

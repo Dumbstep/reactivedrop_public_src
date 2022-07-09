@@ -865,12 +865,13 @@ int CASWHudCrosshair::GetCurrentCrosshair( int x, int y )
 	}
 
 	Panel *pPanel = GetClientMode()->GetPanelFromViewport( "ComputerContainer" );
-	if ( !pPanel )
+	if ( pPanel && pPanel->IsWithin( x, y ) )
 	{
-		pPanel = GetClientMode()->GetPanelFromViewport( "WireTileContainer" );
+		return m_nHackCrosshairTexture;
 	}
 
-	if ( pPanel && pPanel->IsCursorOver() )
+	pPanel = GetClientMode()->GetPanelFromViewport( "WireTileContainer" );
+	if ( pPanel && pPanel->IsWithin( x, y ) )
 	{
 		return m_nHackCrosshairTexture;
 	}

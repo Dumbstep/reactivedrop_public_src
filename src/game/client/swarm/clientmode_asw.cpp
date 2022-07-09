@@ -53,6 +53,7 @@
 #include "asw_briefing.h"
 #include "c_gib.h"
 #include "asw_hud_chat.h"
+#include "game_timescale_shared.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -801,14 +802,12 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 	if ( Q_strcmp( "mission_failed", eventname ) == 0 )
 	{
 		C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
-<<<<<<< HEAD
-		if ( pPlayer && ASWGameResource()->GetLeader() == pPlayer )
-=======
 		if ( pPlayer && cl_auto_restart_mission.GetBool() && ASWGameResource()->GetLeader() == pPlayer )
 		{
 			engine->ClientCmd( "asw_restart_mission" );
 		}
 	}
+
 	if ( Q_strcmp( "asw_mission_restart", eventname ) == 0 )
 	{
 		( GET_HUDELEMENT( CHudChat ) )->m_bSkipNextReset = true;
@@ -819,6 +818,9 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 		{
 			pPlayer->OnMissionRestart();
 		}
+
+		// re-init some systems
+		GameTimescale()->LevelInitPostEntity();
 
 		m_aAchievementsEarned.Purge();
 		m_aAwardedExperience.Purge();

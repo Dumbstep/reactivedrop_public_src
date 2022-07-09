@@ -265,10 +265,27 @@ void MainMenu::OnCommand( const char *command )
 	{
 		// clicking No Steam will provide some info
 		GenericConfirmation* confirmation =
-			static_cast<GenericConfirmation*>( CBaseModPanel::GetSingleton().OpenWindow( WT_GENERICCONFIRMATION, CBaseModPanel::GetSingleton().GetWindow( WT_GAMELOBBY ), false ) );
+			static_cast<GenericConfirmation*>( CBaseModPanel::GetSingleton().OpenWindow( WT_GENERICCONFIRMATION, this, false ) );
 		GenericConfirmation::Data_t data;
 		data.pWindowTitle = "#rd_no_steam_service";
 		data.pMessageText = "#rd_no_steam_solutions";
+
+		if ( SteamUser() )
+		{
+			// The NO STEAM main menu is active, but the Steam API is available. This should never happen. Please contact https://reactivedrop.com/feedback
+			data.pMessageText = "#rd_no_steam_solutions_api";
+		}
+		else if ( !SteamAPI_IsSteamRunning() )
+		{
+			// Did not detect an instance of the Steam Client. If the Steam Client is running, try selecting Steam->Exit and then restarting Steam.
+			data.pMessageText = "#rd_no_steam_solutions_client";
+		}
+		else if ( !SteamAPI_GetSteamInstallPath() )
+		{
+			// Could not determine the location of the Steam Client through the registry. Try restarting Steam.
+			data.pMessageText = "#rd_no_steam_solutions_path";
+		}
+
 		data.bOkButtonEnabled = true;
 		confirmation->SetUsageData( data );
 	}
@@ -967,8 +984,13 @@ void MainMenu::OnThink()
 //=============================================================================
 void MainMenu::OnOpen()
 {
-	ConVarRef sv_cheats( "sv_cheats" );
-	if ( !sv_cheats.GetBool() )
+	extern ConVar *sv_cheats;
+	if ( !sv_cheats )
+	{
+		sv_cheats = cvar->FindVar( "sv_cheats" );
+	}
+
+	if ( sv_cheats && !sv_cheats->GetBool() )
 	{
 		if ( rd_revert_convars.GetBool() )
 		{
@@ -1058,8 +1080,6 @@ void MainMenu::Activate()
 	// for us to be able to browse lobbies with up to 32 slots
 	mm_max_players.Revert();
 
-	// #iss-speaker-reset 
-	// restart sound engine here
 	static bool bRunOnce = true;
 	if ( bRunOnce )
 	{
@@ -1069,8 +1089,18 @@ void MainMenu::Activate()
 			SteamNetworkingUtils()->InitRelayNetworkAccess();
 		}
 
+		if ( ConVarRef( "net_steamcnx_allowrelay" ).GetBool() )
+		{
+			// if relayed connections are enabled, use them by default instead of trying direct IPv4 UDP first
+			ConVarRef( "net_steamcnx_enabled" ).SetValue( 2 );
+		}
+
+		// update soundcache on initial load
 		engine->ClientCmd_Unrestricted( "snd_restart; update_addon_paths; mission_reload; snd_updateaudiocache; snd_restart" );
-		engine->ClientCmd( "execifexists loadouts" );	// added support for loadout editor, by element109
+
+		// added support for loadout editor, by element109
+		engine->ClientCmd( "execifexists loadouts" );
+
 		bRunOnce = false;
 	}
 	//

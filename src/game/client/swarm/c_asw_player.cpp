@@ -310,6 +310,10 @@ BEGIN_PREDICTION_DATA( C_ASW_Player )
 	DEFINE_PRED_FIELD( m_flUseKeyDownTime, FIELD_FLOAT, FTYPEDESC_NOERRORCHECK ),
 	DEFINE_PRED_FIELD( m_hUseKeyDownEnt, FIELD_EHANDLE, FTYPEDESC_NOERRORCHECK ),
 	DEFINE_PRED_FIELD( m_angMarineAutoAimFromClient, FIELD_VECTOR, FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_iScreenWidth, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_iScreenHeight, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_iMouseX, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_iMouseY, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
 
 vgui::DHANDLE<vgui::Frame> g_hBriefingFrame;
@@ -318,11 +322,6 @@ C_ASW_Player::C_ASW_Player() :
 	m_iv_angEyeAngles( "C_ASW_Player::m_iv_angEyeAngles" ),
 	m_iv_iMouseX( "C_ASW_Player::m_iv_iMouseX" ),
 	m_iv_iMouseY( "C_ASW_Player::m_iv_iMouseY" )
-
-#if !defined(NO_STEAM)
-	, m_CallbackUserStatsReceived( this, &C_ASW_Player::Steam_OnUserStatsReceived )
-	, m_CallbackUserStatsStored( this, &C_ASW_Player::Steam_OnUserStatsStored )
-#endif
 {
 	m_PlayerAnimState = CreatePlayerAnimState(this, this, LEGANIM_9WAY, false);
 			
@@ -2315,6 +2314,8 @@ void C_ASW_Player::OnMissionRestart()
 
 	// reset vehicle cam yaw
 	m_fLastVehicleYaw = 0;
+
+	RequestExperience();
 }
 
 void C_ASW_Player::SendBlipSpeech(int iMarine)

@@ -14,6 +14,7 @@
 #include "beamdraw.h"
 #include "object_motion_blur_effect.h"
 #include "asw_deathmatch_mode.h"
+#include "dlight.h"
 #include "glow_outline_effect.h"
 
 class C_ASW_Player;
@@ -398,7 +399,7 @@ public:
 	float GetBaseMeleeDamage() { return m_flBaseMeleeDamage; }
 	float m_flBaseMeleeDamage;
 	void DoMeleeDamageTrace( float flYawStart, float flYawEnd );
-	void ApplyMeleeDamage( CBaseEntity *pHitEntity, CTakeDamageInfo &dmgInfo, Vector &vecAttackDir, trace_t *tr );
+	void ApplyMeleeDamage( CBaseEntity *pHitEntity, CTakeDamageInfo dmgInfo, Vector &vecAttackDir, trace_t *tr );
 	CBaseEntity *MeleeTraceHullAttack( const Vector &vecStart, const Vector &vecEnd, const Vector &vecMins, const Vector &vecMaxs, bool bHitBehindMarine, float flAttackCone );
 	void ApplyPassiveMeleeDamageEffects( CTakeDamageInfo &dmgInfo );
 	bool HasPowerFist();
@@ -428,6 +429,12 @@ public:
 	// shoulder cone
 	virtual void CreateShoulderCone();
 	EHANDLE m_hShoulderCone;
+
+	// backpack
+	virtual void CreateBackpack( C_BaseCombatWeapon *pWeapon );
+	virtual void RemoveBackpack();
+	EHANDLE m_hBackpack;
+	const char *m_sBackpackModel;
 
 	// powerup
 	bool HasAnyPowerups( void ) { return m_iPowerupType >= 0; }

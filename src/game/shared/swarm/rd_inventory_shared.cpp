@@ -19,6 +19,8 @@
 extern ConVar rd_dedicated_server_language;
 #endif
 
+static CUtlMap<SteamItemDef_t, ReactiveDropInventory::ItemDef_t *> s_ItemDefs( DefLessFunc( SteamItemDef_t ) );
+
 static class CRD_Inventory_Manager : public CAutoGameSystem
 {
 public:
@@ -65,6 +67,32 @@ public:
 			Warning( "Failed to request automatic item rewards!\n" );
 		}
 #endif
+	}
+
+	virtual void LevelInitPreEntity()
+	{
+		ISteamInventory *pInventory = SteamInventory();
+#ifdef GAME_DLL
+		if ( engine->IsDedicatedServer() )
+		{
+			pInventory = SteamGameServerInventory();
+		}
+#endif
+		if ( !pInventory )
+		{
+			DevWarning( "Cannot access ISteamInventory!\n" );
+			return;
+		}
+
+		if ( m_flDefsUpdateTime < Plat_FloatTime() - 3600.0f )
+		{
+			m_flDefsUpdateTime = Plat_FloatTime();
+
+			if ( !pInventory->LoadItemDefinitions() )
+			{
+				Warning( "Failed to load inventory item definitions!\n" );
+			}
+		}
 	}
 
 #ifdef CLIENT_DLL
@@ -148,6 +176,7 @@ public:
 
 	void HandlePromotionalItemsResult()
 	{
+		// don't do anything with the result for now.
 		SteamInventory()->DestroyResult( m_PromotionalItemsResult );
 		m_PromotionalItemsResult = k_SteamInventoryResultInvalid;
 	}
@@ -244,6 +273,7 @@ public:
 	SteamInventoryResult_t m_EquippedMedalResult{ k_SteamInventoryResultInvalid };
 	SteamInventoryResult_t m_PromotionalItemsResult{ k_SteamInventoryResultInvalid };
 	SteamInventoryResult_t m_DebugPrintInventoryResult{ k_SteamInventoryResultInvalid };
+	float m_flDefsUpdateTime{ 0.0f };
 
 	STEAM_CALLBACK( CRD_Inventory_Manager, OnLobbyEntered, LobbyEnter_t )
 	{
@@ -253,6 +283,12 @@ public:
 		}
 	}
 #endif
+
+	STEAM_CALLBACK( CRD_Inventory_Manager, OnSteamInventoryDefinitionUpdate, SteamInventoryDefinitionUpdate_t )
+	{
+		// this leaks memory, but it's a small amount and only happens when an update is manually pushed.
+		s_ItemDefs.RemoveAll();
+	}
 } s_RD_Inventory_Manager;
 
 #ifdef CLIENT_DLL
@@ -459,8 +495,6 @@ namespace ReactiveDropInventory
 		return true;
 	}
 
-	static CUtlMap<SteamItemDef_t, ItemDef_t *> s_ItemDefs( DefLessFunc( SteamItemDef_t ) );
-
 	const ItemDef_t *GetItemDef( SteamItemDef_t id )
 	{
 		unsigned short index = s_ItemDefs.Find( id );
@@ -500,6 +534,13 @@ namespace ReactiveDropInventory
 		if ( *szBuf.Base() )
 		{
 			pItemDef->Icon = new CSteamItemIcon( szBuf.Base() );
+		}
+
+		pItemDef->IconSmall = pItemDef->Icon;
+		FETCH_PROPERTY( "icon_url_small" );
+		if ( *szBuf.Base() )
+		{
+			pItemDef->IconSmall = new CSteamItemIcon( szBuf.Base() );
 		}
 #endif
 
@@ -575,7 +616,8 @@ namespace ReactiveDropInventory
 			return;
 		}
 
-		char szToken[128];
+		char szToken[128]{};
+		wchar_t wszTokenReplacement[128]{};
 
 		for ( size_t i = 0; i < sizeOfBufferInBytes; i++ )
 		{
@@ -584,15 +626,17 @@ namespace ReactiveDropInventory
 				return;
 			}
 
-			if ( wszBuf[i] != '%' )
+			if ( wszBuf[i] != L'%' )
 			{
 				continue;
 			}
 
+			V_wcsncpy( wszTokenReplacement, L"MISSING", sizeof( wszTokenReplacement ) );
+
 			size_t tokenLength = 1;
-			while ( wszBuf[i + tokenLength] != '%' )
+			while ( wszBuf[i + tokenLength] != L'%' && wszBuf[i + tokenLength] != L':' )
 			{
-				if ( wszBuf[i + tokenLength] == '\0' )
+				if ( wszBuf[i + tokenLength] == L'\0' )
 				{
 					return;
 				}
@@ -606,6 +650,30 @@ namespace ReactiveDropInventory
 			}
 
 			szToken[tokenLength - 1] = '\0';
+
+			if ( wszBuf[i + tokenLength] == L':' )
+			{
+				size_t tokenReplacementLength = 0;
+				tokenLength++;
+
+				while ( wszBuf[i + tokenLength] != L'%' )
+				{
+					if ( wszBuf[i + tokenLength] == L'\0' )
+					{
+						return;
+					}
+
+					szToken[tokenReplacementLength] = wszBuf[i + tokenLength];
+
+					tokenReplacementLength++;
+					tokenLength++;
+
+					Assert( tokenReplacementLength < NELEMS( wszTokenReplacement ) );
+				}
+
+				wszTokenReplacement[tokenReplacementLength] = L'\0';
+			}
+
 			tokenLength++;
 
 			if ( tokenLength == 2 )
@@ -616,7 +684,14 @@ namespace ReactiveDropInventory
 				continue;
 			}
 
-			const wchar_t *wszReplacement = pKV->GetWString( szToken, L"MISSING" );
+			if ( !V_stricmp( szToken, "m_unQuantity" ) )
+			{
+				// special case: m_unQuantity is not stored in dynamic_props
+				SteamItemDetails_t details = GetItemDetails( hResult, index );
+				V_snwprintf( wszTokenReplacement, sizeof( wszTokenReplacement ), L"%d", details.m_unQuantity );
+			}
+
+			const wchar_t *wszReplacement = pKV->GetWString( szToken, wszTokenReplacement );
 			size_t replacementLength = 0;
 			while ( wszReplacement[replacementLength] )
 			{

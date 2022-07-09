@@ -12,9 +12,11 @@
 	#include "c_asw_pickup_weapon.h"
 	#include "c_asw_shieldbug.h"
 	#include "c_asw_hack.h"
+	#include "c_physics_prop_statue.h"
 	#define CASW_Simple_Alien C_ASW_Simple_Alien
 	#define CASW_Pickup_Weapon C_ASW_Pickup_Weapon
 	#define CAI_BaseNPC C_AI_BaseNPC
+	#define CStatueProp C_StatueProp
 #else
 	#include "te_effect_dispatch.h"
 	#include "asw_marine.h"
@@ -27,6 +29,8 @@
 	#include "asw_pickup_weapon.h"
 	#include "asw_alien.h"
 	#include "asw_hack.h"
+	#include "physics_prop_statue.h"
+	#include "asw_util_shared.h"
 #endif
 #include "game_timescale_shared.h"
 #include "asw_marine_gamemovement.h"
@@ -69,6 +73,7 @@ extern ConVar asw_melee_debug;
 extern ConVar asw_debug_marine_damage;
 extern ConVar asw_stim_time_scale;
 extern ConVar asw_marine_ff;
+extern ConVar asw_fist_finisher_damage_scale;
 ConVar asw_leadership_radius("asw_leadership_radius", "600", FCVAR_REPLICATED | FCVAR_CHEAT, "Radius of the leadership field around NCOs with the leadership skill");
 ConVar asw_marine_speed_scale_easy("asw_marine_speed_scale_easy", "0.96", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_marine_speed_scale_normal("asw_marine_speed_scale_normal", "1.0", FCVAR_REPLICATED | FCVAR_CHEAT );
@@ -89,7 +94,7 @@ ConVar rd_explosive_railgun_bullets( "rd_explosive_railgun_bullets", "0", FCVAR_
 ConVar rd_explosive_bullets( "rd_explosive_bullets", "0", FCVAR_CHEAT);
 ConVar rd_explosive_bullets_dmg( "rd_explosive_bullets_dmg", "50", FCVAR_CHEAT);
 ConVar rd_explosive_bullets_radius( "rd_explosive_bullets_radius", "200", FCVAR_CHEAT);
-extern ConVar rda_marine_backpack;
+extern ConVar rd_server_marine_backpacks;
 #endif
 
 #ifdef CLIENT_DLL
@@ -117,6 +122,11 @@ bool CASW_Marine::Weapon_Switch( CBaseCombatWeapon *pWeapon, int viewmodelindex 
 		m_bLastWeaponBeforeTempWasSecondary = GetActiveASWWeapon() == pWeaponSec;
 	}
 
+#if CLIENT_DLL
+	C_BaseCombatWeapon *pActiveWeapon = GetActiveWeapon();
+	CreateBackpack( pActiveWeapon );
+#endif
+
 	//Orange. BaseClass::Weapon_Switch() overrides m_flNextPrimaryAttack of the pWeapon later in CBaseCombatWeapon::DefaultDeploy()
 	//So we have to calc delay before it and restore with ApplyWeaponSwitchTime(). 
 	//This way we respect switch time and used gun firerate (unlike it taken before from gun in another slot)
@@ -134,7 +144,7 @@ bool CASW_Marine::Weapon_Switch( CBaseCombatWeapon *pWeapon, int viewmodelindex 
 		if ( pWeapon != pLast && ASWGameRules() && ASWGameRules()->GetGameState() >= ASW_GS_INGAME )
 		{
 #ifdef GAME_DLL
-			if ( rda_marine_backpack.GetBool() && !m_bKnockedOut ) // do not allow backpack switch when incapacitated with reviving enabled
+			if ( rd_server_marine_backpacks.GetBool() && !m_bKnockedOut ) // do not allow backpack switch when incapacitated with reviving enabled
 			{
 				CASW_Weapon* pTempWeapon = GetASWWeapon(ASW_TEMPORARY_WEAPON_SLOT);
 
@@ -662,12 +672,12 @@ void CASW_Marine::DoDamagePowerupEffects( CBaseEntity *pTarget, CTakeDamageInfo 
 
 	if ( m_iDamageAttributeEffects & BULLET_ATT_FREEZE )
 	{
-		if (pTarget)
+		if ( pTarget )
 		{
-			CAI_BaseNPC* pNPC = pTarget->MyNPCPointer();
-			if (pNPC)
+			CAI_BaseNPC *pNPC = pTarget->MyNPCPointer();
+			if ( pNPC )
 			{
-				pNPC->Freeze(100.0f, this);
+				pNPC->Freeze( 3.0f, this );
 			}
 		}
 	}
@@ -1467,15 +1477,15 @@ void CASW_Marine::FirePenetratingBullets( const FireBulletsInfo_t &info, int iMa
 		if (bPierce)
 		{
 			CAI_BaseNPC *pNPC = tr.m_pEnt->MyNPCPointer();
-			CASW_Simple_Alien *pAlien = dynamic_cast<CASW_Simple_Alien*>(tr.m_pEnt);
-			if (pNPC || pAlien)
+			CASW_Simple_Alien *pAlien = dynamic_cast< CASW_Simple_Alien * >( tr.m_pEnt );
+			CStatueProp *pStatue = dynamic_cast< CStatueProp * >( tr.m_pEnt );
+			if ( pNPC || pAlien || pStatue )
 			{
-
 				if ( tr.m_pEnt->Classify() == CLASS_ASW_SHIELDBUG )		// don't let bullets pass through shieldbugs
 				{
 					bPierce = false;
 				}
-				else if ((info.m_nFlags & FIRE_BULLETS_NO_PIERCING_SPARK) == 0)
+				else if ( ( info.m_nFlags & FIRE_BULLETS_NO_PIERCING_SPARK ) == 0 )
 				{
 					CEffectData	data;
 					data.m_vOrigin = tr.endpos;
@@ -2166,7 +2176,7 @@ bool CASW_Marine::CanPickupPrimaryAmmo()
 	return false;
 }
 
-void CASW_Marine::ApplyMeleeDamage( CBaseEntity *pHitEntity, CTakeDamageInfo &dmgInfo, Vector &vecAttackDir, trace_t *tr )
+void CASW_Marine::ApplyMeleeDamage( CBaseEntity *pHitEntity, CTakeDamageInfo dmgInfo, Vector &vecAttackDir, trace_t *tr )
 {
 	if ( !pHitEntity )
 	{
@@ -2270,6 +2280,13 @@ void CASW_Marine::ApplyMeleeDamage( CBaseEntity *pHitEntity, CTakeDamageInfo &dm
 
 void CASW_Marine::PlayMeleeImpactEffects( CBaseEntity *pEntity, trace_t *tr )
 {
+#ifdef GAME_DLL
+	if ( HasPowerFist() && m_iMeleeAttackID == CASW_Melee_System::s_nComboFinishAttackID )
+	{
+		UTIL_ASW_ScreenShake( Weapon_ShootPosition(), 10.0f, 20.0f, 0.5f, 512.0f, SHAKE_START );
+	}
+#endif
+
 	if ( !pEntity )
 		return;
 
@@ -2582,6 +2599,7 @@ CBaseEntity *CASW_Marine::MeleeTraceHullAttack( const Vector &vecStart, const Ve
 
 	CTakeDamageInfo	dmgInfo( this, this, 0.0f, DMG_CLUB );
 	dmgInfo.SetDamage( MarineSkills()->GetSkillBasedValueByMarine( this, ASW_MARINE_SKILL_MELEE, ASW_MARINE_SUBSKILL_MELEE_DMG ) );
+	dmgInfo.ScaleDamage( GetCurrentMeleeAttack()->m_flDamageScale );
 
 	Vector vecAttackDir = vecEnd - vecStart;
 	VectorNormalize( vecAttackDir );
@@ -2884,6 +2902,11 @@ void CASW_Marine::ApplyPassiveMeleeDamageEffects( CTakeDamageInfo &dmgInfo )
 				dmgInfo.ScaleDamage( flDamageScale );
 			}
 		}
+	}
+
+	if ( HasPowerFist() && m_iMeleeAttackID == CASW_Melee_System::s_nComboFinishAttackID )
+	{
+		dmgInfo.ScaleDamage( asw_fist_finisher_damage_scale.GetFloat() );
 	}
 }
 

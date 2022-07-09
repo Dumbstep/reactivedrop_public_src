@@ -69179,6 +69179,358 @@ entity
 }
 entity
 {
+	"id" "365771"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1108 7212 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365803"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365740"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1108 7204 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365803"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365775"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1108 7196 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365803"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365805"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1096 7212 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365804"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365809"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1096 7204 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365804"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365813"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1096 7196 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365804"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365818"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1084 7212 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365817"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365822"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1084 7204 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365817"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365826"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1084 7196 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365817"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365831"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1072 7212 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365830"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365835"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1072 7204 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365830"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "365839"
+	"classname" "prop_static"
+	"angles" "0 270 90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-1072 7196 -620"
+	editor
+	{
+		"color" "237 222 0"
+		"groupid" "365830"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "366511"
+	"classname" "prop_static"
+	"angles" "0 0 0"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/env/ryberg/outside/outsidewall_128_thinpipe3/outsidewall_128_thinpipe3.mdl"
+	"renderamt" "255"
+	"rendercolor" "128 0 0"
+	"skin" "0"
+	"solid" "0"
+	"origin" "-1173 7128 -720"
+	editor
+	{
+		"color" "241 122 0"
+		"groupid" "366558"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "366538"
+	"classname" "prop_static"
+	"angles" "0 0 0"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/env/ryberg/outside/outsidewall_128_thinpipe3/outsidewall_128_thinpipe3.mdl"
+	"renderamt" "255"
+	"rendercolor" "128 0 0"
+	"skin" "0"
+	"solid" "0"
+	"origin" "-1173 7137 -720"
+	editor
+	{
+		"color" "241 122 0"
+		"groupid" "366558"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "366542"
+	"classname" "prop_static"
+	"angles" "0 0 0"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/env/ryberg/outside/outsidewall_128_thinpipe3/outsidewall_128_thinpipe3.mdl"
+	"renderamt" "255"
+	"rendercolor" "128 0 0"
+	"skin" "0"
+	"solid" "0"
+	"origin" "-1173 7148 -720"
+	editor
+	{
+		"color" "241 122 0"
+		"groupid" "366558"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
+	"id" "366564"
+	"classname" "prop_static"
+	"angles" "0 0 0"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props/floor/metal_flashing/metal_flashing_64.mdl"
+	"renderamt" "255"
+	"rendercolor" "192 192 192"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-996 7116 -714"
+	editor
+	{
+		"color" "241 122 0"
+		"groupid" "366559"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 -1768]"
+	}
+}
+entity
+{
 	"id" "6"
 	"classname" "info_player_start"
 	"angles" "0 180 0"
@@ -112777,10 +113129,10 @@ entity
 {
 	"id" "215639"
 	"classname" "asw_objective_triggered"
-	"objectivedescription1" "Burn the biomass away"
+	"objectivedescription1" "#rd_res1_ob_find_bypass_gate_d"
 	"objectiveimage" "rd_res_MC-M2"
 	"objectivemarkername" "obj9_marker"
-	"objectivetitle" "Find a way to bypass the gate"
+	"objectivetitle" "#rd_res1_ob_find_bypass_gate"
 	"targetname" "obj9"
 	"Visible" "1"
 	connections
@@ -112891,10 +113243,10 @@ entity
 {
 	"id" "215704"
 	"classname" "asw_objective_triggered"
-	"objectivedescription1" "You'll need to bring that lift up, hit the switch to activate it"
+	"objectivedescription1" "#rd_res1_ob_rise_lift_d"
 	"objectiveimage" "rd_res_MC-M3"
 	"objectivemarkername" "obj11_marker"
-	"objectivetitle" "Rise the lift"
+	"objectivetitle" "#rd_res1_ob_rise_lift"
 	"targetname" "obj11"
 	"Visible" "1"
 	connections
@@ -112914,11 +113266,11 @@ entity
 {
 	"id" "215706"
 	"classname" "asw_objective_triggered"
-	"objectivedescription1" "The swarm seem to be attracted to something, defend the generator!"
-	"objectivedescription2" "If they damage it too much the lift won't reach you."
+	"objectivedescription1" "#rd_res1_ob_defend_generator_d"
+	"objectivedescription2" "#rd_res1_ob_defend_generator_d2"
 	"objectiveimage" "rd_res_MC-M4"
 	"objectivemarkername" "obj12_marker"
-	"objectivetitle" "Defend the generator"
+	"objectivetitle" "#rd_res1_ob_defend_generator"
 	"targetname" "obj12"
 	"Visible" "1"
 	connections
@@ -113036,7 +113388,7 @@ entity
 	"classname" "asw_objective_escape"
 	"objectiveimage" "rd_res_MC-M5"
 	"objectivemarkername" "obj13_marker"
-	"objectivetitle" "Get on the lift"
+	"objectivetitle" "#rd_res1_ob_on_lift"
 	"targetname" "obj13"
 	"Visible" "1"
 	"origin" "-16 160 143.911"
@@ -113440,12 +113792,12 @@ entity
 {
 	"id" "215395"
 	"classname" "asw_objective_triggered"
-	"objectivedescription1" "There must be something to use in the caves nearby"
+	"objectivedescription1" "#rd_res1_ob_find_bypass_blockage_d"
 	"objectiveimage" "rd_res_MC-M1"
 	"objectiveinfoicon1" "RC7-MC-M1"
 	"objectiveinfoicon2" "RC7-MC-M1"
 	"objectivemarkername" "obj3_marker"
-	"objectivetitle" "Find a way past the blockage"
+	"objectivetitle" "#rd_res1_ob_find_bypass_blockage"
 	"targetname" "obj3"
 	"Visible" "1"
 	connections
@@ -115096,7 +115448,7 @@ entity
 	"MailFile" "rd_res_houghton4"
 	"origin" "-634 32 32"
 	"panelpropname" "pda2"
-	"PDAName" "Alpha Squad"
+	"PDAName" "#asw_pda_owner_name_alpha_squad"
 	"playersrequired" "1"
 	"spawnflags" "16"
 	"StartDisabled" "0"
@@ -115222,7 +115574,7 @@ entity
 	"MailFile" "rd_res_houghton5"
 	"origin" "-4608 128 48"
 	"panelpropname" "pda1"
-	"PDAName" "Alpha Squad"
+	"PDAName" "#asw_pda_owner_name_alpha_squad"
 	"playersrequired" "1"
 	"spawnflags" "16"
 	"StartDisabled" "0"
@@ -129840,270 +130192,6 @@ entity
 }
 entity
 {
-	"id" "365771"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1108 7212 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365803"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365740"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1108 7204 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365803"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365775"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1108 7196 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365803"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365805"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1096 7212 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365804"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365809"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1096 7204 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365804"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365813"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1096 7196 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365804"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365818"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1084 7212 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365817"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365822"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1084 7204 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365817"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365826"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1084 7196 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365817"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365831"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1072 7212 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365830"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365835"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1072 7204 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365830"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "365839"
-	"classname" "prop_static"
-	"angles" "0 270 90"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/supports/ryd_support_beam01/ryd_wire_system.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-1072 7196 -620"
-	editor
-	{
-		"color" "237 222 0"
-		"groupid" "365830"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
 	"id" "365843"
 	"classname" "env_sprite"
 	"disablereceiveshadows" "0"
@@ -130594,94 +130682,6 @@ entity
 		"visgroupshown" "1"
 		"visgroupautoshown" "1"
 		"logicalpos" "[3500 5000]"
-	}
-}
-entity
-{
-	"id" "366511"
-	"classname" "prop_static"
-	"angles" "0 0 0"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/env/ryberg/outside/outsidewall_128_thinpipe3/outsidewall_128_thinpipe3.mdl"
-	"renderamt" "255"
-	"rendercolor" "128 0 0"
-	"skin" "0"
-	"solid" "0"
-	"origin" "-1173 7128 -720"
-	editor
-	{
-		"color" "241 122 0"
-		"groupid" "366558"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "366538"
-	"classname" "prop_static"
-	"angles" "0 0 0"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/env/ryberg/outside/outsidewall_128_thinpipe3/outsidewall_128_thinpipe3.mdl"
-	"renderamt" "255"
-	"rendercolor" "128 0 0"
-	"skin" "0"
-	"solid" "0"
-	"origin" "-1173 7137 -720"
-	editor
-	{
-		"color" "241 122 0"
-		"groupid" "366558"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "366542"
-	"classname" "prop_static"
-	"angles" "0 0 0"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/env/ryberg/outside/outsidewall_128_thinpipe3/outsidewall_128_thinpipe3.mdl"
-	"renderamt" "255"
-	"rendercolor" "128 0 0"
-	"skin" "0"
-	"solid" "0"
-	"origin" "-1173 7148 -720"
-	editor
-	{
-		"color" "241 122 0"
-		"groupid" "366558"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
-	}
-}
-entity
-{
-	"id" "366564"
-	"classname" "prop_static"
-	"angles" "0 0 0"
-	"fademindist" "-1"
-	"fadescale" "1"
-	"model" "models/props/floor/metal_flashing/metal_flashing_64.mdl"
-	"renderamt" "255"
-	"rendercolor" "192 192 192"
-	"skin" "0"
-	"solid" "6"
-	"origin" "-996 7116 -714"
-	editor
-	{
-		"color" "241 122 0"
-		"groupid" "366559"
-		"visgroupshown" "1"
-		"visgroupautoshown" "1"
-		"logicalpos" "[0 -1768]"
 	}
 }
 entity

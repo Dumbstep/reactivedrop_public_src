@@ -27,6 +27,7 @@
 #include "filesystem.h"
 #include "vgui_int.h"
 #include "asw_util_shared.h"
+#include "rd_inventory_shared.h"
 
 #if defined( _X360 )
 #include "xbox/xbox_win32stubs.h"
@@ -1664,25 +1665,45 @@ void CBaseHudChat::Send( void )
 	wchar_t szTextbuf[1024];
 	m_pChatInput->GetMessageText( szTextbuf, sizeof( szTextbuf ) );
 	
-	char ansi[1024];
-	g_pVGuiLocalize->ConvertUnicodeToANSI( szTextbuf, ansi, sizeof( ansi ) );
-	int len = Q_strlen(ansi);
+	if (Q_wcslen(szTextbuf) > 0)
+	{ 
+		char temp[124];
+		char szTextbuf2[1024];
+		sprintf(szTextbuf2, "%s", szTextbuf);
+		V_strncpy(temp, (char*)szTextbuf, 8);
+		Msg("%s\n", szTextbuf);
+		
+		if (!Q_strncmp(szTextbuf2, "/t", 2))
+		{
+			Q_memcpy(szTextbuf2, '\0', 2);
+			
+			new CRDTranslation( szTextbuf2, true );
+		}
+		else
+		{
+			new CRDTranslation(szTextbuf2, true);
+			
+			//char ansi[1024];
+			//g_pVGuiLocalize->ConvertUnicodeToANSI( szTextbuf, ansi, sizeof( ansi ) );
+			//int len = Q_strlen(ansi);
 
-	// remove the \n
-	if ( len > 0 &&
-		ansi[ len - 1 ] == '\n' )
-	{
-		ansi[ len - 1 ] = '\0';
+			//// remove the \n
+			//if ( len > 0 &&
+			//	ansi[ len - 1 ] == '\n' )
+			//{
+			//	ansi[ len - 1 ] = '\0';
+			//}
+
+			//if ( len > 0 )
+			//{
+			//	char szbuf[1024];	// more than 128
+			//	Q_snprintf( szbuf, sizeof(szbuf), "%s \"%s\"", m_nMessageMode == MM_SAY ? "say" : "say_team", ansi );
+
+			//	engine->ClientCmd_Unrestricted(szbuf);
+			//}
+		}
 	}
 
-	if ( len > 0 )
-	{
-		char szbuf[1024];	// more than 128
-		Q_snprintf( szbuf, sizeof(szbuf), "%s \"%s\"", m_nMessageMode == MM_SAY ? "say" : "say_team", ansi );
-
-		engine->ClientCmd_Unrestricted(szbuf);
-	}
-	
 	m_pChatInput->ClearEntry();
 	m_nMessageMode = MM_NONE;	// TERROR
 	cl_chat_active.SetValue( m_nMessageMode );

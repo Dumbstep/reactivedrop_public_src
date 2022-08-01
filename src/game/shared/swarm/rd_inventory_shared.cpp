@@ -9,6 +9,7 @@
 #include <vgui/ISurface.h>
 #include <vgui_controls/Controls.h>
 #include "lodepng.h"
+#include "vgui/ILocalize.h"
 #endif
 
 
@@ -798,4 +799,106 @@ namespace ReactiveDropInventory
 	}
 
 #undef GET_INVENTORY_OR_BAIL
+}
+
+bool jsoneq(const char* json, jsmntok_t* tok, const char* s)
+{
+	if (tok->type == JSMN_STRING && (int)Q_strlen(s) == tok->end - tok->start &&
+		Q_strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+		return true;
+	}
+	return false;
+}
+
+char* jsgetval(const char* json, jsmntok_t* tok)
+{
+	char szResults[1024];
+	Q_strncpy(szResults, &json[tok->start], MIN(tok->end - tok->start, sizeof(szResults)));
+	return szResults;
+}
+
+void CRDTranslation::OnTranslationCompleted( HTTPRequestCompleted_t* pParam, bool bIOFailure )
+{
+	if ( bIOFailure || !pParam->m_bRequestSuccessful )
+	{
+		Warning( "Failed to fetch inventory item icon: IO Failure\n" );
+		return;
+	}
+
+	ISteamHTTP *pHTTP = SteamHTTP();
+	Assert( pHTTP );
+	if ( !pHTTP )
+	{
+		Warning( "No access to ISteamHTTP inside callback from HTTP request!\n" );
+		return;
+	}
+
+	if ( pParam->m_eStatusCode != k_EHTTPStatusCode200OK )
+	{
+		Warning( "Status code %d from translation request - trying to parse anyway.\n", pParam->m_eStatusCode );
+	}
+
+	CUtlMemory<uint8_t> data( 0, pParam->m_unBodySize );
+	if ( !pHTTP->GetHTTPResponseBodyData( pParam->m_hRequest, data.Base(), pParam->m_unBodySize ) )
+	{
+		Warning( "Failed to get translation from successful request. Programmer error?\n" );
+		return;
+	}
+
+	pHTTP->ReleaseHTTPRequest( pParam->m_hRequest );
+	char szTranslationResults[1024];
+	const char* szText = (char*)data.Base();
+
+	jsmn_parser parser;
+	jsmntok_t tokens[256];
+	jsmn_init(&parser);
+
+	int count = jsmn_parse(&parser, szText, Q_strlen(szText), tokens, NELEMS(tokens));
+	if (count < 0) {
+		Warning("Failed to parse JSON: %d\n", count);
+		return;
+	}
+
+	/* Assume the top-level element is an object */
+	if (count < 1 || tokens[0].type != JSMN_OBJECT) {
+		Warning("Object expected\n");
+		return;
+	}
+
+	int strlength = 0;
+	for (int i = 1; i < count; i++)
+	{
+		//if (tokens[i].type & JSMN_ARRAY && jsoneq)
+		if (jsoneq(szText, &tokens[i], "tgt"))
+		{
+			char* tgt = jsgetval(szText, &tokens[i + 1]);
+			Q_memcpy(szTranslationResults + strlength, tgt, Q_strlen(tgt));
+			strlength += Q_strlen(tgt);
+		}
+	}
+	szTranslationResults[strlength] = '\0';
+
+	//if (pParam->m_ulContextValue)
+	{
+		char ansi[1024];
+		g_pVGuiLocalize->ConvertUnicodeToANSI((wchar_t*)szTranslationResults, ansi, sizeof(ansi));
+		int len = Q_strlen(ansi);
+
+		// remove the \n
+		if (len > 0 &&
+			ansi[len - 1] == '\n')
+		{
+			ansi[len - 1] = '\0';
+		}
+
+		if (len > 0)
+		{
+			char szbuf[1024];	// more than 128
+			Q_snprintf(szbuf, sizeof(szbuf), "%s \"%s\"", "say", ansi);
+
+			engine->ClientCmd_Unrestricted(szbuf);
+		}
+	}
+
+	delete this;
 }

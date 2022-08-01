@@ -165,6 +165,11 @@ void CHudChat::MsgFunc_SayText( bf_read &msg )
 
 	//Printf( CHAT_FILTER_NONE, "%s", szString );
 	ChatPrintf( iPlayerID, CHAT_FILTER_PUBLICCHAT, "%s", szString );
+
+	/*if (!g_PR->IsLocalPlayer(iPlayerID))
+	{
+
+	}*/
 }
 
 

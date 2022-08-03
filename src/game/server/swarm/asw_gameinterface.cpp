@@ -30,7 +30,7 @@ void CServerGameClients::GetPlayerLimits( int& minplayers, int& maxplayers, int 
 	defaultMaxPlayers = 8;
 	maxplayers = ASW_MAX_PLAYERS;
 
-	ConVarRef tv_enable( "tv_enable" );
+	ConVarRef tv_enable( "tv_enable", true );
 	if ( tv_enable.IsValid() && tv_enable.GetBool() )
 	{
 		minplayers++;
@@ -68,7 +68,6 @@ void CServerGameDLL::ApplyGameSettings( KeyValues *pKV )
 	// map launch comes in (it might be nested under reservation
 	// processing)
 	bool bAlreadyLoadingMap = false;
-	char const *szBspName = NULL;
 	const char *pGameDir = COM_GetModDirectory();
 	if ( !Q_stricmp( pKV->GetName(), "::ExecGameTypeCfg" ) )
 	{

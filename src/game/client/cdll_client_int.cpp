@@ -180,6 +180,7 @@ IUploadGameStats *gamestatsuploader = NULL;
 IBlackBox *blackboxrecorder = NULL;
 #ifdef INFESTED_DLL
 IASW_Mission_Chooser *missionchooser = NULL;
+IConsistency *consistency = NULL;
 #endif
 #if defined( REPLAY_ENABLED )
 IReplayHistoryManager *g_pReplayHistoryManager = NULL;
@@ -519,6 +520,7 @@ public:
 #endif
 #ifdef INFESTED_DLL
 		AddAppSystem( "missionchooser", ASW_MISSION_CHOOSER_VERSION );
+		AddAppSystem( "consistency", INTERFACEVERSION_ICONSISTENCY_V1 );
 #endif
 	}
 
@@ -1161,6 +1163,8 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CGlobalVarsBase *pGloba
 
 #ifdef INFESTED_DLL
 	if ( (missionchooser = (IASW_Mission_Chooser *)appSystemFactory(ASW_MISSION_CHOOSER_VERSION, NULL)) == NULL )
+		return false;
+	if ( (consistency = (IConsistency *)appSystemFactory(INTERFACEVERSION_ICONSISTENCY_V1, NULL)) == NULL )
 		return false;
 #endif
 
@@ -3003,11 +3007,13 @@ void CHLClient::ResetHudCloseCaption()
 		return;
 	}
 
+#ifndef INFESTED_DLL
 	if ( m_pHudCloseCaption )
 	{
 		// force the caption dictionary to remount
 		m_pHudCloseCaption->InitCaptionDictionary( NULL, true );
 	}
+#endif
 }
 
 bool CHLClient::SupportsRandomMaps()

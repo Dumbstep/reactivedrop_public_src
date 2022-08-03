@@ -65,6 +65,18 @@
 		"zpos"		"3"
 		"scaleImage"		"1"
 	}
+	"ToggleLabel"
+	{
+		"fieldName"		"ToggleLabel"
+		"xpos"		"c-124"
+		"ypos"		"r18"
+		"wide"		"120"
+		"tall"		"10"
+		"ControlName"		"Label"
+		"labelText"		"#rd_leaderboard_filter_top"
+		"visible"		"0"
+		"zpos"		"3"
+	}
 	"LeaderboardBackground"
 	{
 		"fieldName"			"LeaderboardBackground"

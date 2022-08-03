@@ -245,7 +245,7 @@ void CASWHudKills::OnThink()
 				char szMarineName[MAX_PLAYER_NAME_LENGTH];
 				pMarineResource->GetDisplayName(szMarineName, sizeof(szMarineName));
 				LeaderboardEntry lbe;
-				lbe.isPlayer = pLocalPlayer ? pLocalPlayer->GetViewMarine() == pMarineResource->GetMarineEntity() : false;
+				lbe.isPlayer = pLocalPlayer ? pLocalPlayer->GetViewNPC() == pMarineResource->GetMarineEntity() : false;
 				Q_strncpy(lbe.name, szMarineName, sizeof(lbe.name));
 
 #ifdef USE_KILL_EVENT
@@ -288,7 +288,7 @@ void CASWHudKills::OnThink()
 			if ( g_PR->IsConnected( j ) && !g_PR->IsLocalPlayer( j ) )
 			{
 				CASW_Player* pPlayer = dynamic_cast< CASW_Player* >( UTIL_PlayerByIndex( j ) );
-				if ( pPlayer && pPlayer->GetSpectatingMarine() == ( pLocalPlayer->GetViewMarine() ? pLocalPlayer->GetViewMarine() : nullptr ) )
+				if ( pPlayer && pPlayer->GetSpectatingNPC() == ( pLocalPlayer->GetViewNPC() ? pLocalPlayer->GetViewNPC() : nullptr))
 				{
 					iNumPlayers++;
 					szPlayerNames[iNumPlayers] = ( char* )g_PR->GetPlayerName( j );

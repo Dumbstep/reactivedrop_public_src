@@ -428,6 +428,13 @@ void CASW_Game_Resource::SetLeader(CASW_Player *pPlayer)
 		return;
 	}
 
+	Assert( pPlayer->CanBeLeader() );
+	if ( !pPlayer->CanBeLeader() )
+	{
+		Warning( "Tried to set lobby leader to '%s'!\n", pPlayer->GetPlayerName() );
+		return;
+	}
+
 	m_Leader = pPlayer;
 	m_iLeaderIndex = pPlayer->entindex();
 	

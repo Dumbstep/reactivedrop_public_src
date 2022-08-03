@@ -12,6 +12,7 @@
 
 class CPhysicsProp;
 class CASW_Player;
+class CASW_Inhabitable_NPC;
 class CASW_Marine;
 class CASW_Marine_Resource;
 class CPointCamera;
@@ -76,10 +77,10 @@ float UTIL_ASW_CalcFastDoorHackTime(int iNumRows, int iNumColumns, int iNumWires
 	bool UTIL_ASW_BlockingMarine( CBaseEntity *pEntity );
 	CASW_Marine* UTIL_ASW_Marine_Can_Chatter_Spot( CBaseEntity *pEntity, float fDist = 500.0f );
 
-	class CASW_ViewMarineRecipientFilter : public CRecipientFilter
+	class CASW_ViewNPCRecipientFilter : public CRecipientFilter
 	{
 	public:
-		CASW_ViewMarineRecipientFilter( CASW_Marine *pMarine );
+		CASW_ViewNPCRecipientFilter( CASW_Inhabitable_NPC *pNPC );
 	};
 #else
 	bool UTIL_ASW_ClientsideGib(C_BaseAnimating* pEnt);
@@ -89,8 +90,8 @@ float UTIL_ASW_CalcFastDoorHackTime(int iNumRows, int iNumColumns, int iNumWires
 	void UTIL_ASW_ParticleDamageNumber( C_BaseEntity *pEnt, Vector vecPos, int iDamage, int iDmgCustom, float flScale, bool bRandomVelocity );
 #endif
 
-void ASW_TransmitShakeEvent( CASW_Marine *pMarine, float localAmplitude, float frequency, float duration, ShakeCommand_t eCommand, const Vector &direction = Vector(0,0,0) );
-void ASW_TransmitShakeEvent( CASW_Marine *pMarine, const ScreenShake_t &shake );
+void ASW_TransmitShakeEvent( CASW_Inhabitable_NPC *pNPC, float localAmplitude, float frequency, float duration, ShakeCommand_t eCommand, const Vector &direction = Vector(0,0,0) );
+void ASW_TransmitShakeEvent( CASW_Inhabitable_NPC *pNPC, const ScreenShake_t &shake );
 
 /// this is a convenience function for rapidly iterating on a screenshake. (see .cpp for details)
 ScreenShake_t ASW_DefaultScreenShake( void );
@@ -126,7 +127,11 @@ bool UTIL_ASW_CommanderLevelAtLeast( CASW_Player *pPlayer, int iLevel, int iProm
 typedef void (*UTIL_RD_LoadAllKeyValuesCallback)( const char *pszPath, KeyValues *pKV, void *pUserData );
 void UTIL_RD_LoadAllKeyValues( const char *fileName, const char *pPathID, const char *pKVName, UTIL_RD_LoadAllKeyValuesCallback callback, void *pUserData );
 
-bool UTIL_RD_AddLocalizeFile( const char *fileName, const char *pPathID = NULL, bool bIncludeFallbackSearchPaths = false );
+bool UTIL_RD_AddLocalizeFile( const char *fileName, const char *pPathID = NULL, bool bIncludeFallbackSearchPaths = false, bool bIsCaptions = false );
+
+void UTIL_RD_ReloadLocalizeFiles();
+CRC32_t UTIL_RD_CaptionToHash( const char *szToken );
+const char *UTIL_RD_HashToCaption( CRC32_t hash );
 
 const char *UTIL_RD_EResultToString( EResult eResult );
 

@@ -15,6 +15,7 @@
 #include "basemultiplayerplayer.h"
 #include "steam/steam_api.h"
 
+class CASW_Inhabitable_NPC;
 class CASW_Marine;
 class CRagdollProp;
 
@@ -35,7 +36,7 @@ public:
 	virtual int UpdateTransmitState();
 
 	static CASW_Player *CreatePlayer( const char *className, edict_t *ed );
-	static CASW_Player* Instance( int iEnt );
+	static CASW_Player *Instance( int iEnt );
 
 	// This passes the event to the client's and server's CPlayerAnimState.
 	void DoAnimationEvent( PlayerAnimEvent_t event );
@@ -45,12 +46,12 @@ public:
 	virtual void Spawn();
 	virtual void Precache();
 	virtual void UpdateBattery( void ) { }
-	void DriveMarineMovement( CUserCmd *ucmd, IMoveHelper *moveHelper );
+	void DriveNPCMovement( CUserCmd *ucmd, IMoveHelper *moveHelper );
 	void PushawayThink();
 	virtual void AvoidPhysicsProps( CUserCmd *pCmd );
 	virtual bool ClientCommand( const CCommand &args );
 
-	void EmitPrivateSound( const char *soundName, bool bFromMarine = false );
+	void EmitPrivateSound( const char *soundName, bool bFromNPC = false );
 
 	// eye position is above the marine we're remote controlling
 	virtual Vector EyePosition(void);
@@ -69,7 +70,7 @@ public:
 	virtual void  HandleSpeedChanges( void );
 	virtual bool CanBeSeenBy( CAI_BaseNPC *pNPC ) { return false; } // Players are never seen by NPCs
 
-	CNetworkHandle (CASW_Marine, m_hMarine);
+	CNetworkHandle( CASW_Inhabitable_NPC, m_hInhabiting );
 
 	bool ShouldAutoReload() { return m_bAutoReload; }
 	bool m_bAutoReload;
@@ -83,22 +84,25 @@ public:
 
 	// spectating
 	void SpectateNextMarine();
-	void SetSpectatingMarine(CASW_Marine *d);
-	CASW_Marine* GetSpectatingMarine() const;
-	CNetworkHandle (CASW_Marine, m_hSpectatingMarine);
+	void SetSpectatingNPC( CASW_Inhabitable_NPC *pSpectating );
+	CASW_Inhabitable_NPC *GetSpectatingNPC() const;
+	CNetworkHandle( CASW_Inhabitable_NPC, m_hSpectating );
 	bool m_bLastAttackButton;	// used to detect left clicks for cycling through marines
 	bool m_bLastAttack2Button;	// used to detect right clicks for cycling through marines
 	bool m_bRequestedSpectator;	// this player requested to be a spectator since the start of a match (won't be considered for leader, campaign votes, etc.)
 	float m_fLastControlledMarineTime;
-    CNetworkVar( float, m_fMarineDeathTime);    // same as above but optimized for networking
+	CNetworkVar( float, m_fMarineDeathTime );	// same as above but optimized for networking
+	bool IsSpectatorOnly();	// for players who can *only* spectate, i.e. not able to control characters
+	CNetworkVar( bool, m_bWantsSpectatorOnly );
 
 	void BecomeNonSolid();
-	void OnMarineCommanded( const CASW_Marine *pMarine );
-	void SetMarine( CASW_Marine *pMarine );
-	CASW_Marine* GetMarine() const;
+	void OnNPCCommanded( CASW_Inhabitable_NPC *pNPC );
+	void SetNPC( CASW_Inhabitable_NPC *pNPC );
+	CASW_Inhabitable_NPC *GetNPC() const;
 	void SelectNextMarine( bool bReverse );
 	bool CanSwitchToMarine( int num );
 	// BenLubar(deathmatch-improvements)
+	void SwitchInhabiting( CASW_Inhabitable_NPC *pNPC );
 	void SwitchMarine( CASW_Marine_Resource *pMR, bool set_squad_leader = true );
 	void SwitchMarine( int num, bool set_squad_leader = true );
 	void OrderMarineFace( int iMarine, float fYaw, Vector &vecOrderPos );
@@ -106,7 +110,7 @@ public:
 	bool HasLiveMarines();
 	virtual bool IsAlive( void );
 
-	CNetworkHandle(CASW_Marine, m_hOrderingMarine)
+	CNetworkHandle( CASW_Marine, m_hOrderingMarine );
 
 	CASW_Game_Resource* GetGNI();
 
@@ -131,13 +135,13 @@ public:
 	virtual	CBaseCombatCharacter *ActivePlayerCombatCharacter( void );
 
 	// shared code
-	CASW_Marine* GetViewMarine() const;
+	CASW_Inhabitable_NPC *GetViewNPC() const;
 	void ItemPostFrame();
 	void ASWSelectWeapon(CBaseCombatWeapon* pWeapon, int subtype);	// for switching weapons on the current marine
 	virtual bool Weapon_CanUse( CBaseCombatWeapon *pWeapon );
 	virtual CBaseCombatWeapon*	Weapon_OwnsThisType( const char *pszWeapon, int iSubType = 0 ) const;  // True if already owns a weapon of this class
 	virtual int Weapon_GetSlot( const char *pszWeapon, int iSubType = 0 ) const;  // Returns -1 if they don't have one
-	int GetASWControls();
+	ASW_Controls_t GetASWControls();
 
 	// searches for nearby entities that we can use (pickups, buttons, etc)
 	virtual void PlayerUse();
@@ -183,6 +187,7 @@ public:
 	bool HasFullyJoined() { return m_bSentJoinedMessage; }
 	CNetworkVar(bool, m_bSentJoinedMessage);	// has this player told everyone that he's fully joined yet
 	void OnFullyJoined( bool bSendGameEvent );
+	bool IsAnyBot();
 
 	void WelcomeMessageThink();
 
@@ -193,6 +198,12 @@ public:
 	CNetworkVar(int, m_iKickVoteIndex);		// entindex of the player we want to be kicked
 	const char* GetASWNetworkID();
 	CNetworkVar( int, m_iMapVoted );	// 0 = didn't vote, 1 = "no" vote, 2 = "yes" vote
+	bool CanVote();
+	bool CanBeKicked();
+	bool CanBeLeader();
+
+	float m_flLastActiveTime;
+	CNetworkVar( float, m_flInactiveKickWarning );
 
 	// client stat counts (these are numbers each client stores and provides to the server on player creation, so server can decide to award medals)
 	int m_iClientKills;

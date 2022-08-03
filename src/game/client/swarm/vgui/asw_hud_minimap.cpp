@@ -339,10 +339,7 @@ void CASWMap::PaintMarineBlips( bool bRotate )
 	C_ASW_Game_Resource *pGameResource = ASWGameResource();
 	if ( pGameResource )
 	{
-		C_ASW_Marine* pLocalMarine = NULL;
-		C_ASW_Player* pLocalPlayer = C_ASW_Player::GetLocalASWPlayer();
-		if ( pLocalPlayer )
-			pLocalMarine = pLocalPlayer->GetViewMarine();
+		C_ASW_Marine *pLocalMarine = C_ASW_Marine::GetViewMarine();
 
 		// paint the blips
 		for ( int i = 0; i < ASW_MAX_MARINE_RESOURCES; i++ )
@@ -761,7 +758,7 @@ void CASWHudMinimap::OnThink()
 				m_bDrawingMapLines = false;
 			}
 		}
-		C_ASW_Marine *marine = local->GetViewMarine();
+		C_ASW_Inhabitable_NPC *marine = local->GetViewNPC();
 		if (marine)
 		{
 			if (m_pNoisePanel)
@@ -845,7 +842,7 @@ void CASWHudMinimap::PaintMapSection()
 	C_ASW_Player *local = C_ASW_Player::GetLocalASWPlayer();
 	if (local)
 	{
-		C_ASW_Marine *marine = local->GetViewMarine();
+		C_ASW_Inhabitable_NPC *marine = local->GetViewNPC();
 		if (marine)
 		{
 			float z = marine->GetAbsOrigin().z;
@@ -1065,7 +1062,7 @@ void CASWHudMinimap::PaintBlips()
 		PaintMarineBlips( true );
 
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	C_ASW_Marine *pMarine = pPlayer->GetViewMarine();
+	C_ASW_Marine *pMarine = pPlayer->GetViewNPC() ? C_ASW_Marine::AsMarine(pPlayer->GetViewNPC()) : NULL;
 
 	if (rd_paint_scanner_blips.GetBool()) 
 	{
@@ -1162,13 +1159,12 @@ void CASWHudMinimap::PaintScannerBlips()
 							blipSize = 6;
 							blipColor = asw_blip_color_ranger.GetColor();
 							break;
+						case CLASS_NPC_ANTIIONGUARD_NORMAL:
+						case CLASS_NPC_ANTIIONGUARD_CAVERN:
+							blipSize = 9;
+							blipColor = asw_blip_color_antlionguard.GetColor();
+							break;
 						default:
-							if ( pClientEnt->CollisionProp()->OBBMins() == Vector( -30, -30, 0 ) && pClientEnt->CollisionProp()->OBBMaxs() == Vector( 30, 30, 110 ) ) //hack!!
-							{
-								blipColor = asw_blip_color_antlionguard.GetColor();
-								blipSize = 9;
-								break;
-							}
 							blipSize = 8;
 							blipColor = asw_blip_color_alien.GetColor();
 							break;
@@ -1210,7 +1206,7 @@ void CASWMap::PaintDubScannerBlips(int iDistance)
 			continue;
 
 		C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-		C_ASW_Marine *pMarine = pPlayer->GetViewMarine();
+		C_ASW_Marine* pMarine = pPlayer->GetViewNPC() ? C_ASW_Marine::AsMarine(pPlayer->GetViewNPC()) : NULL;
 		C_ASW_Scanner_Info* pScanner = ASWGameResource()->GetScannerInfo();
 		if (!pMarine || !pScanner)
 			return;
@@ -1347,9 +1343,9 @@ void CASWHudMinimapLinePanel::PaintScannerRing()
 								}
 								//Msg("Pitch is = %d\n", ep.m_nPitch);
 								// adjust volume by distance to tech marine
-								if (pPlayer->GetViewMarine())
+								if (pPlayer->GetViewNPC())
 								{
-									float dist_to_tech = pPlayer->GetViewMarine()->GetAbsOrigin().DistTo(marine_world_pos);
+									float dist_to_tech = pPlayer->GetViewNPC()->GetAbsOrigin().DistTo(marine_world_pos);
 									float fraction = dist_to_tech / ASW_SCANNER_MAX_SOUND_DIST;
 									if (fraction > 0.3f)	// give a buffer of max volume
 										ep.m_flVolume *= (1.0f - ((fraction - 0.3f)*0.7f));
@@ -1420,10 +1416,10 @@ void CASWHudMinimapLinePanel::PaintScannerRing()
 						ep.m_flVolume = asw_scanner_idle_volume.GetFloat();
 						ep.m_nFlags |= SND_CHANGE_VOL;
 						ep.m_SoundLevel = SNDLVL_NORM;
-						// adjust volume by distance to tech marine					
-						if (pPlayer->GetViewMarine())
+						// adjust volume by distance to tech marine
+						if (pPlayer->GetViewNPC())
 						{
-							float dist_to_tech = pPlayer->GetViewMarine()->GetAbsOrigin().DistTo(pMR->GetMarineEntity()->GetAbsOrigin());
+							float dist_to_tech = pPlayer->GetViewNPC()->GetAbsOrigin().DistTo(pMR->GetMarineEntity()->GetAbsOrigin());
 							float fraction = dist_to_tech / ASW_SCANNER_MAX_SOUND_DIST;
 							if (fraction > 0.3f)	// give a buffer of max volume
 								ep.m_flVolume *= (1.0f - ((fraction - 0.3f)*0.7f));
@@ -1854,10 +1850,10 @@ void CASWHudMinimap::SetMap(const char * levelname)
 			surface()->DrawSetTextureFile( m_nMapTextureID[0], "vgui/swarm/hud/scanner", true, false);
 			m_nMapTextureID;
 			// put in some default numbers so the scanner works
-			m_MapOrigin.x = 0;
-			m_MapOrigin.y = 0;
-			m_fMapScale = 25.0f;
-			Q_snprintf(m_szMissionTitle, sizeof(m_szMissionTitle), "Unnamed Mission");
+			m_MapOrigin.x	= 0;
+			m_MapOrigin.y	= 0;
+			m_fMapScale		= 25.0f;
+			Q_snprintf(m_szMissionTitle, sizeof(m_szMissionTitle), "#asw_unnamed_mission_title");
 			m_bHasOverview = false;
 			return;
 		}
@@ -2043,7 +2039,7 @@ void CASWHudMinimap::SendMapLine(int x, int y, bool bInitial)
 	C_ASW_Player *local = C_ASW_Player::GetLocalASWPlayer();
 	if (local)
 	{
-		C_ASW_Marine *marine = local->GetViewMarine();
+		C_ASW_Inhabitable_NPC *marine = local->GetViewNPC();
 		if (marine)
 		{
 			int wide, tall, posx, posy;
@@ -2192,7 +2188,7 @@ void CASWHudMinimapLinePanel::TextureToLinePanel(CASWHudMinimap* pMap, const Vec
 bool CASWHudMinimap::UseDrawCrosshair(float x, float y)
 {
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if (!pPlayer || !pPlayer->GetViewMarine() || !asw_minimap_clicks.GetBool())
+	if (!pPlayer || !pPlayer->GetViewNPC() || !asw_minimap_clicks.GetBool())
 		return false;
 	return IsWithinMapBounds(x, y);
 }

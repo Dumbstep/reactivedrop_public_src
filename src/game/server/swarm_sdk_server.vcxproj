@@ -150,6 +150,7 @@ echo *** ERROR! PostBuildStep FAILED for $(ProjectName)! EXE or DLL is probably 
 del /q "$(TargetDir)"$(TargetFileName)
 exit 1
 :BuildEventOK
+if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd server
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -248,6 +249,7 @@ echo *** ERROR! PostBuildStep FAILED for $(ProjectName)! EXE or DLL is probably 
 del /q "$(TargetDir)"$(TargetFileName)
 exit 1
 :BuildEventOK
+if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd server
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -1112,6 +1114,7 @@ exit 1
     <ClCompile Include="swarm\asw_tutorial_spawning.cpp" />
     <ClCompile Include="swarm\asw_use_area.cpp" />
     <ClCompile Include="swarm\asw_voiceover_dialogue.cpp" />
+    <ClCompile Include="swarm\asw_inhabitable_npc.cpp" />
     <ClCompile Include="swarm\asw_vphysics_npc.cpp" />
     <ClCompile Include="swarm\asw_wc_edit.cpp" />
     <ClCompile Include="swarm\asw_weapon.cpp" />
@@ -1567,6 +1570,7 @@ exit 1
     <ClInclude Include="..\shared\swarm\rd_challenges_shared.h" />
     <ClInclude Include="..\shared\swarm\rd_lobby_utils.h" />
     <ClInclude Include="..\shared\swarm\rd_missions_shared.h" />
+    <ClInclude Include="..\shared\swarm\rd_release_flags.h" />
     <ClInclude Include="..\shared\swarm\rd_weapon_generic_object_shared.h" />
     <ClInclude Include="..\shared\swarm\rd_workshop.h" />
     <ClInclude Include="..\shared\takedamageinfo.h" />
@@ -1985,6 +1989,7 @@ exit 1
     <ClInclude Include="swarm\asw_tutorial_spawning.h" />
     <ClInclude Include="swarm\asw_use_area.h" />
     <ClInclude Include="swarm\asw_voiceover_dialogue.h" />
+    <ClInclude Include="swarm\asw_inhabitable_npc.h" />
     <ClInclude Include="swarm\asw_vphysics_npc.h" />
     <ClInclude Include="swarm\asw_wc_edit.h" />
     <ClInclude Include="swarm\asw_weapon.h" />

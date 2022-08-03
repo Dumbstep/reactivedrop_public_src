@@ -447,7 +447,7 @@ bool CASWHudObjective::IsSpectating()
 	if ( !pPlayer )
 		return false;
 
-	C_ASW_Marine *pSpectating = pPlayer->GetSpectatingMarine();
+	C_ASW_Inhabitable_NPC *pSpectating = pPlayer->GetSpectatingNPC();
 	return pSpectating != NULL;
 }
 
@@ -521,7 +521,7 @@ void CASWHudObjective::OnTick()
 	UpdateObjectiveList();
 
 	C_ASW_Player *pLocalPlayer = C_ASW_Player::GetLocalASWPlayer();
-	C_ASW_Marine *pViewMarine = pLocalPlayer ? pLocalPlayer->GetViewMarine() : NULL;
+	C_ASW_Marine *pViewMarine = pLocalPlayer ? C_ASW_Marine::AsMarine( pLocalPlayer->GetViewNPC() ) : NULL;
 	if ( C_ASW_Marine_Resource *pMR = pViewMarine ? pViewMarine->GetMarineResource() : NULL )
 	{
 		bool bSetPointsText = false;

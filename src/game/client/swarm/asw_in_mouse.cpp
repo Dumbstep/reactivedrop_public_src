@@ -44,7 +44,7 @@ void CASWInput::ResetMouse( void )
 	int x, y;
 	HACK_GETLOCALPLAYER_GUARD( "Mouse behavior is tied to a specific player's status - splitscreen player would depend on which player (if any) is using mouse control" );
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if ( MarineControllingTurret() || ( pPlayer && pPlayer->GetASWControls() != 1 && IsGameplayCrosshair() ) )
+	if ( MarineControllingTurret() || ( pPlayer && pPlayer->GetASWControls() != ASWC_TOPDOWN && IsGameplayCrosshair() ) )
 	{
 		GetWindowCenter( x, y );
 		m_flJoypadStartMouseX = x;
@@ -114,7 +114,7 @@ void CASWInput::ApplyMouse( int nSlot, QAngle& viewangles, CUserCmd *cmd, float 
 		// force the mouse to the center, so there's room to move
 		ResetMouse();
 	}
-	else if ( C_ASW_Player::GetLocalASWPlayer( nSlot )->GetASWControls() == 1 )
+	else if ( C_ASW_Player::GetLocalASWPlayer( nSlot )->GetASWControls() == ASWC_TOPDOWN )
 	{
 		TurnTowardMouse( viewangles, cmd );
 
@@ -207,17 +207,17 @@ void CASWInput::SetMouseOverEntity( C_BaseEntity* pEnt )
 		return;
 
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();	
-	C_ASW_Marine *pMarine = pPlayer ? pPlayer->GetViewMarine() : NULL;
-	if ( !pMarine )
+	C_ASW_Inhabitable_NPC *pNPC = pPlayer ? pPlayer->GetViewNPC() : NULL;
+	if ( !pNPC )
 		return;
 
 	IASW_Client_Aim_Target* pAimEnt = dynamic_cast<IASW_Client_Aim_Target*>( pEnt );
 	if ( pAimEnt )
 	{
 		// check we have LOS to the target
-		CTraceFilterLOS traceFilter( pMarine, COLLISION_GROUP_NONE );
+		CTraceFilterLOS traceFilter( pNPC, COLLISION_GROUP_NONE );
 		trace_t tr2;
-		Vector vecWeaponPos = pMarine->GetRenderOrigin() + Vector( 0,0, ASW_MARINE_GUN_OFFSET_Z );
+		Vector vecWeaponPos = pNPC->GetRenderOrigin() + Vector( 0,0, ASW_MARINE_GUN_OFFSET_Z );
 		UTIL_TraceLine( vecWeaponPos, pAimEnt->GetAimTargetRadiusPos( vecWeaponPos ), MASK_OPAQUE, &traceFilter, &tr2 );
 		//C_BaseEntity *pEnt = pAimEnt->GetEntity();
 		//bool bHasLOS = (!tr2.startsolid && (tr2.fraction >= 1.0 || tr2.m_pEnt == pEnt));
@@ -288,11 +288,11 @@ void CASWInput::UpdateHighlightEntity()
 		pCrosshair->SetShowGiveHealth( false );
 	}
 
-	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
 	if ( !pPlayer )
 		return;
 
-	C_ASW_Marine* pMarine = pPlayer->GetViewMarine();
+	C_ASW_Marine *pMarine = C_ASW_Marine::AsMarine( pPlayer->GetViewNPC() );
 	if ( !pMarine )
 		return;
 
@@ -300,8 +300,8 @@ void CASWInput::UpdateHighlightEntity()
 	pMarine->MouseOverEntity( GetMouseOverEntity(), GetCrosshairAimingPos() );
 }
 
-void CASWInput::SetUseGlowEntity( C_BaseEntity* pEnt )
-{	
+void CASWInput::SetUseGlowEntity( C_BaseEntity *pEnt )
+{
 	// if we're currently highlighting something, stop
 	/*
 	if ( m_hUseGlowEntity.Get() )
@@ -319,25 +319,25 @@ void CASWInput::SetUseGlowEntity( C_BaseEntity* pEnt )
 	bool bIsAllowed = true;
 	if ( m_hUseGlowEntity.Get() )
 	{
-		C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
+		C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
 		if ( !pPlayer )
 			return;
 
-		C_ASW_Marine* pMarine = pPlayer->GetViewMarine();
-		if ( !pMarine )
+		C_ASW_Inhabitable_NPC *pNPC = pPlayer->GetViewNPC();
+		if ( !pNPC )
 			return;
 
 		C_ASW_Pickup *pPickup = dynamic_cast< C_ASW_Pickup * >( pEnt );
 		if ( pPickup )
 		{
-			bIsAllowed = pPickup->AllowedToPickup( pMarine );
+			bIsAllowed = pPickup->AllowedToPickup( pNPC );
 		}
 		else
 		{
 			C_ASW_Weapon *pWeapon = dynamic_cast< C_ASW_Weapon * >( pEnt );
 			if ( pWeapon )
 			{
-				bIsAllowed = pWeapon->AllowedToPickup( pMarine );
+				bIsAllowed = pWeapon->AllowedToPickup( pNPC );
 			}
 		}
 	}

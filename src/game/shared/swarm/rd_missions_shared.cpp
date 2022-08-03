@@ -26,18 +26,22 @@ int ReactiveDropMissions::s_nDataResets = 1;
 static const char *s_szCampaignNamesFirst[] =
 {
 	"jacob",
+#if defined( RD_6A_CAMPAIGNS ) && defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
+	"rd_accident32",
+	"rd_adanaxis",
+#endif
 	"rd-operationcleansweep",
 	"rd_nh_campaigns",
 	"rd-tarnorcampaign1",
 	"rd_paranoia",
-	"rd-area9800",
-#ifdef RD_6A_CAMPAIGNS
-	"adanaxis", // pending rename
-#endif
-	"tilarus5",
-#ifdef RD_6A_CAMPAIGNS
+#if defined( RD_6A_CAMPAIGNS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_accident32",
 #endif
+	"rd-area9800",
+#if defined( RD_6A_CAMPAIGNS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
+	"rd_adanaxis",
+#endif
+	"tilarus5",
 	"rd_biogen_corporation",
 	"rd_research7",
 	"rd_lanasescape_campaign",
@@ -49,9 +53,6 @@ static const char *s_szMissionNamesFirst[] =
 	"dm_deima",
 	"dm_residential",
 	"dm_testlab",
-#ifdef RD_6A_CAMPAIGNS
-	"rd-ad2_anomaly", // pending rename
-#endif
 	"rd-bonus_mission1",
 	"rd-bonus_mission2",
 	"rd-bonus_mission3",
@@ -59,6 +60,11 @@ static const char *s_szMissionNamesFirst[] =
 	"rd-bonus_mission5",
 	"rd-bonus_mission6",
 	"rd-bonus_mission7",
+#ifdef RD_6A_CAMPAIGNS
+	"rd-acc_complex",
+	"rd-ada_new_beginning",
+	"rd-ada_anomaly",
+#endif
 };
 
 #pragma pack(push, 1)
@@ -519,7 +525,13 @@ const RD_Campaign_t *ReactiveDropMissions::GetCampaign( int index )
 		pCampaign->CampaignTextureLayer[1] = MAKE_STRING( "swarm/campaign/campaignmap_emptylayer" );
 		pCampaign->CampaignTextureLayer[2] = MAKE_STRING( "swarm/campaign/campaignmap_emptylayer" );
 
-		UnpackNetworkedTags( pCampaign->Tags, g_StringTableReactiveDropCampaigns, index );
+#ifdef CLIENT_DLL
+		Assert( engine->IsConnected() );
+		if ( engine->IsConnected() )
+#endif
+		{
+			UnpackNetworkedTags( pCampaign->Tags, g_StringTableReactiveDropCampaigns, index );
+		}
 
 		return pCampaign;
 	}

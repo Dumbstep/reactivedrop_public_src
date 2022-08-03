@@ -111,6 +111,7 @@
 #include "missionchooser/iasw_mission_chooser_source.h"
 #include "matchmaking/swarm/imatchext_swarm.h"
 #include "asw_gamerules.h"
+#include "asw_util_shared.h"
 #endif
 
 
@@ -1055,10 +1056,8 @@ bool CServerGameDLL::LevelInit( const char *pMapName, char const *pMapEntities, 
 	// BenLubar #iss-particles-manifest Load per-map manifests
 	ParseParticleEffectsMap( pMapName, false );
 
-	if ( engine->IsDedicatedServer() )
-	{
-		engine->ServerCommand( "rd_loc_reload_server\n" );
-	}
+	// Need to also run this on listen servers or caption hashes won't be available.
+	UTIL_RD_ReloadLocalizeFiles();
 
 	// IGameSystem::LevelInitPreEntityAllSystems() is called when the world is precached
 	// That happens either in LoadGameState() or in MapEntity_ParseAllEntities()
@@ -1163,6 +1162,18 @@ bool CServerGameDLL::LevelInit( const char *pMapName, char const *pMapEntities, 
 		if ( fps_max.IsValid() ) 
 		{
 			fps_max.SetValue( rd_override_fps_max.GetInt() );
+		}
+	}
+	else if ( engine->IsDedicatedServer() )
+	{
+		// BenLubar: Dedicated servers are constrained by tick rate, not render speed.
+		// fps_max is somehow getting set to 30, meaning a server that would theoretically
+		// be able to run at 600 ticks can only run at 5% of that.
+		// If no override is specified and fps_max is less than the tick rate, set fps_max to unlimited.
+		ConVarRef fps_max( "fps_max" );
+		if ( fps_max.IsValid() && fps_max.GetInt() < TIME_TO_TICKS( 1 ) )
+		{
+			fps_max.SetValue( 0 );
 		}
 	}
 	return true;
@@ -2087,6 +2098,7 @@ static ConVar motdfile( "motdfile", "motd.txt", FCVAR_RELEASE, "The MOTD file to
 static ConVar hostfile( "hostfile", "host.txt", FCVAR_RELEASE, "The HOST file to load.", ValidateMOTDFilename );
 void LoadMOTDFile( const char *stringname, ConVar *pConvarFilename )
 {
+#ifndef INFESTED_DLL
 	char data[2048];
 
 	int length = filesystem->Size( pConvarFilename->GetString(), "GAME" );
@@ -2106,6 +2118,9 @@ void LoadMOTDFile( const char *stringname, ConVar *pConvarFilename )
 	data[length] = 0;
 
 	g_pStringTableInfoPanel->AddString( CBaseEntity::IsServer(), stringname, length+1, data );
+#else
+	g_pStringTableInfoPanel->AddString( CBaseEntity::IsServer(), stringname, 1, "" );
+#endif
 }
 
 void CServerGameDLL::LoadMessageOfTheDay()

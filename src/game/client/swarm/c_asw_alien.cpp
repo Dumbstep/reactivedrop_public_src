@@ -67,6 +67,8 @@ BEGIN_NETWORK_TABLE( CASW_Alien, DT_ASW_Alien )
 	RecvPropBool( RECVINFO( m_bOnFire ) ),
 	RecvPropInt( RECVINFO( m_nDeathStyle ), SPROP_UNSIGNED ),
 	RecvPropInt			( RECVINFO( m_iHealth) ),
+	RecvPropFloat( RECVINFO( m_flAlienWalkSpeed ) ),
+	RecvPropBool( RECVINFO( m_bInhabitedMovementAllowed ) ),
 END_RECV_TABLE()
 
 PRECACHE_REGISTER_BEGIN( GLOBAL, ASW_Alien )
@@ -97,11 +99,13 @@ m_MotionBlurObject( this, 0.0f )
 	m_bClientOnFire = false;
 	m_vecLastRenderedPos = vec3_origin;
 	m_pBurningEffect = NULL;
+	m_flAlienWalkSpeed = 0.0f;
+	m_bInhabitedMovementAllowed = false;
 
 	m_GlowObject.SetColor( glow_outline_color_alien.GetColorAsVector() );
 	m_GlowObject.SetAlpha( 0.55f );
 	m_GlowObject.SetRenderFlags( false, false );
-	m_GlowObject.SetFullBloomRender( true );
+	m_GlowObject.SetFullBloomRender( false );
 
 	// reactivedrop: workaround to fix aliens red blood
 	// m_bloodColor is not networked
@@ -398,7 +402,6 @@ C_BaseAnimating * C_ASW_Alien::BecomeRagdollOnClient( void )
 		}
 
 		C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-		C_ASW_Marine *pMarine = pPlayer ? pPlayer->GetViewMarine() : NULL;
 
 		pRagdoll->m_nDeathStyle = m_nDeathStyle;
 		pRagdoll->AddEffects(EF_NOSHADOW);
@@ -726,10 +729,10 @@ void C_ASW_Alien::ClientThink()
 		}
 	}
 
-	CASW_Marine *pMarine = pPlayer->GetMarine();
-	if (pMarine && IsAlive() && Classify() == CLASS_ASW_PARASITE && !GetMoveParent() && (GetSequence() != 4) && (GetAbsOrigin() - pMarine->GetAbsOrigin()).Length2D() <= 600)
+	C_ASW_Inhabitable_NPC* pNPC = pPlayer->GetNPC();
+	if (pNPC && IsAlive() && Classify() == CLASS_ASW_PARASITE && !GetMoveParent() && (GetSequence() != 4) && (GetAbsOrigin() - pNPC->GetAbsOrigin()).Length2D() <= 600)
 	{
-		NDebugOverlay::Line(pMarine->GetAbsOrigin(), GetAbsOrigin(), 0, 255, 255, true, 0.01f);
+		NDebugOverlay::Line(pNPC->GetAbsOrigin(), GetAbsOrigin(), 0, 255, 255, true, 0.01f);
 	}
 }
 

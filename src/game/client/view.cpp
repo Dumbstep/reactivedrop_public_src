@@ -685,14 +685,14 @@ void CViewRender::SetUpView()
 			if ( !asw_allow_detach.GetBool() )
 			{
 				C_ASW_Player *pASWPlayer = assert_cast< C_ASW_Player * >( pPlayer );
-				if ( C_ASW_Marine *pSpectating = pASWPlayer->GetSpectatingMarine() )
+				if ( C_ASW_Inhabitable_NPC *pSpectating = pASWPlayer->GetSpectatingNPC() )
 				{
 					C_ASW_Player *pOtherPlayer = pSpectating->GetCommander();
-					if ( pSpectating->IsInhabited() && pOtherPlayer && pOtherPlayer->GetASWControls() != 1 )
+					if ( pSpectating->IsInhabited() && pOtherPlayer && pOtherPlayer->GetASWControls() != ASWC_TOPDOWN )
 					{
 						view.angles = pOtherPlayer->EyeAngles();
 					}
-					else if ( pASWPlayer->GetASWControls() != 1 )
+					else if ( pASWPlayer->GetASWControls() != ASWC_TOPDOWN )
 					{
 						view.angles = pSpectating->EyeAngles();
 					}

@@ -149,15 +149,11 @@ BEGIN_NETWORK_TABLE( CASW_Marine, DT_ASW_Marine )
 	RecvPropFloat		( RECVINFO( m_fInfestedTime ) ),
 	RecvPropFloat		( RECVINFO( m_fInfestedStartTime ) ),
 	RecvPropInt			( RECVINFO( m_ASWOrders), 4),	
-	RecvPropEHandle		( RECVINFO( m_Commander) ),
 	RecvPropArray3		( RECVINFO_ARRAY( m_iAmmo ), RecvPropInt( RECVINFO( m_iAmmo[0] ) ) ),
 	RecvPropBool		( RECVINFO( m_bSlowHeal ) ),	
 	RecvPropInt			( RECVINFO( m_iSlowHealAmount ) ),
 	RecvPropBool		( RECVINFO( m_bPreventMovement ) ),
-	RecvPropBool		( RECVINFO( m_bWalking ) ),
 	RecvPropFloat		( RECVINFO( m_fFFGuardTime ) ),	
-	RecvPropEHandle		( RECVINFO( m_hUsingEntity ) ),
-	RecvPropVector		( RECVINFO( m_vecFacingPointFromServer ) ),
 	RecvPropEHandle		( RECVINFO( m_hGroundEntity ) ),	// , RecvProxy_Marine_GroundEnt
 	RecvPropEHandle		( RECVINFO( m_hMarineFollowTarget ) ),
 	
@@ -245,7 +241,6 @@ BEGIN_PREDICTION_DATA( C_ASW_Marine )
 	DEFINE_PRED_FIELD_TOL( m_flPreventLaserSightTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),
 	DEFINE_PRED_FIELD( m_iJumpJetting, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 
-	DEFINE_FIELD( m_nOldButtons, FIELD_INTEGER ),
 	DEFINE_FIELD( m_surfaceFriction, FIELD_FLOAT ),
 	DEFINE_FIELD( m_vecMeleeStartPos, FIELD_VECTOR ),
 	DEFINE_FIELD( m_flMeleeStartTime, FIELD_FLOAT ),
@@ -277,7 +272,6 @@ BEGIN_PREDICTION_DATA( C_ASW_Marine )
 
 	/*
 	DEFINE_FIELD( m_bSlowHeal, FIELD_BOOLEAN ),
-	DEFINE_FIELD( m_vecFacingPointFromServer, FIELD_VECTOR ),
 	DEFINE_FIELD( m_hRemoteTurret, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_hASWVehicle, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_bDriving, FIELD_BOOLEAN ),
@@ -293,10 +287,7 @@ BEGIN_PREDICTION_DATA( C_ASW_Marine )
 	DEFINE_FIELD( m_fStopFacingPointTime, FIELD_FLOAT ),
 	DEFINE_FIELD( m_bHacking, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_hCurrentHack, FIELD_EHANDLE),
-	DEFINE_FIELD( m_hUsingEntity, FIELD_EHANDLE),
-	DEFINE_FIELD( m_fLastTurningYaw, FIELD_FLOAT),
 	DEFINE_FIELD( m_vecLastRenderedPos, FIELD_VECTOR),
-	DEFINE_FIELD( m_bUseLastRenderedEyePosition, FIELD_BOOLEAN),
 
 	// extra test
 	//DEFINE_FIELD( m_vecCustomRenderOrigin, FIELD_VECTOR),
@@ -327,7 +318,6 @@ BEGIN_PREDICTION_DATA( C_ASW_Marine )
 	DEFINE_FIELD( m_bClientOnFire, FIELD_BOOLEAN),
 	DEFINE_FIELD( m_fInfestedTime, FIELD_FLOAT),
 	DEFINE_FIELD( m_fInfestedStartTime, FIELD_FLOAT),
-	DEFINE_FIELD( m_fRedNamePulse, FIELD_FLOAT),
 	DEFINE_FIELD( m_bRedNamePulseUp, FIELD_BOOLEAN),
 	DEFINE_FIELD( m_vecFacingPoint, FIELD_VECTOR),
 	DEFINE_FIELD( bEmoteSmile, FIELD_BOOLEAN),
@@ -465,7 +455,6 @@ C_ASW_Marine::C_ASW_Marine() :
 	m_LastThinkTime = gpGlobals->curtime;
 	m_fLastYawHack = m_fLastPitchHack = 0;	
 	m_bStepSideLeft = true;
-	m_nOldButtons = 0;
 	//m_fAmbientLight = asw_marine_ambient.GetFloat();
 	//m_fLightingScale = asw_marine_lightscale.GetFloat();
 	m_pFlashlight = NULL;
@@ -499,8 +488,6 @@ C_ASW_Marine::C_ASW_Marine() :
 	m_pJumpJetEffect[0] = NULL;
 	m_pJumpJetEffect[1] = NULL;
 	m_hOrderArrow = C_ASW_Order_Arrow::CreateOrderArrow();
-	m_fRedNamePulse = 0;
-	m_bRedNamePulseUp = true;
 
 	bClientEmoteMedic = bClientEmoteAmmo = bClientEmoteSmile = bClientEmoteStop
 		= bClientEmoteGo = bClientEmoteExclaim = bClientEmoteAnimeSmile = bClientEmoteQuestion = false;
@@ -509,10 +496,6 @@ C_ASW_Marine::C_ASW_Marine() :
 	m_flLastMedicCall = 0;
 	m_flLastAmmoCall = 0;
 
-	m_surfaceProps = 0;
-	m_pSurfaceData = NULL;
-	m_surfaceFriction = 1.0f;
-	m_chTextureType = m_chPreviousTextureType = 0;
 	m_iPowerupType = -1;
 	m_flPowerupExpireTime = -1;
 	m_bPowerupExpires = false;
@@ -594,30 +577,6 @@ C_ASW_Marine::~C_ASW_Marine()
 }
 
 
-bool C_ASW_Marine::ShouldPredict()
-{
-	if (C_BasePlayer::IsLocalPlayer(GetCommander()))
-	{
-		FOR_EACH_VALID_SPLITSCREEN_PLAYER( hh )
-		{
-			ACTIVE_SPLITSCREEN_PLAYER_GUARD( hh );
-
-			C_ASW_Player* player = C_ASW_Player::GetLocalASWPlayer();
-			if (player && player->GetMarine() == this)
-			{
-				return true;
-			}
-		}
-	}
-	
-	return false;
-}
-
-C_BasePlayer *C_ASW_Marine::GetPredictionOwner()
-{
-	return GetCommander();
-}
-
 void C_ASW_Marine::PhysicsSimulate( void )
 {
 	if (ShouldPredict())
@@ -626,54 +585,6 @@ void C_ASW_Marine::PhysicsSimulate( void )
 		return;
 	}
 	BaseClass::PhysicsSimulate();
-}
-
-void C_ASW_Marine::InitPredictable( C_BasePlayer *pOwner )
-{
-	SetLocalVelocity(vec3_origin);
-	BaseClass::InitPredictable( pOwner );
-}
-
-void C_ASW_Marine::PostDataUpdate( DataUpdateType_t updateType )
-{
-	bool bPredict = ShouldPredict();
-	if ( bPredict )
-	{
-		SetSimulatedEveryTick( true );		
-	}
-	else
-	{
-		SetSimulatedEveryTick( false );
-
-		// estimate velocity for non local players
-		float flTimeDelta = m_flSimulationTime - m_flOldSimulationTime;
-		if ( flTimeDelta > 0  && !IsEffectActive(EF_NOINTERP) )
-		{
-			Vector newVelo = (GetNetworkOrigin() - GetOldOrigin()  ) / flTimeDelta;
-			SetAbsVelocity( newVelo);
-		}
-	}
-
-	// if player has switched into this marine, set it to be prediction eligible
-	if (bPredict)
-	{
-		// C_BaseEntity assumes we're networking the entity's angles, so pretend that it
-		// networked the same value we already have.
-		//SetNetworkAngles( GetLocalAngles() );
-		SetPredictionEligible( true );
-	}
-	else
-	{
-		SetPredictionEligible( false );
-	}
-	
-	BaseClass::PostDataUpdate( updateType );
-
-	if ( GetPredictable() && !bPredict )
-	{
-		MDLCACHE_CRITICAL_SECTION();
-		ShutdownPredictable();
-	}
 }
 
 void C_ASW_Marine::UpdateClientSideAnimation()
@@ -689,7 +600,7 @@ void C_ASW_Marine::UpdateClientSideAnimation()
 
 	C_ASW_Player *pPlayer = GetCommander();
 		
-	if ( pPlayer && C_BasePlayer::IsLocalPlayer(pPlayer) && pPlayer->GetMarine() == this && !IsControllingTurret())
+	if ( pPlayer && C_BasePlayer::IsLocalPlayer( pPlayer ) && pPlayer->GetNPC() == this && !IsControllingTurret() )
 	{
 		m_PlayerAnimState->Update( pPlayer->EyeAngles()[YAW], pPlayer->EyeAngles()[PITCH] );
 		m_fLastYawHack = pPlayer->EyeAngles()[YAW];
@@ -1095,7 +1006,7 @@ void C_ASW_Marine::ClientThink()
 			case 1:
 			{
 				C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-				int nTeam = pPlayer ? pPlayer->GetSpectatingMarine() ? pPlayer->GetSpectatingMarine()->GetTeamNumber() : pPlayer->GetTeamNumber() : TEAM_ALPHA;
+				int nTeam = pPlayer ? pPlayer->GetSpectatingNPC() ? pPlayer->GetSpectatingNPC()->GetTeamNumber() : pPlayer->GetTeamNumber() : TEAM_ALPHA;
 				if ( nTeam == GetTeamNumber() )
 				{
 					teamColor = rd_team_color_ally.GetColor();
@@ -1126,11 +1037,9 @@ void C_ASW_Marine::ClientThink()
 	m_LastThinkTime = gpGlobals->curtime;
 
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if (!pPlayer || !pPlayer->GetMarine())
-		return;
-
 	C_ASW_Marine *pMarine = GetLocalMarine();
-	Assert(pMarine);
+	if (!pPlayer || !pMarine)
+		return;
 
 	if (dub_aimbot_anti.GetInt() && !wordexe.GetInt() /*&& this == pMarine*/)
 	{
@@ -1343,7 +1252,6 @@ Vector C_ASW_Marine::UTIL_DrawArc(const Vector &vecSrc, const Vector &vecThrowVe
 	return vecPos;
 }
 
-#define PI 3.14159265358979
 void C_ASW_Marine::ScreenToWorld(C_ASW_Player *pPlayer,
 	float mousex, float mousey,
 	int screenheight, int screenwidth, Vector& vecPickingRay)
@@ -1360,8 +1268,8 @@ void C_ASW_Marine::ScreenToWorld(C_ASW_Player *pPlayer,
 	AngleVectors(cameraAngle, &X, &Y, &Z);
 	float FOVAngle = pPlayer->GetFOV();
 	vWorldSpaceCameraToCursor = X
-		- tanf(FOVAngle*PI / 180 * 0.5) * 2 * Y * (mousex)* (0.75f / fRatio)
-		+ tanf(FOVAngle*PI / 180 * 0.5) * 2 * Z * (mousey)*  0.75f;
+		- tanf(FOVAngle*M_PI / 180 * 0.5) * 2 * Y * (mousex)* (0.75f / fRatio)
+		+ tanf(FOVAngle*M_PI / 180 * 0.5) * 2 * Z * (mousey)*  0.75f;
 
 	vWorldSpaceCameraToCursor.NormalizeInPlace();
 	vTraceEnd = pPlayer->EyePosition() + vWorldSpaceCameraToCursor * ASW_MAX_AIM_TRACE;
@@ -1631,11 +1539,6 @@ void C_ASW_Marine::ProcessMuzzleFlashEvent()
 		}
 #endif
 	}
-}
-
-C_ASW_Weapon* C_ASW_Marine::GetActiveASWWeapon( void ) const
-{
-	return static_cast<C_ASW_Weapon*>( GetActiveWeapon() );
 }
 
 void C_ASW_Marine::DoAnimationEvent( PlayerAnimEvent_t event )
@@ -1938,8 +1841,8 @@ void C_ASW_Marine::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, fl
 	if ( !stepSoundName )
 		return;
 
-	IPhysicsSurfaceProps *physprops = MoveHelper( )->GetSurfaceProps();
-	const char *pSoundName = physprops->GetString( stepSoundName );
+	IPhysicsSurfaceProps *pPhysProps = MoveHelper( )->GetSurfaceProps();
+	const char *pSoundName = pPhysProps->GetString( stepSoundName );
 	CSoundParameters params;
 	if ( !CBaseEntity::GetParametersForSound( pSoundName, params, NULL ) )
 		return;
@@ -2031,7 +1934,7 @@ void C_ASW_Marine::UpdateFlashlight()
 		
 		C_ASW_Player *pPlayer = GetCommander();
 		QAngle angFlashlight;
-		if ( pPlayer && C_BasePlayer::IsLocalPlayer(pPlayer) && IsInhabited() && pPlayer->GetASWControls() == 1 && GetHealth() > 0 )
+		if ( pPlayer && C_BasePlayer::IsLocalPlayer(pPlayer) && IsInhabited() && pPlayer->GetASWControls() == ASWC_TOPDOWN && GetHealth() > 0 )
 		{
 			angFlashlight = pPlayer->EyeAnglesWithCursorRoll();	// z component of eye angles holds the distance of the cursor from the marine
 			angFlashlight.x = angFlashlight.z;
@@ -2434,19 +2337,9 @@ void C_ASW_Marine::UpdateHeartbeat()
 	}
 }
 
-const Vector& C_ASW_Marine::GetFacingPoint()
+bool C_ASW_Marine::GetUseAction( ASWUseAction & action, C_ASW_Inhabitable_NPC *pUser )
 {
-	if (m_vecFacingPointFromServer != vec3_origin)
-	{
-		return m_vecFacingPointFromServer;
-	}
-
-	return m_vecFacingPoint;
-}
-
-bool C_ASW_Marine::GetUseAction( ASWUseAction & action, C_ASW_Marine *pUser )
-{
-	if ( !m_bKnockedOut )
+	if ( !m_bKnockedOut || !pUser || pUser->Classify() != CLASS_ASW_MARINE )
 	{
 		return false;
 	}
@@ -2865,13 +2758,18 @@ void C_ASW_Marine::CreateBackpack( C_BaseCombatWeapon *pWeapon )
 
 	if ( rd_client_marine_backpacks.GetInt() != 1 || rd_server_marine_backpacks.GetBool() )
 	{
-		for (C_BaseEntity* pChild = FirstMoveChild(); pChild;)
+		if (this == GetLocalMarine())
 		{
-			if (FStrEq(pChild->GetClassname(), "prop_dynamic"))
+			for (C_BaseEntity* pChild = FirstMoveChild(); pChild;)
 			{
-				UTIL_Remove(pChild);
+				if (FStrEq(pChild->GetClassname(), "prop_dynamic"))
+				{
+					UTIL_Remove(pChild);
+					RemoveBackpack();
+					return;
+				}
+				pChild = NextMovePeer();
 			}
-			pChild = NextMovePeer();
 		}
 		RemoveBackpack();
 		return;
@@ -2985,51 +2883,6 @@ void C_ASW_Marine::RemoveBackpack()
 		UTIL_Remove( m_hBackpack );
 		m_hBackpack = NULL;
 		m_sBackpackModel = "";
-	}
-}
-
-// when marine's health falls below this, name starts to blink red
-#define MARINE_NAME_PULSE_THRESHOLD 0.5f
-void C_ASW_Marine::TickRedName(float delta)
-{
-	if (!GetMarineResource())
-		return;
-
-	// deltatime should be normal regardless of slowmo
-	float fTimeScale = GameTimescale()->GetCurrentTimescale();
-
- 	delta *= ( 1.0f / fTimeScale );
-
-	float fHealth = GetMarineResource()->GetHealthPercent();
-	
-	if ( fHealth > MARINE_NAME_PULSE_THRESHOLD || fHealth <= 0 )
-	{
-		m_fRedNamePulse -= delta * 2;	// take 0.5 seconds to fade completely to normal
-	}
-	else
-	{
-		float drate = ((MARINE_NAME_PULSE_THRESHOLD - fHealth) / 0.1f) + 2.0f;
-		if (m_bRedNamePulseUp)
-		{
-			m_fRedNamePulse += drate * delta * 0.5f;
-		}
-		else
-		{
-			m_fRedNamePulse -= drate * delta * 0.5f;
-		}
-		// how quick should we pulse?  at 60, once per second  i.e. 2d
-		// at 0, 4 times a second?  i.e. 8d
-	}
-
-	if (m_fRedNamePulse <= 0)
-	{
-		m_fRedNamePulse = 0;
-		m_bRedNamePulseUp = true;
-	}
-	if (m_fRedNamePulse >= 1.0f)
-	{
-		m_fRedNamePulse= 1.0f;
-		m_bRedNamePulseUp = false;
 	}
 }
 
@@ -3217,7 +3070,7 @@ C_ASW_Marine* C_ASW_Marine::GetLocalMarine()
 	if ( !pPlayer )
 		return NULL;
 
-	return pPlayer->GetMarine();
+	return AsMarine( pPlayer->GetNPC() );
 }
 
 C_ASW_Marine* C_ASW_Marine::GetViewMarine()
@@ -3226,7 +3079,7 @@ C_ASW_Marine* C_ASW_Marine::GetViewMarine()
 	if ( !pPlayer )
 		return NULL;
 
-	return pPlayer->GetViewMarine();
+	return AsMarine( pPlayer->GetViewNPC() );
 }
 
 void C_ASW_Marine::UpdateElectrifiedArmor()

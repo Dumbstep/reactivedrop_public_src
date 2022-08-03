@@ -128,33 +128,6 @@ envelopePoint_t envDefaultBuzzerMoanVolumeFast[] =
 	},
 };
 
-
-//-----------------------------------------------------------------------------
-// Manhack schedules.
-//-----------------------------------------------------------------------------
-enum BuzzerSchedules
-{
-	SCHED_ASW_BUZZER_ATTACK_HOVER = LAST_SHARED_SCHEDULE,	
-	SCHED_ASW_BUZZER_REGROUP,
-	SCHED_ASW_BUZZER_SWARM_IDLE,
-	SCHED_ASW_BUZZER_SWARM,
-	SCHED_ASW_BUZZER_SWARM_FAILURE,
-	SCHED_ASW_BUZZER_ORDER_MOVE,
-};
-
-
-//-----------------------------------------------------------------------------
-// Manhack tasks.
-//-----------------------------------------------------------------------------
-enum BuzzerTasks
-{
-	TASK_ASW_BUZZER_HOVER = LAST_SHARED_TASK,
-	TASK_ASW_BUZZER_FIND_SQUAD_CENTER,
-	TASK_ASW_BUZZER_FIND_SQUAD_MEMBER,
-	TASK_ASW_BUZZER_MOVEAT_SAVEPOSITION,
-	TASK_ASW_BUZZER_BUILD_PATH_TO_ORDER,
-};
-
 BEGIN_DATADESC( CASW_Buzzer )
 
 	DEFINE_FIELD( m_vForceVelocity,			FIELD_VECTOR),
@@ -623,7 +596,7 @@ void CASW_Buzzer::HitPhysicsObject( CBaseEntity *pOther )
 void CASW_Buzzer::TakeDamageFromVehicle( int index, gamevcollisionevent_t *pEvent )
 {
 	// Use the vehicle velocity to determine the damage
-	int otherIndex = !index;
+	int otherIndex = index ? 0 : 1;
 	CBaseEntity *pOther = pEvent->pEntities[otherIndex];
 
 	float flSpeed = pEvent->preVelocity[ otherIndex ].Length();
@@ -684,7 +657,7 @@ void CASW_Buzzer::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 {
 	BaseClass::VPhysicsCollision( index, pEvent );
 
-	int otherIndex = !index;
+	int otherIndex = index ? 0 : 1;
 	CBaseEntity *pHitEntity = pEvent->pEntities[otherIndex];
 
 	if ( pHitEntity )
@@ -706,7 +679,7 @@ void CASW_Buzzer::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 
 void CASW_Buzzer::VPhysicsShadowCollision( int index, gamevcollisionevent_t *pEvent )
 {
-	int otherIndex = !index;
+	int otherIndex = index ? 0 : 1;
 	CBaseEntity *pOther = pEvent->pEntities[otherIndex];
 
 	if ( pOther->GetMoveType() == MOVETYPE_VPHYSICS )

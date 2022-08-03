@@ -23,7 +23,6 @@
 #include "asw_gamerules.h"
 #include "asw_melee_system.h"
 #include "asw_trace_filter.h"
-#include "collisionutils.h"
 // commented as it is not needed to be included here
 //#ifdef _WIN32
 //#undef INVALID_HANDLE_VALUE
@@ -41,22 +40,23 @@ ConVar asw_marine_turn_firing_fraction("asw_marine_turn_firing_fraction", "0.6",
 ConVar asw_marine_turn_normal_fraction("asw_marine_turn_normal_fraction", "0.9", FCVAR_CHEAT, "Fractional turning value if using asw_marine_fraction_turn_scale");
 ConVar asw_marine_turn_y_pos("asw_marine_turn_y_pos", "0.55", FCVAR_ARCHIVE, "Normalized height position for where the cursor changes the player from looking north to south.");
 
-ConVar joy_autoattack( "joy_autoattack", "0", FCVAR_NONE, "If enabled, marine will fire when you push the right analogue stick" );
-ConVar joy_lock_firing_angle( "joy_lock_firing_angle", "0", FCVAR_NONE, "If enabled, your facing direction will be locked while firing instead of aiming to movement" );
-ConVar joy_autoattack_threshold( "joy_autoattack_threshold", "0.6", FCVAR_NONE, "Threshold for joy_autoattack" );
-ConVar joy_autoattack_angle( "joy_autoattack_angle", "10", FCVAR_NONE, "Facing has to be within this many degrees of aim for the marine to auto fire" );
-ConVar joy_cursor_speed( "joy_cursor_speed", "2.0f", FCVAR_NONE, "Cursor speed of joystick when used in targeting mode" );
-ConVar joy_cursor_scale( "joy_cursor_scale", "1.3f", FCVAR_NONE, "Cursor extent scale of joystick when used in targeting mode" );
-ConVar joy_radius_snap_factor( "joy_radius_snap_factor", "2.0f", FCVAR_NONE, "Rate at which joystick targeting radius tracks the current cursor radius" );
-ConVar joy_aim_to_movement_time( "joy_aim_to_movement_time", "1.0f", FCVAR_NONE, "Time before the player automatically aims in the direction of movement." );
-ConVar joy_tilted_view( "joy_tilted_view", "0", FCVAR_NONE, "Set to 1 when using maps with tilted view to rotate player movement." );
-ConVar asw_horizontal_autoaim( "asw_horizontal_autoaim", "1", FCVAR_CHEAT, "Applies horizontal correction towards best aim ent." );
+ConVar joy_autoattack( "joy_autoattack", "0", FCVAR_ARCHIVE, "If enabled, marine will fire when you push the right analogue stick" );
+ConVar joy_lock_firing_angle( "joy_lock_firing_angle", "0", FCVAR_ARCHIVE, "If enabled, your facing direction will be locked while firing instead of aiming to movement" );
+ConVar joy_autoattack_threshold( "joy_autoattack_threshold", "0.6", FCVAR_ARCHIVE, "Threshold for joy_autoattack" );
+ConVar joy_autoattack_angle( "joy_autoattack_angle", "10", FCVAR_ARCHIVE, "Facing has to be within this many degrees of aim for the marine to auto fire" );
+ConVar joy_cursor_speed( "joy_cursor_speed", "2.0f", FCVAR_ARCHIVE, "Cursor speed of joystick when used in targeting mode" );
+ConVar joy_cursor_scale( "joy_cursor_scale", "1.3f", FCVAR_ARCHIVE, "Cursor extent scale of joystick when used in targeting mode" );
+ConVar joy_radius_snap_factor( "joy_radius_snap_factor", "2.0f", FCVAR_ARCHIVE, "Rate at which joystick targeting radius tracks the current cursor radius" );
+ConVar joy_aim_to_movement( "joy_aim_to_movement", "1", FCVAR_ARCHIVE, "Aim in the direction of movement if the aiming stick is not in use" );
+ConVar joy_aim_to_movement_time( "joy_aim_to_movement_time", "1.0f", FCVAR_ARCHIVE, "Time before the player automatically aims in the direction of movement." );
+ConVar joy_tilted_view( "joy_tilted_view", "0", FCVAR_ARCHIVE, "Set to 1 when using maps with tilted view to rotate player movement." );
+ConVar asw_horizontal_autoaim( "asw_horizontal_autoaim", "1", FCVAR_ARCHIVE, "Applies horizontal correction towards best aim ent." );
+
+ConVar joy_disable_movement_in_ui( "joy_disable_movement_in_ui", "1", 0, "Disables joystick character movement when UI is active." );
 ConVar dub_aimbot("dub_aimbot", "1", FCVAR_NONE, "open auto aim");
 ConVar dub_aimbot_radius_scale("dub_aimbot_radius_scale", "2.0", FCVAR_NONE, "aiming radius of cursor");
 ConVar dub_aimbot_auto_toggle("dub_aimbot_auto_toggle", "0", FCVAR_NONE);
-
-ConVar joy_disable_movement_in_ui( "joy_disable_movement_in_ui", "1", 0, "Disables joystick character movement when UI is active." );
-ConVar dub_better_chainsaw_turn_rate( "dub_better_chainsaw_turn_rate", "1500", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
+ConVar dub_better_chainsaw_turn_rate("dub_better_chainsaw_turn_rate", "1500", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 
 extern kbutton_t in_attack;
 extern int g_asw_iPlayerListOpen;
@@ -209,11 +209,10 @@ void ASW_StoreClearAll()
 // asw
 bool MarineControllingTurret()
 {
-	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	return (pPlayer && pPlayer->GetMarine() && pPlayer->GetMarine()->IsControllingTurret());
+	C_ASW_Marine *pMarine = C_ASW_Marine::GetLocalMarine();
+	return pMarine && pMarine->IsControllingTurret();
 }
 
-#define PI 3.14159265358979
 #define ASW_MARINE_HULL_MINS Vector(-13, -13, 0)
 #define ASW_MARINE_HULL_MAXS Vector(13, 13, 72)
 
@@ -259,8 +258,8 @@ bool HUDTraceToWorld(float screenx, float screeny, Vector &HitLocation, bool bUs
 	AngleVectors(CameraAngle, &X, &Y, &Z);
 	float FOVAngle = pPlayer->GetFOV();
 	projected = X 
-				- tanf(FOVAngle*PI/180*0.5) * 2 * Y * (screenx) * ( 0.75f / fRatio )
-		          + tanf(FOVAngle*PI/180*0.5) * 2 * Z * (screeny) * 0.75f;
+				- tanf(FOVAngle*M_PI/180*0.5) * 2 * Y * (screenx) * ( 0.75f / fRatio )
+		          + tanf(FOVAngle*M_PI/180*0.5) * 2 * Z * (screeny) * 0.75f;
 
 	TraceDirection = projected;
 	TraceDirection.NormalizeInPlace();
@@ -359,8 +358,8 @@ bool HUDTraceToWorld(float screenx, float screeny, Vector &HitLocation, bool bUs
 
 // Finds the world location we should be aiming at, given the XY coords of our mouse cursor
 // bIgnoreCursorPosition - if true, don't perform a trace beneath the cursor; just use the facing direction
-C_BaseEntity* HUDToWorld(float screenx, float screeny,
-	Vector &HitLocation, IASW_Client_Aim_Target* &pAutoAimEnt,
+C_BaseEntity* HUDToWorld(float screenx, float screeny, 
+	Vector& HitLocation, IASW_Client_Aim_Target*& pAutoAimEnt, 
 	bool bPreferFlatAiming, bool bIgnoreCursorPosition, float flForwardMove, float flSideMove)
 {
 	// Verify that we have input.
@@ -374,8 +373,8 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 
 	ASWInput()->SetAutoaimEntity( NULL );
 
-	C_ASW_Marine* pMarine = pPlayer->GetMarine();
-	C_ASW_Weapon *pWeapon = pMarine ? pMarine->GetActiveASWWeapon() : NULL;
+	C_ASW_Inhabitable_NPC *pNPC = pPlayer->GetViewNPC();
+	C_ASW_Weapon *pWeapon = pNPC ? pNPC->GetActiveASWWeapon() : NULL;
 	float flWeaponRadiusScale = pWeapon ? pWeapon->GetAutoAimRadiusScale() : 1.0f;
 	bool bWeaponHasRadiusScale = ( flWeaponRadiusScale > 1.0f );
 
@@ -403,22 +402,22 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 	AngleVectors(cameraAngle, &X, &Y, &Z);
 	float FOVAngle = pPlayer->GetFOV();
 	vWorldSpaceCameraToCursor = X 
-		- tanf(FOVAngle*PI/180*0.5) * 2 * Y * (screenx) * ( 0.75f / fRatio )
-		+ tanf(FOVAngle*PI/180*0.5) * 2 * Z * (screeny) *  0.75f;
+		- tanf(FOVAngle*M_PI/180*0.5) * 2 * Y * (screenx) * ( 0.75f / fRatio )
+		+ tanf(FOVAngle*M_PI/180*0.5) * 2 * Z * (screeny) *  0.75f;
 
 	vWorldSpaceCameraToCursor.NormalizeInPlace();
 	vTraceEnd = vCameraLocation + vWorldSpaceCameraToCursor * ASW_MAX_AIM_TRACE;
 
 	// BenLubar(sd2-ceiling-ents): use CASW_Trace_Filter to handle *_asw_fade properly
-	CASW_Trace_Filter filter( pMarine, COLLISION_GROUP_NONE );
+	CASW_Trace_Filter filter( pNPC, COLLISION_GROUP_NONE );
 	// do a trace into the world to see what we've pointing directly at
 	UTIL_TraceLine( vCameraLocation, vTraceEnd, nTraceMask, &filter, &tr );
 	if ( tr.fraction >= 1.0f )
 	{
-		if (!pMarine)
+		if (!pNPC)
 			return NULL;
 
-		float flFloorZ = ( pMarine->GetRenderOrigin() + Vector( 0,0, ASW_MARINE_GUN_OFFSET_Z ) ).z;
+		float flFloorZ = ( pNPC->GetRenderOrigin() + Vector( 0,0, ASW_MARINE_GUN_OFFSET_Z ) ).z;
 		float trace_dist_to_ground = -(vCameraLocation.z - flFloorZ) / vWorldSpaceCameraToCursor.z;
 		HitLocation = vCameraLocation + vWorldSpaceCameraToCursor * trace_dist_to_ground;
 	}
@@ -429,19 +428,19 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 	}
 
 	
-	if (!pMarine)
+	if (!pNPC)
 	{
 		// no marine, just use the trace spot
 		return NULL;
 	}
 
-	Vector vecWeaponPos = pMarine->GetRenderOrigin() + Vector( 0,0, ASW_MARINE_GUN_OFFSET_Z );
+	Vector vecWeaponPos = pNPC->GetRenderOrigin() + Vector( 0,0, ASW_MARINE_GUN_OFFSET_Z );
 	float fFloorZ = vecWeaponPos.z;	// normally aim flat
 
 	if ( !bIgnoreCursorPosition )
 	{
 		// if we're clicking right on something
-		if (tr.m_pEnt && tr.m_pEnt!=pMarine)
+		if (tr.m_pEnt && tr.m_pEnt!=pNPC)
 		{
 			// store if we're clicking right on an aim target
 			IASW_Client_Aim_Target* pPossibleAimEnt = dynamic_cast<IASW_Client_Aim_Target*>(tr.m_pEnt);
@@ -473,7 +472,7 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 	if ( !ASWInput()->ControllerModeActive() && pBestAlien )
 	{
 		// check we have LOS to the target
-		CTraceFilterLOS traceFilter( pMarine, COLLISION_GROUP_NONE );
+		CTraceFilterLOS traceFilter( pNPC, COLLISION_GROUP_NONE );
 		trace_t tr2;
 		UTIL_TraceLine( vecWeaponPos, pBestAlien->GetAimTargetRadiusPos( vecWeaponPos ), MASK_OPAQUE, &traceFilter, &tr2 );
 		C_BaseEntity *pEnt = pBestAlien->GetEntity();
@@ -488,7 +487,7 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 		{
 			if ( !bWeaponHasRadiusScale )
 			{
-				if ( ASWGameRules()->CanFlareAutoaimAt( pMarine, pEnt ) )
+				if ( ASWGameRules()->CanFlareAutoaimAt( pNPC, pEnt ) )
 				{
 					bBestAlienUsingFlareAutoaim = true;
 				}
@@ -506,11 +505,11 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 			if ( !pEnt || !pAimTarget->IsAimTarget() )
 				continue;
 			// check it isn't attached to our marine (infesting parasites)
-			if (pEnt->GetMoveParent() == pMarine)
+			if (pEnt->GetMoveParent() == pNPC)
 				continue;
 			
 			// autoaiming: skip yourself
-			if (pEnt == pMarine)
+			if (pEnt == pNPC)
 				continue;
 			// check he's in range
 			Vector vecAlienPos = pAimTarget->GetAimTargetRadiusPos(vecWeaponPos); //pEnt->WorldSpaceCenter();
@@ -555,7 +554,7 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 			bool bFlareAutoaim = false;
 			if ( !bWeaponHasRadiusScale )
 			{
-				if ( ASWGameRules()->CanFlareAutoaimAt( pMarine, pEnt ) )
+				if ( ASWGameRules()->CanFlareAutoaimAt( pNPC, pEnt ) )
 				{
 					flRadiusScale *= 2.0f;
 					bFlareAutoaim = true;
@@ -599,7 +598,7 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 					if (dist < best_d || best_d == -1)
 					{
 						// check we have LOS to the target
-						CTraceFilterLOS traceFilter( pMarine, COLLISION_GROUP_NONE );
+						CTraceFilterLOS traceFilter( pNPC, COLLISION_GROUP_NONE );
 						trace_t tr2;
 						UTIL_TraceLine( vecWeaponPos, pAimTarget->GetAimTargetRadiusPos( vecWeaponPos ), MASK_OPAQUE, &traceFilter, &tr2 );
 						bool bHasLOS = (!tr2.startsolid && (tr2.fraction >= 1.0 || tr2.m_pEnt == pEnt));
@@ -691,23 +690,23 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 					Vector vecAimTargetPos = pBestAlien->GetAimTargetPos( vecWeaponPos, bPreferFlatAiming );
 					vecHitLoc.x = vecAimTargetPos.x;
 					vecHitLoc.y = vecAimTargetPos.y;
-					if ( asw_DebugAutoAim.GetBool() )
+					if (asw_DebugAutoAim.GetBool())
 					{
 						Vector vMarineForward, vMarineRight, vMarineUp;
 						QAngle ang = pPlayer->EyeAngles();
 						ang[PITCH] = 0;
 						ang[ROLL] = 0;
-						AngleVectors( ang, &vMarineForward, &vMarineRight, &vMarineUp );
+						AngleVectors(ang, &vMarineForward, &vMarineRight, &vMarineUp);
 
-						Vector vecDebugStartPos = pMarine->GetRenderOrigin()
+						Vector vecDebugStartPos = pNPC->GetRenderOrigin()
 							+ vMarineForward * ASW_MARINE_GUN_OFFSET_X
-							+ vMarineRight * ASW_MARINE_GUN_OFFSET_Y 
+							+ vMarineRight * ASW_MARINE_GUN_OFFSET_Y
 							+ vMarineUp * ASW_MARINE_GUN_OFFSET_Z;
-						debugoverlay->AddLineOverlay( vecDebugStartPos, vecHitLoc,
+						debugoverlay->AddLineOverlay(vecDebugStartPos, vecHitLoc,
 							12, 255, 255, true, 0.01f);
 					}
-					ASWInput()->SetAutoaimEntity( pBestAlien->GetEntity() );
 				}
+				ASWInput()->SetAutoaimEntity( pBestAlien->GetEntity() );
 			}
 		}
 
@@ -751,8 +750,8 @@ void RoundToPixel(Vector &vecPos)
 	AngleVectors(CameraAngle, &X, &Y, &Z);
 	float FOVAngle = pPlayer->GetFOV();
 	Vector projected = X 
-				- tanf(FOVAngle*PI/180*0.5) * 2 * Y * (vecScreenPos.x) * ( 0.75f / fRatio )
-		          + tanf(FOVAngle*PI/180*0.5) * 2 * Z * (vecScreenPos.y) * 0.75f;
+				- tanf(FOVAngle*M_PI/180*0.5) * 2 * Y * (vecScreenPos.x) * ( 0.75f / fRatio )
+		          + tanf(FOVAngle*M_PI/180*0.5) * 2 * Z * (vecScreenPos.y) * 0.75f;
 
 	projected.NormalizeInPlace();
 	
@@ -767,16 +766,16 @@ void RoundToPixel(Vector &vecPos)
 static float s_flLastTurnTime = 0.0f;
 
 // smoothly rotates the current marine's turning yaw to the desired
-void SmoothTurningYaw(CASW_Player *pPlayer, float &yaw)
+void SmoothTurningYaw( CASW_Player *pPlayer, float &yaw )
 {
-	if (!pPlayer || !pPlayer->GetMarine())
+	if ( !pPlayer || !pPlayer->GetNPC() )
 		return;
 
 	// no change if we have no marine or just starting out or just changed marine
-	if (pPlayer->m_vecLastCameraPosition == vec3_origin)
+	if ( pPlayer->m_vecLastCameraPosition == vec3_origin )
 	{
-		pPlayer->GetMarine()->m_fLastTurningYaw = yaw;
-		pPlayer->m_hLastTurningMarine = pPlayer->GetMarine();
+		pPlayer->GetNPC()->m_fLastTurningYaw = yaw;
+		pPlayer->m_hLastTurningNPC = pPlayer->GetNPC();
 		return;
 	}
 
@@ -784,32 +783,30 @@ void SmoothTurningYaw(CASW_Player *pPlayer, float &yaw)
 	s_flLastTurnTime = gpGlobals->curtime;
 
 	// fraction turning method	
-	
-	C_ASW_Marine *pMarine = pPlayer->GetMarine();
-	Assert(pMarine);
-	C_ASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();	
 
-	float fLinearTurnRate = asw_marine_linear_turn_rate.GetFloat();
+	C_ASW_Inhabitable_NPC *pNPC = pPlayer->GetNPC();
+	Assert( pNPC );
+	C_ASW_Weapon *pWeapon = pNPC->GetActiveASWWeapon();
 
-	//if ( pMarine->GetActiveASWWeapon() )
-	if ( pMarine->GetActiveASWWeapon() && pMarine->GetActiveASWWeapon()->Classify() == CLASS_ASW_CHAINSAW && pPlayer->m_nButtons & IN_ATTACK )
+	float fLinearTurnRate = pNPC->GetBasePlayerYawRate();
+
+	if ( pNPC->GetActiveASWWeapon() && pNPC->GetActiveASWWeapon()->Classify() == CLASS_ASW_CHAINSAW && pPlayer->m_nButtons & IN_ATTACK )
 	{
-		// dub disable
-		//fLinearTurnRate *= pMarine->GetActiveASWWeapon()->GetTurnRateModifier();
+		//fLinearTurnRate *= pNPC->GetActiveASWWeapon()->GetTurnRateModifier();
 		fLinearTurnRate = dub_better_chainsaw_turn_rate.GetFloat();
 	}
 
 	if ( asw_marine_fraction_turn_scale.GetFloat() == 0 )
 	{
-		yaw = ASW_ClampYaw( fLinearTurnRate, pMarine->m_fLastTurningYaw, yaw, dt );	// linear turning method
+		yaw = ASW_ClampYaw( fLinearTurnRate, pNPC->m_fLastTurningYaw, yaw, dt );	// linear turning method
 	}
 	else
-	{	
+	{
 		// fractional turning system (not currently used)
 		float fFraction = 0.9f;
-		if (pWeapon)
+		if ( pWeapon )
 		{
-			if (pWeapon->m_bIsFiring)
+			if ( pWeapon->m_bIsFiring )
 			{
 				fFraction *= asw_marine_turn_firing_fraction.GetFloat(); //pWeapon->m_fFiringTurnRateModifier;
 			}
@@ -820,18 +817,18 @@ void SmoothTurningYaw(CASW_Player *pPlayer, float &yaw)
 		}
 
 		float old_yaw = yaw;
-		yaw = ASW_ClampYaw_Fraction( 1.0f - fFraction, pMarine->m_fLastTurningYaw, yaw, dt * asw_marine_fraction_turn_scale.GetFloat() );
-		
+		yaw = ASW_ClampYaw_Fraction( 1.0f - fFraction, pNPC->m_fLastTurningYaw, yaw, dt * asw_marine_fraction_turn_scale.GetFloat() );
+
 		float min_move = fLinearTurnRate * dt;
 		// make sure we're moving at least the minimum yaw speed
-		if (abs(AngleDiff(yaw, old_yaw)) < min_move)
+		if ( abs( AngleDiff( yaw, old_yaw ) ) < min_move )
 		{
-			yaw = ASW_ClampYaw( fLinearTurnRate, pMarine->m_fLastTurningYaw, old_yaw, dt );	// linear turning method
+			yaw = ASW_ClampYaw( fLinearTurnRate, pNPC->m_fLastTurningYaw, old_yaw, dt );	// linear turning method
 		}
 	}
-				
-	pMarine->m_fLastTurningYaw = yaw;
-	pPlayer->m_hLastTurningMarine = pMarine;
+
+	pNPC->m_fLastTurningYaw = yaw;
+	pPlayer->m_hLastTurningNPC = pNPC;
 }
 
 CASWInput::CASWInput() : 
@@ -851,8 +848,8 @@ m_fCamYawRotStartTime(0.0f)
 	m_fJoypadFacingYaw = 0;
 	m_LastMouseX = -1;
 	m_LastMouseY = -1;
-	m_bDontTurnMarine = true;
-	m_hLastMarine = NULL;
+	m_bDontTurnNPC = true;
+	m_hLastNPC = NULL;
 	m_vecCrosshairAimingPos = vec3_origin;
 	m_vecCrosshairTracePos = vec3_origin;
 	m_bAutoAttacking = false;
@@ -867,14 +864,14 @@ m_fCamYawRotStartTime(0.0f)
 #endif
 }
 
-void CASWInput::ComputeNewMarineFacing( C_ASW_Player *pPlayer, const Vector &HitLocation, C_BaseEntity *pHitEnt, IASW_Client_Aim_Target* pAutoAimEnt, bool bPreferFlatAiming, float *pPitch, Vector *pNewMarineFacing )
+void CASWInput::ComputeNewMarineFacing( C_ASW_Player *pPlayer, const Vector &HitLocation, C_BaseEntity *pHitEnt, IASW_Client_Aim_Target *pAutoAimEnt, bool bPreferFlatAiming, float *pPitch, Vector *pNewMarineFacing )
 {
 	*pPitch = 0;
-	if ( pPlayer && pPlayer->GetMarine() )
-	{	
-		C_ASW_Marine *pMarine = pPlayer->GetMarine();
+	if ( pPlayer && pPlayer->GetNPC() )
+	{
+		C_ASW_Inhabitable_NPC *pNPC = pPlayer->GetNPC();
 
-		Vector vecMarinePos = (pMarine->GetRenderOrigin() + Vector( 0,0,ASW_MARINE_GUN_OFFSET_Z ) );
+		Vector vecMarinePos = ( pNPC->GetRenderOrigin() + Vector( 0, 0, ASW_MARINE_GUN_OFFSET_Z ) );
 
 		m_vecCrosshairAimingPos = HitLocation;
 		if ( !pHitEnt && pAutoAimEnt )
@@ -888,11 +885,11 @@ void CASWInput::ComputeNewMarineFacing( C_ASW_Player *pPlayer, const Vector &Hit
 		ang[ROLL] = 0;
 		AngleVectors( ang, &vMarineForward, &vMarineRight, &vMarineUp );
 
-		C_ASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();
+		C_ASW_Weapon *pWeapon = pNPC->GetActiveASWWeapon();
 
 		// Marine position already has Z offset added to it,
 		// choose a reasonable default in case pWeapon is NULL
-		Vector vMuzzlePosition = vecMarinePos + 
+		Vector vMuzzlePosition = vecMarinePos +
 			vMarineForward * ASW_MARINE_GUN_OFFSET_X +
 			vMarineRight * ASW_MARINE_GUN_OFFSET_Y;
 
@@ -929,7 +926,7 @@ void CASWInput::ComputeNewMarineFacing( C_ASW_Player *pPlayer, const Vector &Hit
 			vMarineToTargetFlat *= flMinRadius;
 			flGunToTargetDistance = vMarineToTargetFlat.LengthSqr() - flMarineGunOffsetY * flMarineGunOffsetY;
 
-			if ( flGunToTargetDistance < 0.0f ) 
+			if ( flGunToTargetDistance < 0.0f )
 			{
 				flGunToTargetDistance = flMinRadius;
 			}
@@ -950,43 +947,48 @@ void CASWInput::ComputeNewMarineFacing( C_ASW_Player *pPlayer, const Vector &Hit
 		*pNewMarineFacing = vNewForward;
 
 		Vector vecHitPos = HitLocation;
-		if (pAutoAimEnt)
+		if ( pAutoAimEnt )
 		{
 			//vecHitPos = pAutoAimEnt->GetAimTargetPos(vMuzzlePosition, bPreferFlatAiming);	
 		}
 
 		// Use the standard bullet start position to try and figure out the exact weapon pitch needed
-		vecMarinePos = pMarine->GetRenderOrigin()
+		vecMarinePos = pNPC->GetRenderOrigin()
 			+ vMarineForward * ASW_MARINE_GUN_OFFSET_X
-			+ vMarineRight * ASW_MARINE_GUN_OFFSET_Y 
+			+ vMarineRight * ASW_MARINE_GUN_OFFSET_Y
 			+ vMarineUp * ASW_MARINE_GUN_OFFSET_Z;
 
 		// The yaw of this vector is not quite right (hence "approximate") but the pitch is correct
 		Vector vApproximateMarineFacingVector = vecHitPos - vecMarinePos;
-		// Approximate a better laser sight direction; this will be used so long as it does not deviate from the marine's forward direction by too much
-		Vector vecLaserDir = ( vecHitPos - vMuzzlePosition );
-		pMarine->m_flLaserSightLength = vecLaserDir.NormalizeInPlace();
-		//pMarine->m_vLaserSightCorrection = vecLaserDir - vNewForward;
-		pMarine->m_vLaserSightCorrection = vecLaserDir;
+
+		C_ASW_Marine *pMarine = C_ASW_Marine::AsMarine( pNPC );
+		if ( pMarine )
+		{
+			// Approximate a better laser sight direction; this will be used so long as it does not deviate from the marine's forward direction by too much
+			Vector vecLaserDir = ( vecHitPos - vMuzzlePosition );
+			pMarine->m_flLaserSightLength = vecLaserDir.NormalizeInPlace();
+			//pMarine->m_vLaserSightCorrection = vecLaserDir - vNewForward;
+			pMarine->m_vLaserSightCorrection = vecLaserDir;
+		}
 
 		if ( fabsf( vApproximateMarineFacingVector.z ) > 1e-3f )
-		{					
-			if (asw_DebugAutoAim.GetInt()==3)
-				FX_MicroExplosion(vecHitPos, Vector(0,0,1));					
+		{
+			if ( asw_DebugAutoAim.GetInt() == 3 )
+				FX_MicroExplosion( vecHitPos, Vector( 0, 0, 1 ) );
 
-			*pPitch = UTIL_VecToPitch(vApproximateMarineFacingVector);
+			*pPitch = UTIL_VecToPitch( vApproximateMarineFacingVector );
 			if ( !IsFinite( *pPitch ) )
 				*pPitch = 0;
 
-			if (asw_DebugAutoAim.GetInt() == 2)
+			if ( asw_DebugAutoAim.GetInt() == 2 )
 			{
-				Msg("[%s]%f: Setting pitch to %f (marine z:%f hitlocZ:%f\n", pPlayer->IsClient() ? "c" : "s",
-					gpGlobals->curtime, *pPitch, vMuzzlePosition.z, vecHitPos.z);
+				Msg( "[%s]%f: Setting pitch to %f (marine z:%f hitlocZ:%f\n", pPlayer->IsClient() ? "c" : "s",
+					gpGlobals->curtime, *pPitch, vMuzzlePosition.z, vecHitPos.z );
 			}
-			if (asw_DebugAutoAim.GetBool())
+			if ( asw_DebugAutoAim.GetBool() )
 			{
-				debugoverlay->AddLineOverlay(vecHitPos, vMuzzlePosition,
-					255, 255, 0, true, 0.01f);
+				debugoverlay->AddLineOverlay( vecHitPos, vMuzzlePosition,
+					255, 255, 0, true, 0.01f );
 			}
 		}
 	}
@@ -1005,7 +1007,7 @@ void CASWInput::TurnTowardMouse(QAngle& viewangles, CUserCmd *cmd)
 	float mx, my;
 
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();	
-	C_ASW_Marine *pMarine = pPlayer ? pPlayer->GetMarine() : NULL;
+	C_ASW_Inhabitable_NPC *pNPC = pPlayer ? pPlayer->GetNPC() : NULL;
 
 	bool bPreferFlatAiming = false;
 
@@ -1027,26 +1029,26 @@ void CASWInput::TurnTowardMouse(QAngle& viewangles, CUserCmd *cmd)
 
 	// don't change the marine's yaw if the mouse cursor hasn't moved and marine is still
 	//  (this allows the player to switch between his marines without messing up their facing)
-	if (pPlayer && pPlayer->GetMarine())
+	if ( pNPC )
 	{
-		if (pPlayer->GetMarine() != m_hLastMarine)
+		if ( pNPC != m_hLastNPC )
 		{
-			m_bDontTurnMarine = true;
+			m_bDontTurnNPC = true;
 		}
-		m_hLastMarine = pPlayer->GetMarine();
-		if (current_posx != m_LastMouseX || current_posy != m_LastMouseY || pPlayer->GetMarine()->GetAbsVelocity().LengthSqr() > 10)
+		m_hLastNPC = pPlayer->GetNPC();
+		if ( current_posx != m_LastMouseX || current_posy != m_LastMouseY || pNPC->GetAbsVelocity().LengthSqr() > 10 )
 		{
-			m_bDontTurnMarine = false;
+			m_bDontTurnNPC = false;
 			m_LastMouseX = current_posx;
-			m_LastMouseY = current_posy;			
+			m_LastMouseY = current_posy;
 		}
 		else
 		{
-			pPlayer->GetMarine()->m_bUseLastRenderedEyePosition = true;
+			pNPC->m_bUseLastRenderedEyePosition = true;
 		}
 
-		C_ASW_Weapon *pWeapon = pPlayer->GetMarine()->GetActiveASWWeapon();
-		if (pWeapon && pWeapon->PrefersFlatAiming())
+		C_ASW_Weapon *pWeapon = pNPC->GetActiveASWWeapon();
+		if ( pWeapon && pWeapon->PrefersFlatAiming() )
 		{
 			bPreferFlatAiming = true;
 		}
@@ -1077,41 +1079,42 @@ void CASWInput::TurnTowardMouse(QAngle& viewangles, CUserCmd *cmd)
 		yaw = 0;	
 
 	// make our yaw look towards a particular item if we're using it or towards the attached entity
-	if ( pPlayer && pPlayer->GetMarine() )
+	if ( pNPC )
 	{
-		CBaseEntity* pUsing = pPlayer->GetMarine()->m_hUsingEntity;
+		CBaseEntity *pUsing = pNPC->GetUsingEntity();
+		CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
 		if (pUsing)
 		{
-			vNewMarineFacing = pUsing->GetAbsOrigin() - pPlayer->GetMarine()->GetRenderOrigin();
+			vNewMarineFacing = pUsing->GetAbsOrigin() - pPlayer->GetNPC()->GetRenderOrigin();
 			vNewMarineFacing.z = 0;
 			yaw = UTIL_VecToYaw(vNewMarineFacing);
 			if (!IsFinite(yaw))
 				yaw = 0;			
 		}
-		else if ( pMarine->GetFacingPoint() != vec3_origin )
+		else if ( pNPC->GetFacingPoint() != vec3_origin )
 		{
-			vNewMarineFacing = pMarine->GetFacingPoint() - pMarine->GetRenderOrigin();
+			vNewMarineFacing = pNPC->GetFacingPoint() - pNPC->GetRenderOrigin();
 			vNewMarineFacing.z = 0;
 			yaw = UTIL_VecToYaw( vNewMarineFacing );
 			if ( !IsFinite( yaw ) )
 				yaw = 0;			
 		}
-		else if ( pMarine->GetCurrentMeleeAttack() && !pMarine->GetCurrentMeleeAttack()->m_bAllowRotation )
+		else if ( pMarine && pMarine->GetCurrentMeleeAttack() && !pMarine->GetCurrentMeleeAttack()->m_bAllowRotation )
 		{
 			// lock facing to our melee animation unless it's relinquished movement control
 			yaw = pMarine->m_flMeleeYaw;
 		}
 
 		// if we're not meant to be turning the marine, then just use his current yaw
-		if (m_bDontTurnMarine)
+		if ( m_bDontTurnNPC )
 		{
-			yaw = pMarine->GetAbsAngles()[YAW];
-			pMarine->m_fLastTurningYaw = yaw;			
+			yaw = pNPC->GetAbsAngles()[YAW];
+			pNPC->m_fLastTurningYaw = yaw;
 		}
 	}	
 	
 	// blend our current marine's yaw to the desired, taking into account weapon turn rates, etc	
-	if ( !m_bDontTurnMarine )
+	if ( !m_bDontTurnNPC )
 		SmoothTurningYaw( pPlayer, yaw );
 			
 	viewangles[YAW] = yaw;
@@ -1127,22 +1130,22 @@ void CASWInput::TurnTowardMouse(QAngle& viewangles, CUserCmd *cmd)
 
 	viewangles[ROLL] = 90 - RAD2DEG(atan(ground_x/marine_h));
 
-	if (pPlayer && pPlayer->GetMarine())
-		pPlayer->GetMarine()->m_bUseLastRenderedEyePosition = false;
+	if ( pNPC )
+		pNPC->m_bUseLastRenderedEyePosition = false;
 }
 
-void CASWInput::TurnTowardController(QAngle& viewangles)
+void CASWInput::TurnTowardController( QAngle &viewangles )
 {
 	VPROF_BUDGET( "CASWInput::TurnTowardController", VPROF_BUDGETGROUP_ASW_CLIENT );
 	float mx, my;
 
 	int x, y;
-	GetWindowCenter( x,  y );
+	GetWindowCenter( x, y );
 
 	int current_posx = 0;
 	int current_posy = 0;
-	GetSimulatedFullscreenMousePos(&current_posx, &current_posy);
-	
+	GetSimulatedFullscreenMousePos( &current_posx, &current_posy );
+
 	mx = current_posx - x;
 	my = current_posy - y;
 
@@ -1152,81 +1155,82 @@ void CASWInput::TurnTowardController(QAngle& viewangles)
 	vNewMarineFacing.z = 0;
 
 	Vector HitLocation;
-	float mx_ratio =((float) mx) / ((float) x);
-	float my_ratio =((float) my) / ((float) y);
+	float mx_ratio = ( ( float )mx ) / ( ( float )x );
+	float my_ratio = ( ( float )my ) / ( ( float )y );
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	C_ASW_Marine *pMarine = pPlayer ? pPlayer->GetMarine() : NULL;
+	C_ASW_Inhabitable_NPC *pNPC = pPlayer ? pPlayer->GetNPC() : NULL;
 	bool bPreferFlatAiming = false;
 
 	// grab the location of the world directly underneath the crosshair
 	HUDTraceToWorld( -mx_ratio * 0.5f, -my_ratio * 0.5f, m_vecCrosshairTracePos );
 
-	if (pPlayer && pPlayer->GetMarine())
+	if ( pNPC )
 	{
-		C_ASW_Weapon *pWeapon = pPlayer->GetMarine()->GetActiveASWWeapon();
-		if (pWeapon && pWeapon->PrefersFlatAiming())
+		C_ASW_Weapon *pWeapon = pNPC->GetActiveASWWeapon();
+		if ( pWeapon && pWeapon->PrefersFlatAiming() )
 		{
 			bPreferFlatAiming = true;
 		}
 	}
-	IASW_Client_Aim_Target* pAutoAimEnt = NULL;
-	C_BaseEntity *pHitEnt = HUDToWorld(-mx_ratio * 0.5f, -my_ratio * 0.5f, HitLocation, pAutoAimEnt, bPreferFlatAiming, true );
+	IASW_Client_Aim_Target *pAutoAimEnt = NULL;
+	C_BaseEntity *pHitEnt = HUDToWorld( -mx_ratio * 0.5f, -my_ratio * 0.5f, HitLocation, pAutoAimEnt, bPreferFlatAiming, true );
 	float pitch = 0;
 
 	ComputeNewMarineFacing( pPlayer, HitLocation, pHitEnt, pAutoAimEnt, bPreferFlatAiming, &pitch, &vNewMarineFacing );
 
-	float yaw = UTIL_VecToYaw(vNewMarineFacing);
-	if (!IsFinite(yaw))
+	float yaw = UTIL_VecToYaw( vNewMarineFacing );
+	if ( !IsFinite( yaw ) )
 		yaw = 0;
 	m_fJoypadFacingYaw = yaw;
 
 	// make our yaw look towards a particular item if we're using it
-	if (pPlayer && pPlayer->GetMarine())
+	if ( pNPC )
 	{
-		if (pPlayer->GetMarine()->GetFacingPoint() != vec3_origin)
+		C_ASW_Marine *pMarine = C_ASW_Marine::AsMarine( pNPC );
+		if ( pNPC->GetFacingPoint() != vec3_origin )
 		{
-			vNewMarineFacing = pPlayer->GetMarine()->GetFacingPoint() - pPlayer->GetMarine()->GetRenderOrigin();
+			vNewMarineFacing = pNPC->GetFacingPoint() - pNPC->GetRenderOrigin();
 			vNewMarineFacing.z = 0;
-			yaw = UTIL_VecToYaw(vNewMarineFacing);
-			if (!IsFinite(yaw))
-				yaw = 0;			
+			yaw = UTIL_VecToYaw( vNewMarineFacing );
+			if ( !IsFinite( yaw ) )
+				yaw = 0;
 		}
-		else if ( pMarine->GetCurrentMeleeAttack() && !pMarine->GetCurrentMeleeAttack()->m_bAllowRotation )
+		else if ( pMarine && pMarine->GetCurrentMeleeAttack() && !pMarine->GetCurrentMeleeAttack()->m_bAllowRotation )
 		{
 			// lock facing to our melee animation unless it's relinquished movement control
 			yaw = pMarine->m_flMeleeYaw;
 		}
 	}
 	// blend our current marine's yaw to the desired, taking into account weapon turn rates, etc
-	SmoothTurningYaw(pPlayer, yaw);
-	
+	SmoothTurningYaw( pPlayer, yaw );
+
 	viewangles[YAW] = yaw;
 	viewangles[PITCH] = pitch;
 
 	// set the roll so the marine is looking at the cursor's location at foot level	
-	float dist = sqrt((mx * mx) + (my * my));
+	float dist = sqrt( ( mx * mx ) + ( my * my ) );
 	float sx = ScreenWidth() * 0.5f;
 	float sy = ScreenHeight() * 0.5f;
-	float max_dist = sqrt((sx * sx) + (sy * sy));
-	float ground_x = (dist / max_dist) * 500.0f;
+	float max_dist = sqrt( ( sx * sx ) + ( sy * sy ) );
+	float ground_x = ( dist / max_dist ) * 500.0f;
 	float marine_h = 50.f;
-	viewangles[ROLL] = 90 - RAD2DEG(atan(ground_x/marine_h));
+	viewangles[ROLL] = 90 - RAD2DEG( atan( ground_x / marine_h ) );
 
-	if (pPlayer && pPlayer->GetMarine())
-		pPlayer->GetMarine()->m_bUseLastRenderedEyePosition = false;
+	if ( pNPC )
+		pNPC->m_bUseLastRenderedEyePosition = false;
 }
 
-void SmoothControllerYaw(CASW_Player *pPlayer, float &yaw)
+void SmoothControllerYaw( CASW_Player *pPlayer, float &yaw )
 {
-	if (!pPlayer || !pPlayer->GetMarine())
+	if ( !pPlayer || !pPlayer->GetNPC() )
 		return;
 	// no change if we have no marine or just starting out or just changed marine
-	static C_ASW_Marine *s_pLastJoypadMarine = NULL;
+	static C_ASW_Inhabitable_NPC *s_pLastJoypadNPC = NULL;
 	static float s_fLastJoypadYaw = 0;
-	if (pPlayer->GetMarine()!=s_pLastJoypadMarine || pPlayer->m_vecLastCameraPosition == vec3_origin)
+	if ( pPlayer->GetNPC() != s_pLastJoypadNPC || pPlayer->m_vecLastCameraPosition == vec3_origin )
 	{
 		s_fLastJoypadYaw = yaw;
-		s_pLastJoypadMarine = pPlayer->GetMarine();
+		s_pLastJoypadNPC = pPlayer->GetNPC();
 		return;
 	}
 
@@ -1236,12 +1240,12 @@ void SmoothControllerYaw(CASW_Player *pPlayer, float &yaw)
 	// fraction turning method
 	float fFraction = 0.9f;
 	float fLinearTurnRate = asw_marine_linear_turn_rate.GetFloat();
-	C_ASW_Marine *pMarine = pPlayer->GetMarine();
-	Assert(pMarine);
-	C_ASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();	
-	if (pWeapon)
+	C_ASW_Inhabitable_NPC *pNPC = pPlayer->GetNPC();
+	Assert( pNPC );
+	C_ASW_Weapon *pWeapon = pNPC->GetActiveASWWeapon();
+	if ( pWeapon )
 	{
-		if (pWeapon->m_bIsFiring)
+		if ( pWeapon->m_bIsFiring )
 		{
 			fFraction *= asw_marine_turn_firing_fraction.GetFloat(); //pWeapon->m_fFiringTurnRateModifier;
 		}
@@ -1250,25 +1254,25 @@ void SmoothControllerYaw(CASW_Player *pPlayer, float &yaw)
 			fFraction *= asw_marine_turn_normal_fraction.GetFloat(); //pWeapon->m_fTurnRateModifier;
 		}
 	}
-	if (asw_marine_fraction_turn_scale.GetFloat() == 0)
+	if ( asw_marine_fraction_turn_scale.GetFloat() == 0 )
 	{
 		yaw = ASW_ClampYaw( fLinearTurnRate, s_fLastJoypadYaw, yaw, dt );	// linear turning method
 	}
 	else
-	{	
+	{
 		float old_yaw = yaw;
 		yaw = ASW_ClampYaw_Fraction( 1.0f - fFraction, s_fLastJoypadYaw, yaw, dt * asw_marine_fraction_turn_scale.GetFloat() );
-		
+
 		float min_move = fLinearTurnRate * dt;
 		// make sure we're moving at least the minimum yaw speed
-		if (abs(AngleDiff(yaw, old_yaw)) < min_move)
+		if ( abs( AngleDiff( yaw, old_yaw ) ) < min_move )
 		{
 			yaw = ASW_ClampYaw( fLinearTurnRate, s_fLastJoypadYaw, old_yaw, dt );	// linear turning method
 		}
 	}
-				
+
 	s_fLastJoypadYaw = yaw;
-	s_pLastJoypadMarine = pMarine;
+	s_pLastJoypadNPC = pNPC;
 }
 
 // Returns the mouse cursor location.  If in controller mode we simulate a cursor position based on the analogue stick.
@@ -1281,10 +1285,10 @@ void CASWInput::GetSimulatedFullscreenMousePos( int *mx, int *my, int *unclamped
 		*my = m_iLastMouseY;
 		return;
 	}
-	
+
 	// BenLubar(spectator-mouse)
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	C_ASW_Player *pViewPlayer = pPlayer && pPlayer->GetViewMarine() && pPlayer->GetViewMarine()->IsInhabited() ? pPlayer->GetViewMarine()->GetCommander() : NULL;
+	C_ASW_Player *pViewPlayer = pPlayer && pPlayer->GetViewNPC() && pPlayer->GetViewNPC()->IsInhabited() ? pPlayer->GetViewNPC()->GetCommander() : NULL;
 	if ( pViewPlayer && ( pViewPlayer != pPlayer || engine->IsPlayingDemo() ) && pViewPlayer->m_iScreenWidth > 0 && pViewPlayer->m_iScreenHeight > 0 )
 	{
 		// BenLubar: use the spectated player's mouse position
@@ -1375,7 +1379,7 @@ void CASWInput::GetSimulatedFullscreenMousePosFromController( int *mx, int *my, 
 bool MarineBusy()
 {
 	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if ( pPlayer && pPlayer->GetMarine() )	
+	if ( pPlayer && pPlayer->GetNPC() )
 	{
 		//|| pPlayer->GetMarine()->IsUsingComputerOrButtonPanel()
 		if ( g_asw_iPlayerListOpen > 0 || CASW_VGUI_Info_Message::HasInfoMessageOpen() )
@@ -1388,8 +1392,8 @@ bool MarineBusy()
 // asw - check if we're driving or not, since this changes controls
 bool PlayerDriving()
 {
-	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	return (pPlayer && pPlayer->GetMarine() && pPlayer->GetMarine()->IsDriving());
+	C_ASW_Marine *pMarine = C_ASW_Marine::GetLocalMarine();
+	return pMarine && pMarine->IsDriving();
 }
 
 // asw - make sure our vgui joypad focus panel knows which buttons we're using for up/down/left/right
@@ -1479,28 +1483,28 @@ const char* MakeHumanReadable(const char *key)
 //   used when player is firing grenades with the 'shoot at ground' option turned on (so they can make use of splash damage, etc.)
 void ASW_AdjustViewAngleForGroundShooting( QAngle &viewangles )
 {
-	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if ( !pPlayer || pPlayer->GetASWControls() != 1 )
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	if ( !pPlayer || pPlayer->GetASWControls() != ASWC_TOPDOWN )
 		return;
 
 	// first check if we're using a weapon that supports ground alt-shooting
-	C_ASW_Marine *pMarine = pPlayer->GetMarine();
+	C_ASW_Marine *pMarine = C_ASW_Marine::AsMarine( pPlayer->GetNPC() );
 	if ( !pMarine )
 		return;
 
 	// Don't adjust if they already have a near target
-	IASW_Client_Aim_Target *pTarget = dynamic_cast< IASW_Client_Aim_Target* >( ASWInput()->GetMouseOverEntity() );
+	IASW_Client_Aim_Target *pTarget = dynamic_cast< IASW_Client_Aim_Target * >( ASWInput()->GetMouseOverEntity() );
 	if ( pTarget && pTarget->GetEntity()->GetAbsOrigin().DistTo( pMarine->GetAbsOrigin() ) < 512.0f )
 	{
 		return;
 	}
 
-	C_ASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();	
+	C_ASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();
 	// TODO: investigate the line pWeapon->m_flNextSecondaryAttack
 	// rd_ground_shooting can probably be used here 
 	if ( !pWeapon || !pWeapon->SupportsGroundShooting() || gpGlobals->curtime < pWeapon->m_flNextSecondaryAttack )
 		return;
-	
+
 	// now find a spot to aim at
 	int mousex, mousey;
 	mousex = mousey = 0;
@@ -1512,7 +1516,7 @@ void ASW_AdjustViewAngleForGroundShooting( QAngle &viewangles )
 	{
 		GetVGUICursorPos( mousex, mousey );
 	}
-	
+
 	int x, y;
 	engine->GetScreenSize( x, y );
 	x = x >> 1;
@@ -1521,10 +1525,10 @@ void ASW_AdjustViewAngleForGroundShooting( QAngle &viewangles )
 	float mx, my;
 	mx = mousex - x;
 	my = mousey - y;
-	float mx_ratio =((float) mx) / ((float) x);
-	float my_ratio =((float) my) / ((float) y);
+	float mx_ratio = ( ( float )mx ) / ( ( float )x );
+	float my_ratio = ( ( float )my ) / ( ( float )y );
 	Vector vecGrenadePos = vec3_origin;
-	HUDTraceToWorld(-mx_ratio * 0.5f, -my_ratio * 0.5f, vecGrenadePos);	// store the spot we'll send a marine to
+	HUDTraceToWorld( -mx_ratio * 0.5f, -my_ratio * 0.5f, vecGrenadePos );	// store the spot we'll send a marine to
 
 	float fOriginalPitch = viewangles.x;
 	float fYawMin = viewangles.y - 5.0f;
@@ -1725,7 +1729,7 @@ void CASWInput::JoyStickForwardSideControl( float forward, float side, float &jo
 	}
 
 	// store the aiming axes, so in_mouse can use them to simulate a cursor position
-	if ( m_flTimeSinceLastTurn > joy_aim_to_movement_time.GetFloat() && !m_bCursorPlacement )
+	if ( joy_aim_to_movement.GetBool() && m_flTimeSinceLastTurn > joy_aim_to_movement_time.GetFloat() && !m_bCursorPlacement )
 	{
 		if ( !joy_autoattack.GetBool() && IsAttacking() && joy_lock_firing_angle.GetBool() )	// lock firing angle
 		{
@@ -1810,18 +1814,18 @@ void CASWInput::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float fra
 		nRadius /= ( float )nScreenMin;
 		m_flDesiredCursorRadius += ( nRadius - m_flDesiredCursorRadius ) * dt * flRadiusSnapFactor;
 	}
-	else if ( m_flTimeSinceLastTurn <= joy_aim_to_movement_time.GetFloat() )
+	else if ( !joy_aim_to_movement.GetBool() || m_flTimeSinceLastTurn <= joy_aim_to_movement_time.GetFloat() )
 	{
 		// face right analogue stick direction if it's pushed past the firing threshold, or we're not in 'aim to movement' mode
-		m_fJoypadPitch = pitch;	
-		m_fJoypadYaw = yaw;	
+		m_fJoypadPitch = pitch;
+		m_fJoypadYaw = yaw;
 	}
 
 	// Get view angles from engine
 	QAngle	viewangles;
 	engine->GetViewAngles( viewangles );
 
-	if ( C_ASW_Player::GetLocalASWPlayer() && C_ASW_Player::GetLocalASWPlayer()->GetASWControls() == 1 )
+	if ( C_ASW_Player::GetLocalASWPlayer() && C_ASW_Player::GetLocalASWPlayer()->GetASWControls() == ASWC_TOPDOWN )
 	{
 		TurnTowardController( viewangles );
 	}
@@ -1841,8 +1845,8 @@ void CASWInput::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float fra
 		C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
 		if ( pPlayer )
 		{
-			C_ASW_Marine *pMarine = pPlayer->GetMarine();
-			if ( pMarine && !MarineBusy() )
+			C_ASW_Inhabitable_NPC *pNPC = pPlayer->GetNPC();
+			if ( pNPC && !MarineBusy() )
 			{
 				// compare to see if we're facing the right way
 				float flAngle = AngleDiff( m_fJoypadFacingYaw, pPlayer->EyeAngles()[YAW] );

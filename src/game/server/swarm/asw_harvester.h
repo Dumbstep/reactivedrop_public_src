@@ -71,6 +71,7 @@ public:
 	
 	virtual bool IsHeavyDamage( const CTakeDamageInfo &info );
 	virtual bool CanBePushedAway();
+	virtual void SetInhabitedAlienAttackSchedule();
 
 	float m_fLastLayTime;		// last time we laid a critter
 	int m_iCrittersAlive;		// how many spawned critters we currently have
@@ -80,20 +81,22 @@ public:
 	static float s_fNextSpawnSoundTime;
 	static float s_fNextPainSoundTime;
 
+	enum
+	{
+		SCHED_ASW_HARVESTER_LAY_CRITTER = BaseClass::NEXT_SCHEDULE,
+		SCHED_ASW_HARVESTER_LAY_CRITTER_INHABITED,
+		NEXT_SCHEDULE,
+	};
+
+	enum
+	{
+		TASK_LAY_CRITTER = BaseClass::NEXT_TASK,
+		NEXT_TASK,
+	};
+
 private:
 	DEFINE_CUSTOM_AI;
 };
 
-enum
-{
-	SCHED_ASW_HARVESTER_LAY_CRITTER = LAST_ASW_ALIEN_SHARED_SCHEDULE,	
-	LAST_ASW_HARVESTER_SHARED_SCHEDULE,
-};
-
-enum
-{
-	TASK_LAY_CRITTER = LAST_ASW_ALIEN_SHARED_TASK,
-	LAST_ASW_HARVESTER_SHARED_TASK,
-};
 
 #endif	//_INCLUDED_ASW_HARVESTER_H

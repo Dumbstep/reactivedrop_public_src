@@ -570,10 +570,19 @@ namespace ReactiveDropInventory
 		FETCH_PROPERTY( szKey );
 		if ( *szBuf.Base() )
 			pItemDef->Description = szBuf.Base();
+		FETCH_PROPERTY( "ingame_description_english" );
+		if ( *szBuf.Base() )
+			pItemDef->Description = szBuf.Base();
+		V_snprintf( szKey, sizeof( szKey ), "ingame_description_%s", szLang );
+		FETCH_PROPERTY( szKey );
+		if ( *szBuf.Base() )
+			pItemDef->Description = szBuf.Base();
 
 		V_snprintf( szKey, sizeof( szKey ), "briefing_name_%s", szLang );
+		pItemDef->BriefingName = pItemDef->Name;
 		FETCH_PROPERTY( "briefing_name_english" );
-		pItemDef->BriefingName = szBuf.Base();
+		if ( *szBuf.Base() )
+			pItemDef->BriefingName = szBuf.Base();
 		FETCH_PROPERTY( szKey );
 		if ( *szBuf.Base() )
 			pItemDef->BriefingName = szBuf.Base();
@@ -591,6 +600,10 @@ namespace ReactiveDropInventory
 		FETCH_PROPERTY( szKey );
 		if ( *szBuf.Base() )
 			pItemDef->AfterDescription = szBuf.Base();
+
+		FETCH_PROPERTY( "after_description_only_multi_stack" );
+		Assert( !V_strcmp( szBuf.Base(), "" ) || !V_strcmp( szBuf.Base(), "true" ) || !V_strcmp( szBuf.Base(), "false" ) );
+		pItemDef->AfterDescriptionOnlyMultiStack = !V_strcmp( szBuf.Base(), "true" );
 #undef FETCH_PROPERTY
 
 		s_ItemDefs.Insert( id, pItemDef );

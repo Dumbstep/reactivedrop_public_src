@@ -1681,26 +1681,24 @@ void CBaseHudChat::Send( void )
 		}
 		else
 		{
-			new CRDTranslation(szTextbuf2, true);
-			
-			//char ansi[1024];
-			//g_pVGuiLocalize->ConvertUnicodeToANSI( szTextbuf, ansi, sizeof( ansi ) );
-			//int len = Q_strlen(ansi);
+			char ansi[1024];
+			g_pVGuiLocalize->ConvertUnicodeToANSI( szTextbuf, ansi, sizeof( ansi ) );
+			int len = Q_strlen(ansi);
 
-			//// remove the \n
-			//if ( len > 0 &&
-			//	ansi[ len - 1 ] == '\n' )
-			//{
-			//	ansi[ len - 1 ] = '\0';
-			//}
+			// remove the \n
+			if ( len > 0 &&
+				ansi[ len - 1 ] == '\n' )
+			{
+				ansi[ len - 1 ] = '\0';
+			}
 
-			//if ( len > 0 )
-			//{
-			//	char szbuf[1024];	// more than 128
-			//	Q_snprintf( szbuf, sizeof(szbuf), "%s \"%s\"", m_nMessageMode == MM_SAY ? "say" : "say_team", ansi );
+			if ( len > 0 )
+			{
+				char szbuf[1024];	// more than 128
+				Q_snprintf( szbuf, sizeof(szbuf), "%s \"%s\"", m_nMessageMode == MM_SAY ? "say" : "say_team", ansi );
 
-			//	engine->ClientCmd_Unrestricted(szbuf);
-			//}
+				engine->ClientCmd_Unrestricted(szbuf);
+			}
 		}
 	}
 

@@ -18,6 +18,8 @@ class MapInfo:
 		self.vvis = vvis or ["-radius_override", radius_override]
 		self.vrad = vrad or ["-final", "-textureshadows", "-StaticPropLighting", "-StaticPropPolys"]
 
+vrad_notextureshadows = ["-final", "-StaticPropLighting", "-StaticPropPolys"]
+
 # list of maps to compile
 # each item is a MapInfo ("MapFileName", "radius_override", "buildcubemaps? 0 or 1 string")
 VMFs = [
@@ -95,11 +97,11 @@ VMFs = [
 ##		MapInfo("rd-nh03_groundworklabs", "2500", "1"),
 ##		MapInfo("rd-acc1_infodep", "1200", "0"),
 ##		MapInfo("rd-acc2_powerhood", "900", "0"),
-##		MapInfo("rd-acc3_rescenter", "1500", "0", vrad=["-final", "-StaticPropLighting", "-StaticPropPolys"]),
-##		MapInfo("rd-acc4_confacility", "900", "1", vrad=["-final", "-StaticPropLighting", "-StaticPropPolys"]),
-##		MapInfo("rd-acc5_j5connector", "1200", "1", vrad=["-final", "-StaticPropLighting", "-StaticPropPolys"]),
-##		MapInfo("rd-acc6_labruins", "1500", "1", vrad=["-final", "-StaticPropLighting", "-StaticPropPolys"]),
-##		MapInfo("rd-acc_complex", "1500", "0", vrad=["-final", "-StaticPropLighting", "-StaticPropPolys"]),
+##		MapInfo("rd-acc3_rescenter", "1500", "0", vrad=vrad_notextureshadows),
+##		MapInfo("rd-acc4_confacility", "900", "1", vrad=vrad_notextureshadows),
+##		MapInfo("rd-acc5_j5connector", "1200", "1", vrad=vrad_notextureshadows),
+##		MapInfo("rd-acc6_labruins", "1500", "1", vrad=vrad_notextureshadows),
+##		MapInfo("rd-acc_complex", "1500", "0", vrad=vrad_notextureshadows),
 ]
 
 game = os.environ["RD_STEAM"]
@@ -152,7 +154,7 @@ for i, mapinfo in enumerate(VMFs):
 		
 # footer of the cfg file
 with open(build_all_maps_cfg, "a") as myfile:
-	myfile.write("sv_cheats 1\ndeveloper 1\nsv_allow_wait_command 1\n")
+	myfile.write("sv_cheats 1\ndeveloper 1\nsv_allow_wait_command 1\nasw_instant_restart 0\n")
 	myfile.write("build_map0\n")
 
 # run the game and execute the cfg file

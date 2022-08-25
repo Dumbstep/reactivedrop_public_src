@@ -88,7 +88,7 @@ static char const * NoTeamGameMode( char const * szGameMode )
 
 bool BaseModUI::FoundGameListItem::Info::IsJoinable() const
 {
-	return mbInGame && mIsJoinable && HaveMap();
+	return mbInGame && mIsJoinable && !CompareMapVersion();
 }
 
 bool BaseModUI::FoundGameListItem::Info::IsDLC() const
@@ -101,13 +101,32 @@ bool BaseModUI::FoundGameListItem::Info::IsDLC() const
 
 bool BaseModUI::FoundGameListItem::Info::HaveMap() const
 {
+	return CompareMapVersion() != INT_MIN;
+}
+
+int BaseModUI::FoundGameListItem::Info::CompareMapVersion() const
+{
+	char szBSPName[MAX_PATH]{};
+	int iExpectedRevision = mpGameDetails->GetInt( "system/map_version" );
 	if ( *mpGameDetails->GetString( "game/mission" ) )
 	{
-		char szBSPName[MAX_PATH];
-		Q_snprintf( szBSPName, sizeof( szBSPName ), "maps/%s.bsp", mpGameDetails->GetString( "game/mission" ) );
-		return filesystem->FileExists( szBSPName );
+		V_snprintf( szBSPName, sizeof( szBSPName ), "maps/%s.bsp", mpGameDetails->GetString( "game/mission" ) );
 	}
-	return false;
+	else if ( const char *szName = mpGameDetails->GetString( "game/missioninfo/map_name", NULL ) )
+	{
+		V_strncpy( szBSPName, szName, sizeof( szBSPName ) );
+	}
+	else
+	{
+		return INT_MIN;
+	}
+
+	if ( !filesystem->FileExists( szBSPName, "GAME" ) )
+	{
+		return INT_MIN;
+	}
+
+	return 0; // BSP header version is not the one we are looking for in worldspawn. returning 0 here for a hotfix.
 }
 
 char const * BaseModUI::FoundGameListItem::Info::IsOtherTitle() const
@@ -172,9 +191,19 @@ const char * BaseModUI::FoundGameListItem::Info::GetJoinButtonHint() const
 	{
 		return "#L4D360UI_FoundGames_Join_Download";
 	}
-	if ( !HaveMap() )
+	if ( int iMapVersionDiff = CompareMapVersion() )
 	{
-		return "#L4D360UI_Lobby_CampaignUnavailable";
+		if ( iMapVersionDiff == INT_MIN )
+		{
+			return "#L4D360UI_Lobby_CampaignUnavailable";
+		}
+
+		if ( iMapVersionDiff < 0 )
+		{
+			return "#L4D360UI_Lobby_LocalMapNewer";
+		}
+
+		return "#L4D360UI_Lobby_LocalMapOlder";
 	}
 	if ( IsJoinable() )
 	{
@@ -1841,9 +1870,13 @@ void FoundGames::AddServersToList()
 		KeyValues *pMissionMapInfo = NULL; pMissionMapInfo;
 
 		const char *szModDir = pGameDetails->GetString( "game/dir", "reactivedrop" );
-		if ( Q_stricmp( szModDir, COM_GetModDirectory() ) )
+		if ( V_stricmp( szModDir, COM_GetModDirectory() ) )
 		{
-			Q_snprintf( fi.mchOtherTitle, sizeof( fi.mchOtherTitle ), szModDir );
+			V_strncpy( fi.mchOtherTitle, szModDir, sizeof( fi.mchOtherTitle ) );
+		}
+		else if ( V_strcmp( pGameDetails->GetString( "system/game_version" ), engine->GetProductVersionString() ) )
+		{
+			V_strncpy( fi.mchOtherTitle, pGameDetails->GetString( "system/game_branch", pGameDetails->GetString( "system/game_version", "?" ) ), sizeof( fi.mchOtherTitle ) );
 		}
 
 		//

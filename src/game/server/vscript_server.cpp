@@ -45,6 +45,61 @@ extern ScriptClassDesc_t * GetScriptDesc( CBaseEntity * );
 static ConVar sv_mapspawn_nut_exec( "sv_mapspawn_nut_exec", "0", FCVAR_NONE, "If set to 1, server will execute scripts/vscripts/mapspawn.nut file" );
 
 //-----------------------------------------------------------------------------
+// Iterate through keys in a table and assign KeyValues on entity for spawn
+//-----------------------------------------------------------------------------
+void ParseTable( CBaseEntity *pEntity, HSCRIPT hTable, const char *pszKey = "" )
+{
+	if ( !pEntity || !hTable )
+		return;
+
+	ScriptVariant_t key, value;
+	int nIterator = g_pScriptVM->GetKeyValue( hTable, 0, &key, &value );
+	while ( nIterator != -1 )
+	{
+		const char *szKeyName = key;
+
+		if ( V_strcmp( pszKey, "" ) != 0 )
+			szKeyName = pszKey;
+
+		switch ( value.m_type )
+		{
+			case FIELD_FLOAT:
+			{
+				pEntity->KeyValue( szKeyName, value.m_float );
+				break;
+			}
+			case FIELD_VECTOR:
+			{
+				pEntity->KeyValue( szKeyName, *value.m_pVector );
+				break;
+			}
+			case FIELD_INTEGER:
+			case FIELD_BOOLEAN:
+			{
+				pEntity->KeyValue( szKeyName, value.m_int );
+				break;
+			}
+			case FIELD_CSTRING:
+			{
+				pEntity->KeyValue( szKeyName, value.m_pszString );
+				break;
+			}
+			case FIELD_HSCRIPT:
+			{
+				ParseTable( pEntity, value.m_hScript, key );
+				break;
+			}
+			default:
+			{
+				Warning( "Unsupported KeyValue type for key %s (type %s)\n", key, ScriptFieldTypeName( value.m_type ) );
+			}
+		}
+
+		nIterator = g_pScriptVM->GetKeyValue( hTable, nIterator, &key, &value );
+	}
+}
+
+//-----------------------------------------------------------------------------
 //
 //-----------------------------------------------------------------------------
 class CScriptEntityIterator
@@ -941,8 +996,8 @@ static const char *Script_FileToString( const char *pszFileName )
 		return NULL;
 
 	static char szString[16384];
-	int size = g_pFullFileSystem->Size(fh) + 1;
-	if ( size >= sizeof(szString) )
+	int size = g_pFullFileSystem->Size(fh);
+	if ( size + 1 >= sizeof(szString) )
 	{
 		Log_Warning( LOG_VScript, "File %s (from %s) is len %i too long for a ScriptFileRead\n", szFullFileName, pszFileName, size );
 		return NULL;
@@ -983,6 +1038,16 @@ static void Script_ChangeLevel( const char *mapname )
 bool Script_IsModelPrecached( const char *modelname )
 {
 	return engine->IsModelPrecached( VScriptCutDownString( modelname ) );
+}
+
+static int Script_PrecacheModel( const char *modelname )
+{
+	return CBaseEntity::PrecacheModel( VScriptCutDownString( modelname ) );
+}
+
+static int Script_GetModelIndex( const char *modelname )
+{
+	return modelinfo->GetModelIndex( modelname );
 }
 
 static void Script_GetPlayerConnectionInfo( HSCRIPT hPlayer, HSCRIPT hTable )
@@ -1064,6 +1129,21 @@ static void Script_LocalTime( HSCRIPT hTable )
 	g_pScriptVM->SetValue( hTable, "daylightsavings", timeinfo.tm_isdst );
 }
 
+HSCRIPT Script_SpawnEntityFromTable( const char *pszEntityName, HSCRIPT hTable )
+{
+	CBaseEntity *pBaseEntity = (CBaseEntity *)CreateEntityByName( pszEntityName );
+	if ( !pBaseEntity )
+	{
+		Warning( "Cannot spawn entity %s\n", pszEntityName );
+		return NULL;
+	}
+
+	ParseTable( pBaseEntity, hTable );
+	DispatchSpawn( pBaseEntity );
+	pBaseEntity->Activate();
+	return ToHScript( pBaseEntity );
+}
+
 bool VScriptServerInit()
 {
 	VMPROF_START
@@ -1132,10 +1212,13 @@ bool VScriptServerInit()
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_ScreenFade, "ScreenFade", "Start a screenfade with the following parameters. player, red, green, blue, alpha, flFadeTime, flFadeHold, flags" );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_ChangeLevel, "ChangeLevel", "Tell engine to change level." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_IsModelPrecached, "IsModelPrecached", "Checks if the modelname is precached." );
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_PrecacheModel, "PrecacheModel", "Precache a model after the map has loaded and return index of the model" );
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_GetModelIndex, "GetModelIndex", "Returns index of model by name." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_GetPlayerConnectionInfo, "GetPlayerConnectionInfo", "Returns a table containing the player's connection info." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_GetClientXUID, "GetClientXUID", "Get the player's xuid (i.e. SteamID64)." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_FadeClientVolume, "FadeClientVolume", "Fade out the client's volume level toward silence (or fadePercent)" );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_LocalTime, "LocalTime", "Fills in the passed table with the local system time." );
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_SpawnEntityFromTable, "SpawnEntityFromTable", "Spawn entity from KeyValues in table - 'name' is entity name, rest are KeyValues for spawn." );
 
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_PlayerInstanceFromIndex, "PlayerInstanceFromIndex", "Get a script handle of a player using the player index." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_GetPlayerFromUserID, "GetPlayerFromUserID", "Given a user id, return the entity, or null." );

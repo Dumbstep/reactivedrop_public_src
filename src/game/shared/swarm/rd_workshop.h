@@ -51,6 +51,7 @@ public:
 		m_hFavoritedAddonsQuery( k_UGCQueryHandleInvalid ) {}
 
 	virtual bool Init();
+	void InitNonWorkshopAddons();
 	void OnMissionStart();
 	virtual void LevelInitPostEntity();
 	virtual void LevelShutdownPreEntity();
@@ -60,6 +61,7 @@ public:
 #endif
 
 	PublishedFileId_t FindAddonProvidingFile( const char *pszFileName );
+	const char *GetNativeFileSystemFile( const char *pszFileName );
 
 	struct WorkshopItem_t
 	{
@@ -148,6 +150,24 @@ public:
 	bool IsAddonEnabled( PublishedFileId_t nPublishedFileId );
 	void SetAddonEnabled( PublishedFileId_t nPublishedFileId, bool bEnabled );
 
+	struct AddonFileConflict_t
+	{
+		AddonFileConflict_t( const char *szFileName, PublishedFileId_t iReplacingAddon, PublishedFileId_t iHiddenAddon, CRC32_t iReplacingCRC, CRC32_t iHiddenCRC )
+			: FileName( szFileName ), ReplacingAddon( iReplacingAddon ), HiddenAddon( iHiddenAddon ), ReplacingCRC( iReplacingCRC ), HiddenCRC( iHiddenCRC )
+		{
+		}
+
+		CUtlString FileName;
+		PublishedFileId_t ReplacingAddon;
+		PublishedFileId_t HiddenAddon;
+		CRC32_t ReplacingCRC;
+		CRC32_t HiddenCRC;
+	};
+	int FindAddonConflicts( PublishedFileId_t nPublishedFileId, CUtlVector<const AddonFileConflict_t *> *pConflicts );
+
+	PublishedFileId_t AddonForFileSystemPath( const char *szPath );
+	const wchar_t *AddonName( PublishedFileId_t nPublishedFileId );
+
 private:
 	friend class BaseModUI::Addons;
 	friend class BaseModUI::AddonListItem;
@@ -216,7 +236,10 @@ private:
 	void SubmitItemUpdateResultCallback( SubmitItemUpdateResult_t *pResult, bool bIOFailure );
 	CCallResult<CReactiveDropWorkshop, SteamUGCQueryCompleted_t> m_UpdateWorkshopItemQueryResultCallback;
 	void UpdateWorkshopItemQueryResultCallback( SteamUGCQueryCompleted_t *pResult, bool bIOFailure );
+	CCallResult<CReactiveDropWorkshop, CreateItemResult_t> m_CreateItemResultCallbackCurated;
+	void CreateItemResultCallbackCurated( CreateItemResult_t *pResult, bool bIOFailure );
 	friend static void ugc_create(const CCommand & args);
+	friend static void ugc_curated_create(const CCommand & args);
 	friend static void ugc_update(const CCommand & args);
 	friend static void ugc_updatetags(const CCommand & args);
 	friend static void _ugc_update_progress(const CCommand & args);

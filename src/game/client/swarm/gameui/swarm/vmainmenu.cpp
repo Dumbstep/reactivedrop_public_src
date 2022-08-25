@@ -53,19 +53,15 @@ using namespace BaseModUI;
 //=============================================================================
 static ConVar connect_lobby( "connect_lobby", "", FCVAR_HIDDEN, "Sets the lobby ID to connect to on start." );
 static ConVar ui_old_options_menu( "ui_old_options_menu", "0", FCVAR_HIDDEN, "Brings up the old tabbed options dialog from Keyboard/Mouse when set to 1." );
-static ConVar ui_play_online_browser( "ui_play_online_browser",
-#if defined( _DEMO ) && !defined( _X360 )
-									 "0",
-									 FCVAR_NONE,
-#else
-									 "1",
-									 FCVAR_RELEASE,
-#endif
-									 "Whether play online displays a browser or plain search dialog." );
+static ConVar ui_play_online_browser( "ui_play_online_browser", "1", FCVAR_RELEASE, "Whether play online displays a browser or plain search dialog." );
 
-ConVar asw_show_all_singleplayer_maps( "asw_show_all_singleplayer_maps", "1", FCVAR_NONE, "If set, offline practice option on the main menu will show all maps." );
 extern ConVar mm_max_players;
 ConVar rd_last_game_access( "rd_last_game_access", "public", FCVAR_ARCHIVE, "Remembers the last game access setting (public or friends) for a lobby created from the main menu." );
+ConVar rd_last_game_difficulty( "rd_last_game_difficulty", "normal", FCVAR_ARCHIVE, "Remembers the last game difficulty setting (easy/normal/hard/insane/imba) for a lobby created from the main menu." );
+ConVar rd_last_game_challenge( "rd_last_game_challenge", "0", FCVAR_ARCHIVE, "Remembers the last game challenge ID (0 for none) for a lobby created from the main menu." );
+ConVar rd_last_game_onslaught( "rd_last_game_onslaught", "0", FCVAR_ARCHIVE, "Remembers the last game onslaught setting for a lobby created from the main menu." );
+ConVar rd_last_game_hardcoreff( "rd_last_game_hardcoreff", "0", FCVAR_ARCHIVE, "Remembers the last game hardcore friendly fire setting for a lobby created from the main menu." );
+ConVar rd_last_game_maxplayers( "rd_last_game_maxplayers", "4", FCVAR_ARCHIVE, "Remembers the last game max players setting for a lobby created from the main menu." );
 ConVar rd_revert_convars( "rd_revert_convars", "1", FCVAR_ARCHIVE, "Resets FCVAR_REPLICATED variables to their default values when opening the main menu." );
 
 void Demo_DisableButton( Button *pButton );
@@ -87,16 +83,6 @@ MainMenu::MainMenu( Panel *parent, const char *panelName ):
 	m_iQuickJoinHelpText = MMQJHT_NONE;
 
 	SetDeleteSelfOnClose( true );
-
-	// reactivedrop: #iss-depthblur HACK
-	// We need to make mat_depth_blur_strength_override FCVAR_ARCHIVE
-	// but it is defined in Engine_Post_dx9.cpp which is in
-	// separate project and separate DLL, stdshader_dx9_sdk.vcproj
-	// so we add FCVAR_ARCHIVE flag here during creation of main menu
-	// This hack can be moved into more appropriate place though
-	CGameUIConVarRef mat_depth_blur_strength_override("mat_depth_blur_strength_override");
-	if ( mat_depth_blur_strength_override.IsValid() && !mat_depth_blur_strength_override.IsFlagSet( FCVAR_ARCHIVE ) )
-		mat_depth_blur_strength_override.AddFlags( FCVAR_ARCHIVE );
 }
 
 //=============================================================================
@@ -224,44 +210,6 @@ void MainMenu::OnCommand( const char *command )
 		}
 		CBaseModPanel::GetSingleton().OpenWindow( WT_STEAMGROUPSERVERS, this, true, pSettings );
 	}
-	else if ( char const *szLeaderboards = StringAfterPrefix( command, "Leaderboards_" ) )
-	{
-		if ( CheckAndDisplayErrorIfNotLoggedIn() ||
-			CUIGameData::Get()->CheckAndDisplayErrorIfOffline( this,
-			"#L4D360UI_MainMenu_SurvivalLeaderboards_Tip_Disabled" ) )
-			return;
-
-		KeyValues *pSettings = KeyValues::FromString(
-			"settings",
-			" game { "
-				" mode = "
-			" } "
-			);
-		KeyValues::AutoDelete autodelete( pSettings );
-
-		pSettings->SetString( "game/mode", szLeaderboards );
-
-		if ( m_ActiveControl )
-		{
-			m_ActiveControl->NavigateFrom( );
-		}
-		CBaseModPanel::GetSingleton().OpenWindow( WT_LEADERBOARD, this, true, pSettings );
-	}
-	else if( !Q_strcmp( command, "VersusSoftLock" ) )
-	{
-		OnCommand( "FlmVersusFlyout" );
-		return;
-	}
-	else if ( !Q_strcmp( command, "SurvivalCheck" ) )
-	{
-		OnCommand( "FlmSurvivalFlyout" );
-		return;
-	}
-	else if ( !Q_strcmp( command, "ScavengeCheck" ) )
-	{
-		OnCommand( "FlmScavengeFlyout" );
-		return;
-	}
 	else if ( !Q_strcmp( command, "BtnStub" ) )
 	{
 		// clicking No Steam will provide some info
@@ -304,11 +252,10 @@ void MainMenu::OnCommand( const char *command )
 			" mode single_mission "
 			" campaign jacob "
 			" mission asi-jac1-landingbay_pract "
+			" difficulty normal "
 			" } "
 		);
 		KeyValues::AutoDelete autodelete( pSettings );
-
-		pSettings->SetString( "Game/difficulty", GameModeGetDefaultDifficulty( pSettings->GetString( "Game/mode" ) ) );
 
 		g_pMatchFramework->CreateSession( pSettings );
 
@@ -320,35 +267,7 @@ void MainMenu::OnCommand( const char *command )
 	}
 	else if ( !Q_strcmp( command, "SoloPlay" ) )
 	{
-		if ( !asw_show_all_singleplayer_maps.GetBool() )
-		{
-			KeyValues *pSettings = KeyValues::FromString(
-			"settings",
-			" system { "
-			" network offline "
-			" } "
-			" game { "
-			" mode single_mission "
-			" campaign jacob "
-			" mission asi-jac1-landingbay_pract "
-			" } "
-			);
-			KeyValues::AutoDelete autodelete( pSettings );
-
-			pSettings->SetString( "Game/difficulty", GameModeGetDefaultDifficulty( pSettings->GetString( "Game/mode" ) ) );
-
-			g_pMatchFramework->CreateSession( pSettings );
-
-			// Automatically start the credits session, no configuration required
-			if ( IMatchSession *pMatchSession = g_pMatchFramework->GetMatchSession() )
-			{
-				pMatchSession->Command( KeyValues::AutoDeleteInline( new KeyValues( "Start" ) ) );
-			}
-		}
-		else
-		{
-			engine->ClientCmd_Unrestricted( "asw_mission_chooser singleplayer" );
-		}
+		engine->ClientCmd_Unrestricted( "asw_mission_chooser singleplayer" );
 	}
 	else if ( !Q_strcmp( command, "DeveloperCommentary" ) )
 	{
@@ -765,10 +684,6 @@ void MainMenu::OnCommand( const char *command )
 	{
 		CBaseModPanel::GetSingleton().OpenWindow( WT_ADDONS, this, true );
 	}
-	else if ( !Q_strcmp( command, "Swarmopedia" ) )
-	{
-		CBaseModPanel::GetSingleton().OpenWindow( WT_SWARMOPEDIA, this, true );
-	}
 	else if ( !Q_strcmp( command, "IafRanks" ) )
 	{
 		CBaseModPanel::GetSingleton().OpenWindow( WT_IAFRANKS, this, true );
@@ -779,35 +694,8 @@ void MainMenu::OnCommand( const char *command )
 	}
 	else
 	{
-		const char *pchCommand = command;
-		if ( !Q_strcmp(command, "FlmOptionsFlyout") )
-		{
-#ifdef _X360
-			if ( XBX_GetPrimaryUserIsGuest() )
-			{
-				pchCommand = "FlmOptionsGuestFlyout";
-			}
-#endif
-		}
-		else if ( !Q_strcmp(command, "FlmVersusFlyout") )
-		{
-			command = "VersusSoftLock";
-		}
-		else if ( !Q_strcmp( command, "FlmSurvivalFlyout" ) )
-		{
-			command = "SurvivalCheck";
-		}
-		else if ( !Q_strcmp( command, "FlmScavengeFlyout" ) )
-		{
-			command = "ScavengeCheck";
-		}
-		else if ( StringHasPrefix( command, "FlmExtrasFlyout_" ) )
-		{
-			command = "FlmExtrasFlyoutCheck";
-		}
-
 		// does this command match a flyout menu?
-		BaseModUI::FlyoutMenu *flyout = dynamic_cast< FlyoutMenu* >( FindChildByName( pchCommand ) );
+		BaseModUI::FlyoutMenu *flyout = dynamic_cast< FlyoutMenu* >( FindChildByName( command ) );
 		if ( flyout )
 		{
 			bOpeningFlyout = true;
@@ -1107,7 +995,6 @@ void MainMenu::Activate()
 
 		bRunOnce = false;
 	}
-	//
 }
 
 //=============================================================================
@@ -1297,19 +1184,20 @@ void MainMenu::ApplySchemeSettings( IScheme *pScheme )
 		Warning( "======= SIGNIN RESET SIGNIN RESET SIGNIN RESET SIGNIN RESET ==========\n" );
 	}
 #endif
-}
 
-const char *pDemoDisabledButtons[] = { "BtnVersus", "BtnSurvival", "BtnStatsAndAchievements", "BtnExtras" };
-
-void MainMenu::Demo_DisableButtons( void )
-{
-	for ( int i = 0; i < ARRAYSIZE( pDemoDisabledButtons ); i++ )
+	vgui::Label *pBranchDisclaimer = dynamic_cast< vgui::Label * >( FindChildByName( "LblBranchDisclaimer" ) );
+	ISteamApps *pApps = SteamApps();
+	if ( pBranchDisclaimer && pApps )
 	{
-		BaseModHybridButton *pButton = dynamic_cast< BaseModHybridButton* >( FindChildByName( pDemoDisabledButtons[i] ) );
-
-		if ( pButton )
+		char szBranch[256]{};
+		if ( !pApps->GetCurrentBetaName( szBranch, sizeof( szBranch ) ) )
 		{
-			Demo_DisableButton( pButton );
+			pBranchDisclaimer->SetVisible( false );
+		}
+		else
+		{
+			pBranchDisclaimer->SetText( VarArgs( "#rd_branch_disclaimer_%s", szBranch ) );
+			pBranchDisclaimer->SetVisible( true );
 		}
 	}
 }

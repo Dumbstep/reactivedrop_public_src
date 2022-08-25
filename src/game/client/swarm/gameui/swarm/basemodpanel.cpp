@@ -67,7 +67,6 @@
 #include "vcustomcampaigns.h"
 #include "vdownloadcampaign.h"
 #include "vjukebox.h"
-#include "vleaderboard.h"
 #include "rd_workshop_frame.h"
 #include "vgamepad.h"
 #include "gameconsole.h"
@@ -83,7 +82,6 @@
 #include "fmtstr.h"
 #include "smartptr.h"
 #include "nb_header_footer.h"
-#include "rd_swarmopedia.h"
 #include "asw_util_shared.h"
 #include "nb_leaderboard_panel_points.h"
 #include "vadvancedsettings.h"
@@ -258,6 +256,8 @@ void CBaseModPanel::ReloadScheme()
 //=============================================================================
 CBaseModFrame* CBaseModPanel::OpenWindow(const WINDOW_TYPE & wt, CBaseModFrame * caller, bool hidePrevious, KeyValues *pParameters)
 {
+	FlyoutMenu::CloseActiveMenu();
+
 	CBaseModFrame *newNav = m_Frames[ wt ].Get();
 	bool setActiveWindow = true;
 
@@ -477,10 +477,6 @@ CBaseModFrame* CBaseModPanel::OpenWindow(const WINDOW_TYPE & wt, CBaseModFrame *
 #endif
 			break;
 
-		case WT_LEADERBOARD:
-			m_Frames[ wt ] = new Leaderboard( this );
-			break;
-
 		case WT_ADDONS:
 #if defined( _X360 )
 			// not for xbox
@@ -527,10 +523,6 @@ CBaseModFrame* CBaseModPanel::OpenWindow(const WINDOW_TYPE & wt, CBaseModFrame *
 
 		case WT_GAMEPAD:
 			m_Frames[wt] = new Gamepad( this, "Gamepad" );
-			break;
-
-		case WT_SWARMOPEDIA:
-			m_Frames[wt] = new Swarmopedia( this, "Swarmopedia" );			
 			break;
 
 		case WT_IAFRANKS:
@@ -1408,8 +1400,6 @@ void CBaseModPanel::OnLevelLoadingFinished( KeyValues *kvEvent )
 {
 	int bError = kvEvent->GetInt( "error" );
 	const char *failureReason = kvEvent->GetString( "reason" );
-	
-	Assert( m_LevelLoading );
 
 	if ( UI_IsDebug() )
 	{

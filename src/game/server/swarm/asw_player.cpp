@@ -627,6 +627,7 @@ void CASW_Player::Spawn()
 
 	BaseClass::Spawn();
 
+	m_vecLastMarineOrigin = vec3_origin;
 	m_flMovementAxisYaw = 90.0f;
 
 	SetMoveType( MOVETYPE_WALK );
@@ -2980,6 +2981,11 @@ void CASW_Player::SetupVisibility( CBaseEntity *pViewEntity, unsigned char *pvs,
 			Msg("  freecam %s\n", VecToString(m_vecFreeCamOrigin));
 		}
 		engine->AddOriginToPVS(m_vecFreeCamOrigin);
+	}
+	CAlienSwarm *pGameRules = ASWGameRules();
+	if ( pGameRules && pGameRules->GetGameState() < ASW_GS_INGAME && pGameRules->m_hBriefingCamera )
+	{
+		engine->AddOriginToPVS( pGameRules->m_hBriefingCamera->GetAbsOrigin() );
 	}
 	CASW_Inhabitable_NPC *pNPC = GetSpectatingNPC();
 	bool bSpectating = true;

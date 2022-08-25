@@ -16,7 +16,7 @@ static FileFindHandle_t	g_hsavedfind = FILESYSTEM_INVALID_FIND_HANDLE;
 
 #define ASW_SKILL_POINTS_PER_MISSION 2		// keep in sync with asw_shareddefs.h (we need a h shared between missionchooser and game dlls...)
 
-ConVar asw_max_saves("asw_max_saves", "10", FCVAR_ARCHIVE, "Maximum number of multiplayer saves that will be stored on this server.");
+ConVar asw_max_saves("asw_max_saves", "10", FCVAR_ARCHIVE, "Maximum number of multiplayer saves that will be stored on this server.", true, 2, false, 0);
 
 namespace
 {
@@ -1242,19 +1242,21 @@ bool CASW_Mission_Chooser_Source_Local::MapNameLess::Less( MapListName const& sr
 static const char *s_szCampaignNamesFirst[] =
 {
 	"jacob.txt",
-#if defined( RD_6A_CAMPAIGNS ) && defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
+#if defined( RD_6A_CAMPAIGNS_ACCIDENT32 ) && defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_accident32.txt",
+#endif
+#if defined( RD_6A_CAMPAIGNS_ADANAXIS ) && defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_adanaxis.txt",
 #endif
 	"rd-operationcleansweep.txt",
 	"rd_nh_campaigns.txt",
 	"rd-tarnorcampaign1.txt",
 	"rd_paranoia.txt",
-#if defined( RD_6A_CAMPAIGNS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
+#if defined( RD_6A_CAMPAIGNS_ACCIDENT32 ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_accident32.txt",
 #endif
 	"rd-area9800.txt",
-#if defined( RD_6A_CAMPAIGNS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
+#if defined( RD_6A_CAMPAIGNS_ADANAXIS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_adanaxis.txt",
 #endif
 	"tilarus5.txt",

@@ -43,7 +43,7 @@
     <OutDir>.\Debug_swarm\</OutDir>
     <IntDir>.\Debug_swarm\</IntDir>
     <PreBuildEventUseInBuild>true</PreBuildEventUseInBuild>
-    <PreLinkEventUseInBuild>true</PreLinkEventUseInBuild>
+    <PreLinkEventUseInBuild>false</PreLinkEventUseInBuild>
     <LinkIncremental>true</LinkIncremental>
     <GenerateManifest>false</GenerateManifest>
     <PostBuildEventUseInBuild>true</PostBuildEventUseInBuild>
@@ -153,6 +153,9 @@ exit 1
 if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd server
 </Command>
     </PostBuildEvent>
+    <PreLinkEvent>
+      <Command>..\..\devtools\bin\sourcelink.cmd</Command>
+    </PreLinkEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <PreBuildEvent>
@@ -218,7 +221,7 @@ if ERRORLEVEL 1 exit 1
       <TargetMachine>MachineX86</TargetMachine>
       <LinkErrorReporting>PromptImmediately</LinkErrorReporting>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
-      <AdditionalOptions>/Brepro %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Brepro /SOURCELINK:..\..\sourcelink.json %(AdditionalOptions)</AdditionalOptions>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <LargeAddressAware>true</LargeAddressAware>
       <SetChecksum>true</SetChecksum>
@@ -252,6 +255,9 @@ exit 1
 if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd server
 </Command>
     </PostBuildEvent>
+    <PreLinkEvent>
+      <Command>..\..\devtools\bin\sourcelink.cmd</Command>
+    </PreLinkEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="..\..\vpc_scripts\loadaddress.vpc" />
@@ -1122,6 +1128,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd serve
     <ClCompile Include="swarm\env_sprite_asw_fade.cpp" />
     <ClCompile Include="swarm\func_asw_fade.cpp" />
     <ClCompile Include="swarm\prop_asw_fade.cpp" />
+    <ClCompile Include="swarm\rd_briefing_camera.cpp" />
     <ClCompile Include="swarm\rd_director_triggers.cpp" />
     <ClCompile Include="swarm\rd_boss_bar.cpp" />
     <ClCompile Include="swarm\asw_trigger_marine_melee.cpp" />
@@ -2000,6 +2007,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd serve
     <ClInclude Include="swarm\iasw_spawnable_npc.h" />
     <ClInclude Include="swarm\iasw_vehicle.h" />
     <ClInclude Include="swarm\prop_asw_fade.h" />
+    <ClInclude Include="swarm\rd_briefing_camera.h" />
     <ClInclude Include="swarm\rd_director_triggers.h" />
     <ClInclude Include="swarm\rd_boss_bar.h" />
     <ClInclude Include="swarm\asw_trigger_marine_melee.h" />

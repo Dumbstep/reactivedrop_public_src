@@ -116,5 +116,8 @@ void C_ASW_Gas_Grenade_Projectile::ClientThink( void )
 		m_bStopped = true;
 	}
 
+	if ( m_flTimeBurnOut - gpGlobals->curtime > 0 )
+		debugoverlay->AddTextOverlay( GetAbsOrigin(), .1f, "%.2f", m_flTimeBurnOut - gpGlobals->curtime );
+
 	SetNextClientThink(gpGlobals->curtime + 0.1f);
 }

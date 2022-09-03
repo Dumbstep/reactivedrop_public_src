@@ -169,7 +169,6 @@ extern ConVar old_radius_damage;
 	ConVar asw_default_campaign("asw_default_campaign", "jacob", FCVAR_ARCHIVE, "Default campaign used when dedicated server restarts");
 	ConVar rd_max_marines("rd_max_marines", "-1", FCVAR_NONE, "Sets how many marines can be selected"); 
 	ConVar asw_last_game_variation("asw_last_game_variation", "0", FCVAR_ARCHIVE, "Which game variation was used last game");
-	ConVar asw_bonus_charges("asw_bonus_charges", "0", FCVAR_CHEAT, "Bonus ammo given to starting equipment");
 	ConVar asw_campaign_wounding("asw_campaign_wounding", "0", FCVAR_NONE, "Whether marines are wounded in the roster if a mission is completed with the marine having taken significant damage");
 	ConVar asw_drop_powerups("asw_drop_powerups", "0", FCVAR_CHEAT, "Do aliens drop powerups?");
 	ConVar asw_adjust_difficulty_by_number_of_marines( "asw_adjust_difficulty_by_number_of_marines", "1", FCVAR_CHEAT, "If enabled, difficulty will be reduced when there are only 3 or 2 marines." );
@@ -523,6 +522,7 @@ ConVar rd_revive_health( "rd_revive_health", "10", FCVAR_CHEAT | FCVAR_REPLICATE
 ConVar rd_hp_regen( "rd_hp_regen", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "0 disable marines' health regeneration" );
 ConVar rd_add_bots( "rd_add_bots", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "1 add bots to fill free slots, 0 don't add" );
 ConVar rd_ammo_bonus( "rd_ammo_bonus", "0", FCVAR_CHEAT | FCVAR_REPLICATED );
+ConVar asw_bonus_charges( "asw_bonus_charges", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Bonus ammo given to starting equipment" );
 ConVar rd_infinite_spawners( "rd_infinite_spawners", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "If 1 all spawners will be set to infinitely spawn aliens" );
 ConVar rd_hud_hide_clips( "rd_hud_hide_clips", "0", FCVAR_CHEAT | FCVAR_REPLICATED );
 ConVar rd_biomass_ignite_from_explosions( "rd_biomass_ignite_from_explosions", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "If 1, biomass will ignite from blast damage" );
@@ -569,10 +569,10 @@ ConVar	sk_max_asw_sg_g( "sk_max_asw_sg_g", "0", FCVAR_REPLICATED | FCVAR_CHEAT )
 ConVar	sk_plr_dmg_asw_asg( "sk_plr_dmg_asw_asg", "10", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar	sk_npc_dmg_asw_asg( "sk_npc_dmg_asw_asg", "10", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar	sk_max_asw_asg( "sk_max_asw_asg", "70", FCVAR_REPLICATED | FCVAR_CHEAT );
-// Flamer (5 clips, 60 per)
+// Flamer (5 clips, 80 per)
 ConVar	sk_plr_dmg_asw_f( "sk_plr_dmg_asw_f", "5", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar	sk_npc_dmg_asw_f( "sk_npc_dmg_asw_f", "5", FCVAR_REPLICATED | FCVAR_CHEAT );
-ConVar	sk_max_asw_f( "sk_max_asw_f", "200", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar	sk_max_asw_f( "sk_max_asw_f", "400", FCVAR_REPLICATED | FCVAR_CHEAT );
 // Pistol (10 clips, 32 per)
 ConVar	sk_plr_dmg_asw_p( "sk_plr_dmg_asw_p", "22", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar	sk_npc_dmg_asw_p( "sk_npc_dmg_asw_p", "22", FCVAR_REPLICATED | FCVAR_CHEAT );
@@ -4227,10 +4227,15 @@ void CAlienSwarm::GiveStartingWeaponToMarine(CASW_Marine* pMarine, int iEquipInd
 		return;
 
 	const char* szWeaponClass = STRING( ASWEquipmentList()->GetItemForSlot( iSlot, iEquipIndex )->m_EquipClass );
+	Assert( szWeaponClass );
+	if ( !szWeaponClass )
+		return;
 		
 	CASW_Weapon* pWeapon = dynamic_cast<CASW_Weapon*>(pMarine->Weapon_Create(szWeaponClass));
-	if (!pWeapon)
+	Assert( pWeapon );
+	if ( !pWeapon )
 		return;
+
 	// If I have a name, make my weapon match it with "_weapon" appended
 	if ( pMarine->GetEntityName() != NULL_STRING )
 	{
@@ -4378,19 +4383,11 @@ void CAlienSwarm::InitDefaultAIRelationships()
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_NEUTRAL, FACTION_BAIT, D_NEUTRAL, 0 );
 	CAI_BaseNPC::SetDefaultFactionRelationship(FACTION_NEUTRAL, FACTION_ALIENS, D_NEUTRAL, 0 );
 
-	int iNumClasses = GameRules() ? GameRules()->NumEntityClasses() : LAST_SHARED_ENTITY_CLASS;
-
-	for ( int i = 0; i < iNumClasses; i++ )
-	{
-		// compat: make bullseye everyone's enemy by default
-		// it would previously read uninitialized memory
-		CBaseCombatCharacter::SetDefaultRelationship( (Class_T)i, CLASS_BULLSEYE, D_HATE, 0 );
-	}
-
 	/*
 	// --------------------------------------------------------------
 	// First initialize table so we can report missing relationships
 	// --------------------------------------------------------------
+	int iNumClasses = GameRules() ? GameRules()->NumEntityClasses() : LAST_SHARED_ENTITY_CLASS;
 	for (int i=0;i<iNumClasses;i++)
 	{
 		for (int j=0;j<iNumClasses;j++)

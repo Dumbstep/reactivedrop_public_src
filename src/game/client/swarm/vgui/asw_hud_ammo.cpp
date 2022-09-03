@@ -193,9 +193,9 @@ void CASWHudAmmo::OnThink()
 			m_bActiveAmmobag = false;
 			if (wpn)
 			{
-				SetAmmo(wpn->Clip1());	// ammo inside the gun
-				int bullets = marine->GetAmmoCount(wpn->GetPrimaryAmmoType());   // ammo the marine is carrying outside the gun
-				int clips = bullets / wpn->GetMaxClip1();		// divide it down to get the number of clips
+				SetAmmo(wpn->DisplayClip1()); // ammo inside the gun
+				int bullets = marine->GetAmmoCount(wpn->GetPrimaryAmmoType()); // ammo the marine is carrying outside the gun
+				int clips = bullets / wpn->GetMaxClip1(); // divide it down to get the number of clips
 
 				// check ammo bag
 				CASW_Weapon_Ammo_Bag* pAmmoBag = NULL;
@@ -231,7 +231,7 @@ void CASWHudAmmo::OnThink()
 					{
 						m_iDisplayPrimaryValue = pInfo->m_iShowBulletsOnHUD;
 						m_iDisplaySecondaryValue =  pInfo->m_iShowClipsOnHUD;
-						m_iDisplayTertiaryValue = pInfo->m_iShowGrenadesOnHUD || pInfo->m_iShowSecondaryBulletsOnHUD;
+						m_iDisplayTertiaryValue = pInfo->m_iShowGrenadesOnHUD || pInfo->m_iShowSecondaryBulletsOnHUD ? 1 : 0;
 
 						if (!pAmmoBag)
 						{

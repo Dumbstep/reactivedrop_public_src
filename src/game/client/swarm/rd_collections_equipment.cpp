@@ -10,6 +10,8 @@
 #include <vgui_controls/Label.h>
 #include <vgui/ILocalize.h>
 #include "asw_model_panel.h"
+#include "asw_marine_profile.h"
+#include "rd_swarmopedia.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -21,15 +23,31 @@ extern ConVar asw_unlock_all_weapons;
 extern ConVar rd_reduce_motion;
 ConVar rd_weapon_rotate_speed( "rd_weapon_rotate_speed", "0.3", FCVAR_ARCHIVE, "" );
 
-CRD_Collection_Tab_Equipment::CRD_Collection_Tab_Equipment( TabbedGridDetails *parent, const char *szLabel, bool bExtra )
+CRD_Collection_Tab_Equipment::CRD_Collection_Tab_Equipment( TabbedGridDetails *parent, const char *szLabel, CASW_Marine_Profile *pProfile, bool bExtra )
 	: BaseClass( parent, szLabel )
 {
+	m_pCollection = NULL;
+	m_pProfile = pProfile;
 	m_bExtra = bExtra;
+}
+
+CRD_Collection_Tab_Equipment::~CRD_Collection_Tab_Equipment()
+{
+	if ( m_pCollection )
+	{
+		delete m_pCollection;
+
+		m_pCollection = NULL;
+	}
 }
 
 TGD_Grid *CRD_Collection_Tab_Equipment::CreateGrid()
 {
 	TGD_Grid *pGrid = BaseClass::CreateGrid();
+
+	Assert( !m_pCollection );
+	m_pCollection = new RD_Swarmopedia::Collection();
+	m_pCollection->ReadFromFiles();
 
 	CASW_EquipmentList *pEquipmentList = ASWEquipmentList();
 	Assert( pEquipmentList );
@@ -38,7 +56,18 @@ TGD_Grid *CRD_Collection_Tab_Equipment::CreateGrid()
 	for ( int i = 0; i < nCount; i++ )
 	{
 		CASW_EquipItem *pEquip = m_bExtra ? pEquipmentList->GetExtra( i ) : pEquipmentList->GetRegular( i );
-		pGrid->AddEntry( new CRD_Collection_Entry_Equipment( pGrid, m_bExtra ? "CollectionEntryEquipmentExtra" : "CollectionEntryEquipmentRegular", i, STRING( pEquip->m_EquipClass ) ) );
+
+		const RD_Swarmopedia::Weapon *pWeapon = NULL;
+		FOR_EACH_VEC( m_pCollection->Weapons, j )
+		{
+			if ( m_pCollection->Weapons[j]->ClassName == STRING( pEquip->m_EquipClass ) )
+			{
+				pWeapon = m_pCollection->Weapons[j];
+				break;
+			}
+		}
+
+		pGrid->AddEntry( new CRD_Collection_Entry_Equipment( pGrid, m_bExtra ? "CollectionEntryEquipmentExtra" : "CollectionEntryEquipmentRegular", i, STRING( pEquip->m_EquipClass ), pWeapon ) );
 	}
 
 	return pGrid;
@@ -109,12 +138,13 @@ void CRD_Collection_Details_Equipment::DisplayEntry( TGD_Entry *pEntry )
 	m_pWeaponDescLabel->SetText( pEquip->m_pWeaponInfo->szEquipDescription1 );
 }
 
-CRD_Collection_Entry_Equipment::CRD_Collection_Entry_Equipment( TGD_Grid *parent, const char *panelName, int iEquipIndex, const char *szEquipClass )
+CRD_Collection_Entry_Equipment::CRD_Collection_Entry_Equipment( TGD_Grid *parent, const char *panelName, int iEquipIndex, const char *szEquipClass, const RD_Swarmopedia::Weapon *pWeapon )
 	: BaseClass( parent, panelName )
 {
 	m_iEquipIndex = iEquipIndex;
 	m_pWeaponInfo = ASWEquipmentList()->GetWeaponDataFor( szEquipClass );
 	Assert( m_pWeaponInfo );
+	m_pWeapon = pWeapon;
 	m_iRequiredLevel = GetWeaponLevelRequirement( m_pWeaponInfo->szClassName ) + 1;
 
 	m_pIcon = new vgui::ImagePanel( this, "Icon" );
@@ -220,22 +250,6 @@ void CRD_Collection_Panel_Equipment::ApplySchemeSettings( vgui::IScheme *pScheme
 	BaseClass::ApplySchemeSettings( pScheme );
 
 	Assert( !"TODO: Equipment collection big view" );
-
-	// TODO:
-	int iMaxAmmo = GetAmmoDef()->MaxCarry( m_pWeaponInfo->iAmmoType, NULL );
-	int iMaxAmmo2 = GetAmmoDef()->MaxCarry( m_pWeaponInfo->iAmmo2Type, NULL );
-	m_pWeaponInfo->iMaxClip1;
-	m_pWeaponInfo->iMaxClip2;
-	m_pWeaponInfo->iDefaultClip1;
-	m_pWeaponInfo->iDefaultClip2;
-	m_pWeaponInfo->m_flBaseDamage;
-	m_pWeaponInfo->m_flFireRate;
-	m_pWeaponInfo->szAttributesText;
-	m_pWeaponInfo->szAltFireText;
-	m_pWeaponInfo->m_bUnique;
-	m_pWeaponInfo->m_bShowClipsDoubled;
-	CASW_Ammo_Drop_Shared::GetAmmoUnitCost( m_pWeaponInfo->iAmmoType );
-	CASW_Ammo_Drop_Shared::GetAmmoClipsToGive( m_pWeaponInfo->iAmmoType );
 }
 
 #endif

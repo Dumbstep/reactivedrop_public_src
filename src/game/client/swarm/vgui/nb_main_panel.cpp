@@ -221,7 +221,7 @@ void CNB_Main_Panel::OnThink()
 		m_bLobbyValidityChecked = true;
 		if ( gpGlobals->maxClients > 1 && !UTIL_RD_GetCurrentLobbyID().IsValid() )
 		{
-			engine->ServerCmd( "cl_lobby_invalid_request" );
+			//engine->ServerCmd( "cl_lobby_invalid_request" );
 		}
 	}
 

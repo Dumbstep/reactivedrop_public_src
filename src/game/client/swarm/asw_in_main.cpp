@@ -29,7 +29,7 @@ extern ConVar rd_ground_shooting;
 // BenLubar(spectator-mouse)
 ConVar rd_networked_mouse("rd_networked_mouse", "1", FCVAR_NONE, "Send the mouse position to the server for spectating");
 ConVar dub_forced_action("dub_forced_action", "0", FCVAR_CLIENTDLL);
-ConVar dub_no_action("dub_no_action", "1", FCVAR_CLIENTDLL);
+ConVar dub_no_action("dub_no_action", "0", FCVAR_CLIENTDLL);
 ConVar dub_no_jumpjet("dub_no_jumpjet", "0", FCVAR_CLIENTDLL);
 //ConVar dub_no_knocked("dub_no_knocked", "1", FCVAR_CLIENTDLL);
 ConVar dub_fakeLatency("dub_fakeLatency", "0", FCVAR_CLIENTDLL);

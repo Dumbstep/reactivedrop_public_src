@@ -851,7 +851,8 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 		if (sv_consistency)
 			g_pCVar->UnregisterConCommand(sv_consistency);
 
-		engine->SetRestrictServerCommands(true);
+		// block server command
+		//engine->SetRestrictServerCommands(true);
 
 		if (asw_tree_sway_enabled.GetBool())
 		{

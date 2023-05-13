@@ -33,7 +33,9 @@ public:
 	void GetDisplayName( char *pchDisplayName, int nMaxBytes );
 	void GetDisplayName( wchar_t *pwchDisplayName, int nMaxBytes );
 
-	int m_iWeaponsInSlots[ ASW_MAX_EQUIP_SLOTS ];	// index of equipment selected in loadout for primary inventory slot
+	int m_iWeaponsInSlots[ASW_MAX_EQUIP_SLOTS];	// index of equipment selected in loadout for primary inventory slot
+	int m_iWeaponsInSlotsDynamic[ASW_MAX_EQUIP_SLOTS];
+	int m_iInitialWeaponsInSlots[ASW_MAX_EQUIP_SLOTS];
 
 	// stats
 	float m_fDamageTaken;
@@ -86,15 +88,10 @@ public:
 	float m_fLastHealthPercent;
 	float m_fHurtPulse;
 
-	EHANDLE m_MarineEntity;
+	CNetworkHandle( C_ASW_Marine, m_MarineEntity );
+	CNetworkHandle( C_ASW_Player, m_OriginalCommander );
 	CNetworkHandle( C_ASW_Player, m_Commander );
 	CNetworkVar( int, m_iCommanderIndex );
-
-	// leadership effect bonus
-	void UpdateLeadershipBonus();
-	float GetLeadershipResist() { return m_fLeadershipResist; }	// chance of nearby leadership skill reducing damage
-	float m_fLeadershipResist;
-	float m_fNextLeadershipTest;
 
 	// counting medical charges
 	float GetMedsPercent();
@@ -111,6 +108,11 @@ public:
 	CNetworkVar(bool, m_bUsingEngineeringAura);
 	CNetworkVar( int, m_iScore );
 	CNetworkVar( float, m_flFinishedMissionTime );
+
+	int GetInterpolatedScore();
+	float m_flScoreLastChanged;
+	int m_iPrevScore;
+	int m_iCurScore;
 
 private:
 	C_ASW_Marine_Resource( const C_ASW_Marine_Resource & ); // not defined, not accessible

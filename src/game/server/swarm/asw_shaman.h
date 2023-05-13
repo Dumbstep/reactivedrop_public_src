@@ -26,7 +26,7 @@ public:
 	CASW_Shaman();
 
 	virtual	void		Spawn();
-	virtual void		SetHealthByDifficultyLevel();
+	virtual int			GetBaseHealth() override;
 	virtual void		Precache();
 	virtual void		NPCThink();
 
@@ -46,6 +46,7 @@ public:
 	// sounds
 	virtual void PainSound( const CTakeDamageInfo &info );
 	virtual void DeathSound( const CTakeDamageInfo &info );
+	virtual void IdleSound();
 
 	void SetCurrentHealingTarget( CBaseEntity *pTarget );
 

@@ -17,6 +17,7 @@
 #include "VGameSettings.h"
 #include "VSteamCloudConfirmation.h"
 #include "vaddonassociation.h"
+#include "ConfigManager.h"
 
 #include "VSignInDialog.h"
 #include "VGuiSystemModuleLoader.h"
@@ -43,6 +44,9 @@
 #include "inputsystem/iinputsystem.h"
 #include "asw_util_shared.h"
 #include "matchmaking/swarm/imatchext_swarm.h"
+#include "rd_steam_input.h"
+#include "rd_workshop.h"
+#include "rd_inventory_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -66,6 +70,10 @@ ConVar rd_revert_convars( "rd_revert_convars", "1", FCVAR_ARCHIVE, "Resets FCVAR
 
 void Demo_DisableButton( Button *pButton );
 void OpenGammaDialog( VPANEL parent );
+
+#ifdef IS_WINDOWS_PC
+static const char *( *const wine_get_version )( void ) = static_cast< const char *( * )( void ) >( Plat_GetProcAddress( "ntdll.dll", "wine_get_version" ) );
+#endif
 
 //=============================================================================
 MainMenu::MainMenu( Panel *parent, const char *panelName ):
@@ -863,7 +871,7 @@ void MainMenu::OnThink()
 		{
 			const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
 			pFlyout->SetControlEnabled( "BtnBrightness", !config.Windowed() );
-			pFlyout->SetControlEnabled( "BtnController", inputsystem->GetJoystickCount() != 0 );
+			pFlyout->SetControlEnabled( "BtnController", g_RD_Steam_Input.GetJoystickCount() != 0 );
 		}
 	}
 
@@ -891,6 +899,8 @@ void MainMenu::OnOpen()
 		if ( rd_revert_convars.GetBool() )
 		{
 			engine->ClientCmd_Unrestricted( "execifexists autoexec\n" );
+
+			g_ReactiveDropWorkshop.RerunAutoExecScripts();
 		}
 	}
 
@@ -932,8 +942,14 @@ void MainMenu::OnOpen()
 		static CGameUIConVarRef cl_cloud_settings( "cl_cloud_settings" );
 		if ( cl_cloud_settings.GetInt() == -1 )
 		{
+#if 0
 			CBaseModPanel::GetSingleton().OpenWindow( WT_STEAMCLOUDCONFIRM, this, false );
 			bSteamCloudVisible = true;
+#else
+			// Default to allowing Steam Cloud; if the user doesn't want it, they can disable
+			// it in game properties or via the menu after initial game launch.
+			cl_cloud_settings.SetValue( STEAMREMOTESTORAGE_CLOUD_ALL );
+#endif
 		}
 	}
 
@@ -972,6 +988,9 @@ void MainMenu::Activate()
 	// for us to be able to browse lobbies with up to 32 slots
 	mm_max_players.Revert();
 
+	// we've left whatever server we were on; get rid of the stuff we borrowed
+	g_ReactiveDropWorkshop.UnloadTemporaryAddons();
+
 	static bool bRunOnce = true;
 	if ( bRunOnce )
 	{
@@ -986,6 +1005,9 @@ void MainMenu::Activate()
 			// if relayed connections are enabled, use them by default instead of trying direct IPv4 UDP first
 			ConVarRef( "net_steamcnx_enabled" ).SetValue( 2 );
 		}
+
+		// see if we earned any goodies since last time we played
+		ReactiveDropInventory::RequestGenericPromoItems();
 
 		// update soundcache on initial load
 		engine->ClientCmd_Unrestricted( "snd_restart; update_addon_paths; mission_reload; snd_updateaudiocache; snd_restart" );
@@ -1275,3 +1297,19 @@ CON_COMMAND_F( openserverbrowser, "Opens server browser", 0 )
 	}
 }
 #endif
+
+CON_COMMAND( rd_debug_wine_version, "" )
+{
+#ifdef IS_WINDOWS_PC
+	if ( !wine_get_version )
+	{
+		Msg( "Cannot find function ntdll.dll!wine_get_version - probably not running Wine.\n" );
+		return;
+	}
+
+	const char *szVersion = wine_get_version();
+	Msg( "Wine Version: %s\n", szVersion );
+#else
+	Msg( "Not running a Windows build.\n" );
+#endif
+}

@@ -33,15 +33,17 @@ ConVar rd_sentry_refilled_by_dismantling( "rd_sentry_refilled_by_dismantling", "
 LINK_ENTITY_TO_CLASS( asw_sentry_base, CASW_Sentry_Base );
 PRECACHE_REGISTER( asw_sentry_base );
 
-IMPLEMENT_SERVERCLASS_ST(CASW_Sentry_Base, DT_ASW_Sentry_Base)
-	SendPropBool(SENDINFO(m_bAssembled)),
-	SendPropBool(SENDINFO(m_bIsInUse)),
-	SendPropFloat(SENDINFO(m_fAssembleProgress)),
-	SendPropFloat(SENDINFO(m_fAssembleCompleteTime)),
-	SendPropInt(SENDINFO(m_iAmmo)),	
-	SendPropInt(SENDINFO(m_iMaxAmmo)),	
-	SendPropBool(SENDINFO(m_bSkillMarineHelping)),
-	SendPropInt(SENDINFO(m_nGunType)),
+IMPLEMENT_SERVERCLASS_ST( CASW_Sentry_Base, DT_ASW_Sentry_Base )
+	SendPropBool( SENDINFO( m_bAssembled ) ),
+	SendPropBool( SENDINFO( m_bIsInUse ) ),
+	SendPropFloat( SENDINFO( m_fAssembleProgress ) ),
+	SendPropFloat( SENDINFO( m_fAssembleCompleteTime ) ),
+	SendPropInt( SENDINFO( m_iAmmo ) ),
+	SendPropInt( SENDINFO( m_iMaxAmmo ) ),
+	SendPropBool( SENDINFO( m_bSkillMarineHelping ) ),
+	SendPropInt( SENDINFO( m_nGunType ), NumBitsForCount( CASW_Sentry_Base::kGUNTYPE_MAX ), SPROP_UNSIGNED ),
+	SendPropEHandle( SENDINFO( m_hOriginalOwnerPlayer ) ),
+	SendPropIntWithMinusOneFlag( SENDINFO( m_iInventoryEquipSlot ), NumBitsForCount( RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC + 1 ) ),
 END_SEND_TABLE()
 
 BEGIN_DATADESC( CASW_Sentry_Base )
@@ -61,11 +63,19 @@ BEGIN_ENT_SCRIPTDESC( CASW_Sentry_Base, CBaseAnimating, "sentry" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSentryTop, "GetSentryTop", "" )
 END_SCRIPTDESC()
 
+// server only needs these for precaching
+static const char *const s_szSentryGibs[] =
+{
+	"models/sentry_gun/sentry_gibs/sentry_base_gib.mdl",
+	"models/sentry_gun/sentry_gibs/sentry_cam_gib.mdl",
+	"models/sentry_gun/sentry_gibs/sentry_holder_gib.mdl",
+	"models/sentry_gun/sentry_gibs/sentry_left_arm_gib.mdl",
+	"models/sentry_gun/sentry_gibs/sentry_left_backleg_gib.mdl",
+	"models/sentry_gun/sentry_gibs/sentry_right_backleg_gib.mdl",
+	"models/sentry_gun/sentry_gibs/sentry_top_gib.mdl",
+};
+
 CASW_Sentry_Base::CASW_Sentry_Base()
-: bait1_(NULL),
-bait2_(NULL),
-bait3_(NULL),
-bait4_(NULL)
 {
 	m_iAmmo = -1;
 	m_fSkillMarineHelping = 0;
@@ -73,27 +83,24 @@ bait4_(NULL)
 	m_fDamageScale = 1.0f;
 	m_nGunType = kAUTOGUN;
 	m_bAlreadyTaken = false;
+	for ( int i = 0; i < NELEMS( m_hBait ); i++ )
+	{
+		m_hBait[i] = NULL;
+	}
+	m_hOriginalOwnerPlayer = NULL;
+	m_iInventoryEquipSlot = -1;
 }
 
 
 CASW_Sentry_Base::~CASW_Sentry_Base()
 {
-    if (bait1_)
-    {
-        UTIL_Remove(bait1_);
-    }
-    if (bait2_)
-    {
-        UTIL_Remove(bait2_);
-    }
-    if (bait3_)
-    {
-        UTIL_Remove(bait3_);
-    }
-    if (bait4_)
-    {
-        UTIL_Remove(bait4_);
-    }
+	for ( int i = 0; i < NELEMS( m_hBait ); i++ )
+	{
+		if ( m_hBait[i] )
+		{
+			UTIL_Remove( m_hBait[i] );
+		}
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -159,6 +166,11 @@ void CASW_Sentry_Base::Precache()
 	PrecacheScriptSound( "ASW_Sentry.SetupComplete" );
 	PrecacheScriptSound( "ASW_Sentry.Dismantled" );
 
+	for ( int i = 0; i < NELEMS( s_szSentryGibs ); i++ )
+	{
+		PrecacheModel( s_szSentryGibs[i] );
+	}
+
 	BaseClass::Precache();
 }
 
@@ -170,7 +182,7 @@ int CASW_Sentry_Base::ShouldTransmit( const CCheckTransmitInfo *pInfo )
 
 int CASW_Sentry_Base::UpdateTransmitState()
 {
-	return SetTransmitState( FL_EDICT_FULLCHECK );
+	return SetTransmitState( FL_EDICT_ALWAYS );
 }
 
 void CASW_Sentry_Base::AnimThink( void )
@@ -225,11 +237,13 @@ void CASW_Sentry_Base::ActivateUseIcon( CASW_Inhabitable_NPC *pNPC, int nHoldTyp
 					gameeventmanager->FireEvent( event );
 				}
 
-				CASW_Weapon_Sentry *pWeapon = dynamic_cast< CASW_Weapon_Sentry * >( Create( GetWeaponNameForGunType( GetGunType() ), WorldSpaceCenter(), GetAbsAngles(), NULL ) );
+				CASW_Weapon_Sentry *pWeapon = assert_cast< CASW_Weapon_Sentry * >( Create( GetWeaponNameForGunType( GetGunType() ), WorldSpaceCenter(), GetAbsAngles(), NULL ) );
 				if ( !rd_sentry_refilled_by_dismantling.GetBool() )
 				{
 					pWeapon->SetSentryAmmo( m_iAmmo );
 				}
+				pWeapon->m_hOriginalOwnerPlayer = m_hOriginalOwnerPlayer;
+				pWeapon->m_iInventoryEquipSlot = m_iInventoryEquipSlot;
 
 				pMarine->TakeWeaponPickup( pWeapon );
 				EmitSound( "ASW_Sentry.Dismantled" );
@@ -453,16 +467,16 @@ void CASW_Sentry_Base::Event_Killed( const CTakeDamageInfo &info )
 	m_takedamage = DAMAGE_NO;
 
 	// explosion effect
-	Vector vecPos = GetAbsOrigin() + Vector(0, 0, 30);
-				
-	trace_t		tr;
-	UTIL_TraceLine ( vecPos, vecPos - Vector(0,0, 60), MASK_SHOT, 
-		this, COLLISION_GROUP_NONE, &tr);
+	Vector vecPos = GetAbsOrigin();
 
-	if ((tr.m_pEnt != GetWorldEntity()) || (tr.hitbox != 0))
+	trace_t		tr;
+	UTIL_TraceLine( vecPos + Vector( 0, 0, 30 ), vecPos - Vector( 0, 0, 30 ), MASK_SHOT,
+		this, COLLISION_GROUP_NONE, &tr );
+
+	if ( ( tr.m_pEnt != GetWorldEntity() ) || ( tr.hitbox != 0 ) )
 	{
 		// non-world needs smaller decals
-		if( tr.m_pEnt && !tr.m_pEnt->IsNPC() )
+		if ( tr.m_pEnt && !tr.m_pEnt->IsNPC() )
 		{
 			UTIL_DecalTrace( &tr, "SmallScorch" );
 		}
@@ -472,6 +486,14 @@ void CASW_Sentry_Base::Event_Killed( const CTakeDamageInfo &info )
 		UTIL_DecalTrace( &tr, "Scorch" );
 	}
 
+	CBroadcastRecipientFilter filter;
+	UserMessageBegin( filter, "SentryGib" );
+		WRITE_FLOAT( vecPos.x );
+		WRITE_FLOAT( vecPos.y );
+		WRITE_FLOAT( vecPos.z );
+		WRITE_ANGLE( GetAbsAngles()[YAW] );
+	MessageEnd();
+
 	UTIL_ASW_ScreenShake( vecPos, 25.0, 150.0, 1.0, 750, SHAKE_START );
 
 	UTIL_ASW_GrenadeExplosion( vecPos, 400.0f );
@@ -479,21 +501,20 @@ void CASW_Sentry_Base::Event_Killed( const CTakeDamageInfo &info )
 	EmitSound( "ASWGrenade.Explode" );
 
 	// damage to nearby things
-	ASWGameRules()->RadiusDamage ( CTakeDamageInfo( this, info.GetAttacker(), 150.0f, DMG_BLAST ), vecPos, 400.0f, CLASS_NONE, NULL );
+	ASWGameRules()->RadiusDamage( CTakeDamageInfo( this, info.GetAttacker(), 150.0f, DMG_BLAST ), vecPos, 400.0f, CLASS_NONE, NULL );
 
-	if (GetSentryTop())
+	if ( GetSentryTop() )
 	{
-		UTIL_Remove(GetSentryTop());
+		UTIL_Remove( GetSentryTop() );
 	}
 
-	BaseClass::Event_Killed(info);
+	BaseClass::Event_Killed( info );
 }
-
 
 const char *CASW_Sentry_Base::GetEntityNameForGunType( GunType_t guntype )
 {
 	AssertMsg1( static_cast<int>(guntype) >= 0, "Faulty guntype %d passed to CASW_Sentry_Base::GetEntityNameForGunType()\n", guntype );
-	if ( guntype < kGUNTYPE_MAX )
+	if ( guntype >= 0 && guntype < kGUNTYPE_MAX )
 	{
 		return sm_gunTypeToInfo[guntype].m_entityName;
 	}
@@ -507,7 +528,7 @@ const char *CASW_Sentry_Base::GetEntityNameForGunType( GunType_t guntype )
 const char *CASW_Sentry_Base::GetWeaponNameForGunType( GunType_t guntype )
 {
 	AssertMsg1( static_cast<int>(guntype) >= 0, "Faulty guntype %d passed to CASW_Sentry_Base::GetWeaponNameForGunType()\n", guntype );
-	if ( guntype < kGUNTYPE_MAX )
+	if ( guntype >= 0 && guntype < kGUNTYPE_MAX )
 	{
 		return sm_gunTypeToInfo[guntype].m_weaponName;
 	}
@@ -521,7 +542,7 @@ const char *CASW_Sentry_Base::GetWeaponNameForGunType( GunType_t guntype )
 int CASW_Sentry_Base::GetBaseAmmoForGunType( GunType_t guntype )
 {
 	AssertMsg1( static_cast<int>(guntype) >= 0, "Faulty guntype %d passed to CASW_Sentry_Base::GetBaseAmmoForGunType()\n", guntype );
-	if ( guntype < kGUNTYPE_MAX )
+	if ( guntype >= 0 && guntype < kGUNTYPE_MAX )
 	{
 		return sm_gunTypeToInfo[guntype].m_nBaseAmmo;
 	}
@@ -551,7 +572,6 @@ int CASW_Sentry_Base::ScriptGetMaxAmmo()
 	return GetBaseAmmoForGunType( GetGunType() );
 }
 
-
 /// This must exactly match the enum CASW_Sentry_Base::GunType_t
 const CASW_Sentry_Base::SentryGunTypeInfo_t CASW_Sentry_Base::sm_gunTypeToInfo[CASW_Sentry_Base::kGUNTYPE_MAX] =
 {
@@ -560,3 +580,31 @@ const CASW_Sentry_Base::SentryGunTypeInfo_t CASW_Sentry_Base::sm_gunTypeToInfo[C
 	SentryGunTypeInfo_t("asw_sentry_top_flamer", "asw_weapon_sentry_flamer",  1200), // kFLAME
 	SentryGunTypeInfo_t("asw_sentry_top_icer", "asw_weapon_sentry_freeze",    800), // kICE
 };
+
+CON_COMMAND_F( rd_test_sentry_gib, "spawn sentry gibs at the currently targeted point", FCVAR_CHEAT )
+{
+	CASW_Player *pPlayer = ToASW_Player( UTIL_GetCommandClient() );
+	if ( !pPlayer )
+	{
+		Warning( "Cannot rd_test_sentry_gib from server console\n" );
+		return;
+	}
+
+	CASW_Inhabitable_NPC *pNPC = pPlayer->GetViewNPC();
+	if ( !pNPC )
+	{
+		return;
+	}
+
+	Vector vecCrosshair = pPlayer->GetCrosshairTracePos();
+
+	NDebugOverlay::Cross3D( vecCrosshair, 8, 255, 255, 255, false, 1.0f );
+
+	CSingleUserRecipientFilter filter( pPlayer );
+	UserMessageBegin( filter, "SentryGib" );
+		WRITE_FLOAT( vecCrosshair.x );
+		WRITE_FLOAT( vecCrosshair.y );
+		WRITE_FLOAT( vecCrosshair.z );
+		WRITE_ANGLE( pNPC->GetAbsAngles()[YAW] );
+	MessageEnd();
+}

@@ -21,6 +21,7 @@ class CASW_Weapon_Minigun : public CASW_Weapon_Rifle
 public:
 	DECLARE_CLASS( CASW_Weapon_Minigun, CASW_Weapon_Rifle );
 	DECLARE_NETWORKCLASS();
+	DECLARE_ENT_SCRIPTDESC();
 
 	CASW_Weapon_Minigun();
 	virtual ~CASW_Weapon_Minigun();
@@ -40,9 +41,7 @@ public:
 
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
-			
 
-		virtual const char* GetPickupClass() { return "asw_pickup_minigun"; }
 		virtual void Spawn();
 		virtual void SecondaryAttack();
 		virtual float GetMadFiringBias() { return 1.0f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
@@ -54,7 +53,7 @@ public:
 		virtual bool ShouldMarineMinigunShoot();
 		virtual bool HasSecondaryExplosive( void ) const { return false; }
 		virtual float GetMuzzleFlashScale();
-		virtual bool GetMuzzleFlashRed();
+		virtual Vector GetMuzzleFlashTint();
 		virtual void OnMuzzleFlashed();
 		virtual void ReachedEndOfSequence();
 		float m_flLastMuzzleFlashTime;
@@ -74,6 +73,8 @@ public:
 
 		CSoundPatch		*m_pBarrelSpinSound;
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/autogun_empty_clip.mdl"; }
+	virtual bool ShouldPlayFiringAnimations() { return false; }
 	virtual float GetWeaponDamage();
 	virtual float GetMovementScale();
 	virtual bool ShouldMarineMoveSlow();
@@ -93,6 +94,14 @@ public:
 
 	virtual int DisplayClip1() override;
 	virtual int DisplayMaxClip1() override;
+	int ScriptClip1();
+	int ScriptGetMaxClip1();
+	int ScriptGetDefaultClip1();
+	int ScriptGetMaxAmmo1();
+#ifdef GAME_DLL
+	void ScriptSetClip1( int iAmmo );
+#endif
+	virtual void FinishReload() override;
 private:
 #ifdef CLIENT_DLL
 	bool m_bShouldUpdateActivityClient;

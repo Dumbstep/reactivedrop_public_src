@@ -23,6 +23,7 @@
 #include "asw_gamerules.h"
 #include "game_timescale_shared.h"
 #include "vgui/ILocalize.h"
+#include "asw_equipment_list.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -56,6 +57,8 @@ BEGIN_NETWORK_TABLE( CASW_Weapon, DT_ASW_Weapon )
 	RecvPropIntWithMinusOneFlag( RECVINFO(m_iClip1 )),
 	RecvPropInt( RECVINFO(m_iPrimaryAmmoType )),
 	RecvPropBool		( RECVINFO( m_bIsTemporaryPickup ) ),
+	RecvPropEHandle( RECVINFO( m_hOriginalOwnerPlayer ) ),
+	RecvPropIntWithMinusOneFlag( RECVINFO( m_iInventoryEquipSlot ) ),
 END_NETWORK_TABLE()
 
 BEGIN_PREDICTION_DATA( C_ASW_Weapon )
@@ -84,8 +87,17 @@ BEGIN_PREDICTION_DATA( C_ASW_Weapon )
 	DEFINE_FIELD( m_bFastReloadSuccess, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_bFastReloadFailure, FIELD_BOOLEAN ),
 
+	DEFINE_PRED_FIELD( m_flTimeWeaponIdle, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_flCycle, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_nSequence, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_nNewSequenceParity, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_nResetEventsParity, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
 END_PREDICTION_DATA()
 //DEFINE_PRED_FIELD_TOL( m_flNextCoolTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),
+
+BEGIN_ENT_SCRIPTDESC( C_ASW_Weapon, C_BaseCombatWeapon, "Alien Swarm weapon" )
+
+END_SCRIPTDESC()
 
 ConVar asw_red_muzzle_r("asw_red_muzzle_r", "255");
 ConVar asw_red_muzzle_g("asw_red_muzzle_g", "128");
@@ -97,6 +109,15 @@ ConVar asw_muzzle_flash_new_type( "asw_muzzle_flash_new_type", "0", FCVAR_CHEAT 
 ConVar asw_laser_sight( "asw_laser_sight", "1", FCVAR_ARCHIVE );
 ConVar asw_laser_sight_min_distance( "asw_laser_sight_min_distance", "9999", 0, "The min distance at which to accurately draw the laser sight from the muzzle rather than using the shoot direction" );
 ConVar glow_outline_color_weapon( "glow_outline_color_weapon", "0 102 192", FCVAR_NONE );
+ConVar rd_tracer_tint_self( "rd_tracer_tint_self", "255 255 255", FCVAR_ARCHIVE, "Tint tracers and muzzle flashes from own marine" );
+ConVar rd_tracer_tint_other( "rd_tracer_tint_other", "255 255 255", FCVAR_ARCHIVE, "Tint tracers and muzzle flashes from other marines" );
+ConVar rd_marine_gear( "rd_marine_gear", "1", FCVAR_NONE, "Draw model overlays for marine gear items" );
+ConVar rd_marine_gear_hide_backpack( "rd_marine_gear_hide_backpack", "1", FCVAR_NONE, "Disable body group 1 on the marine model when rendering certain model overlays" );
+ConVar rd_drop_magazine( "rd_drop_magazine", "1", FCVAR_NONE, "Drop a magazine model when reloading weapons" );
+ConVar rd_drop_magazine_force( "rd_drop_magazine_force", "50", FCVAR_NONE, "Amount of random force to apply to dropped magazine" );
+ConVar rd_drop_magazine_force_up( "rd_drop_magazine_force_up", "50", FCVAR_NONE, "Amount of upward force to apply to the dropped magazine" );
+ConVar rd_drop_magazine_spin( "rd_drop_magazine_spin", "1000", FCVAR_NONE, "Amount of random angular velocity to apply to dropped magazine" );
+ConVar rd_drop_magazine_lifetime( "rd_drop_magazine_lifetime", "4", FCVAR_NONE, "Time before a dropped magazine fades" );
 
 extern ConVar asw_use_particle_tracers;
 extern ConVar muzzleflash_light;
@@ -107,6 +128,7 @@ m_GlowObject( this, glow_outline_color_weapon.GetColorAsVector(), 1.0f, false, t
 {
 	SetPredictionEligible( true );
 	m_iEquipmentListIndex = -1;
+	m_pEquipItem = NULL;
 	m_fLastMuzzleFlashTime = 0;
 	m_fMuzzleFlashScale = -1;
 	m_fTurnRateModifier = 1.0f;
@@ -116,7 +138,7 @@ m_GlowObject( this, glow_outline_color_weapon.GetColorAsVector(), 1.0f, false, t
 	
 	m_bShotDelayed = 0;
 	m_flDelayedFire = 0;
-	bOldHidden = false;
+	m_bOldHidden = false;
 
 	m_flReloadFailTime = 1.0;
 	m_fReloadStart = 0;
@@ -130,6 +152,8 @@ m_GlowObject( this, glow_outline_color_weapon.GetColorAsVector(), 1.0f, false, t
 	m_bWeaponCreated = false;
 	m_nMuzzleAttachment = 0;
 	m_nLastMuzzleAttachment = 0;
+	m_nMagazineBodyGroup = -2;
+	m_nLaserBodyGroup = -2;
 	m_bLocalPlayerControlling = false;
 
 	m_fMuzzleFlashTime = 0.0f;
@@ -148,7 +172,7 @@ C_ASW_Weapon::~C_ASW_Weapon()
 		m_hBayonet = NULL;
 	}
 
-    RemoveLaserPointerEffect();
+	RemoveLaserPointerEffect();
 	if (m_hLaserSight.Get())
 	{
 		UTIL_Remove( m_hLaserSight.Get() );
@@ -157,7 +181,7 @@ C_ASW_Weapon::~C_ASW_Weapon()
 }
 
 void C_ASW_Weapon::OnDataChanged( DataUpdateType_t type )
-{	
+{
 	bool bPredict = ShouldPredict();
 	if (bPredict)
 	{
@@ -194,7 +218,7 @@ void C_ASW_Weapon::OnDataChanged( DataUpdateType_t type )
 		SetNextClientThink( CLIENT_THINK_ALWAYS );
 	}
 
-	if (IsEffectActive(EF_NODRAW) != bOldHidden)
+	if (IsEffectActive(EF_NODRAW) != m_bOldHidden)
 	{
 		if (m_hBayonet.Get())
 		{
@@ -212,7 +236,7 @@ void C_ASW_Weapon::OnDataChanged( DataUpdateType_t type )
 				m_hLaserSight->RemoveEffects( EF_NODRAW );
 		}
 	}
-	bOldHidden = IsEffectActive(EF_NODRAW);
+	m_bOldHidden = IsEffectActive(EF_NODRAW);
 }
 
 #define ASW_BAYONET_MODEL "models/swarm/Bayonet/bayonet.mdl"
@@ -317,9 +341,20 @@ float C_ASW_Weapon::GetMuzzleFlashScale( void )
 	return m_fMuzzleFlashScale;
 }
 
-bool C_ASW_Weapon::GetMuzzleFlashRed()
+Vector C_ASW_Weapon::GetMuzzleFlashTint()
 {
-	return GetMuzzleFlashScale() >= 1.9f;	// red if our muzzle flash is the biggest size based on our skill
+	HACK_GETLOCALPLAYER_GUARD( "need local player to see what color the muzzle flash should be" );
+	C_ASW_Player *pLocalPlayer = C_ASW_Player::GetLocalASWPlayer();
+	C_ASW_Inhabitable_NPC *pViewNPC = pLocalPlayer ? pLocalPlayer->GetViewNPC() : NULL;
+	Vector vecColor = pViewNPC && GetOwner() == pViewNPC ? rd_tracer_tint_self.GetColorAsVector() : rd_tracer_tint_other.GetColorAsVector();
+
+	if ( GetMuzzleFlashScale() >= 1.9f ) // red if our muzzle flash is the biggest size based on our skill
+	{
+		vecColor.y *= 0.65f;
+		vecColor.z *= 0.65f;
+	}
+
+	return vecColor;
 }
 
 void C_ASW_Weapon::ProcessMuzzleFlashEvent()
@@ -360,18 +395,11 @@ void C_ASW_Weapon::ProcessMuzzleFlashEvent()
 		float flScale = GetMuzzleFlashScale();	
 		if ( asw_use_particle_tracers.GetBool() )
 		{
-			FX_ASW_ParticleMuzzleFlashAttached( flScale, GetRefEHandle(), iAttachment, GetMuzzleFlashRed() );
+			FX_ASW_ParticleMuzzleFlashAttached( flScale, GetRefEHandle(), iAttachment, GetMuzzleFlashTint() );
 		}
 		else
 		{
-			if (GetMuzzleFlashRed())
-			{			
-				FX_ASW_RedMuzzleEffectAttached( flScale, GetRefEHandle(), iAttachment, NULL, false );
-			}
-			else
-			{
-				FX_ASW_MuzzleEffectAttached( flScale, GetRefEHandle(), iAttachment, NULL, false );
-			}
+			FX_ASW_MuzzleEffectAttached( flScale, GetRefEHandle(), iAttachment, NULL, false );
 		}
 	}
 
@@ -398,6 +426,46 @@ void C_ASW_Weapon::ProcessMuzzleFlashEvent()
 	OnMuzzleFlashed();	
 }
 
+void C_ASW_Weapon::DropMagazineGib()
+{
+	const char *szModelName = GetMagazineGibModelName();
+	if ( !szModelName )
+		return;
+
+	if ( !rd_drop_magazine.GetBool() )
+		return;
+
+	Vector vecHand;
+	QAngle angHand;
+	Vector vecHandForward;
+
+	GetBonePosition( LookupBone( "ValveBiped.Bip01_R_Hand" ), vecHand, angHand );
+	AngleVectors( angHand, &vecHandForward );
+
+	C_Gib *pGib = C_Gib::CreateClientsideGib( szModelName, vecHand + vecHandForward * BoundingRadius(),
+		RandomVector( -rd_drop_magazine_force.GetFloat(), rd_drop_magazine_force.GetFloat() ) + Vector( 0, 0, rd_drop_magazine_force_up.GetFloat() ),
+		RandomAngularImpulse( -rd_drop_magazine_spin.GetFloat(), rd_drop_magazine_spin.GetFloat() ),
+		rd_drop_magazine_lifetime.GetFloat() );
+	if ( pGib )
+	{
+		pGib->SetSkin( GetMagazineGibModelSkin() );
+	}
+
+	if ( DisplayClipsDoubled() )
+	{
+		GetBonePosition( LookupBone( "ValveBiped.Bip01_L_Hand" ), vecHand, angHand );
+		AngleVectors( angHand, &vecHandForward );
+
+		pGib = C_Gib::CreateClientsideGib( szModelName, vecHand + vecHandForward * BoundingRadius(),
+			RandomVector( -rd_drop_magazine_force.GetFloat(), rd_drop_magazine_force.GetFloat() ) + Vector( 0, 0, rd_drop_magazine_force_up.GetFloat() ),
+			RandomAngularImpulse( -rd_drop_magazine_spin.GetFloat(), rd_drop_magazine_spin.GetFloat() ),
+			rd_drop_magazine_lifetime.GetFloat() );
+		if ( pGib )
+		{
+			pGib->SetSkin( GetMagazineGibModelSkin() );
+		}
+	}
+}
 
 bool C_ASW_Weapon::Simulate()
 {
@@ -435,6 +503,17 @@ void C_ASW_Weapon::ClientThink()
 	{
 		m_GlowObject.SetAlpha( MIN( 0.7f, (1.0f - (flDistanceToMarineSqr / flWithinDistSqr)) * 1.0f) );
 	}
+
+	if ( m_nMagazineBodyGroup == -2 )
+	{
+		m_nMagazineBodyGroup = FindBodygroupByName( "magazine" );
+		Assert( m_nMagazineBodyGroup == -1 || GetBodygroupCount( m_nMagazineBodyGroup ) == 2 );
+	}
+
+	if ( m_nMagazineBodyGroup != -1 )
+	{
+		SetBodygroup( m_nMagazineBodyGroup, IsReloading() ? 1 : 0 );
+	}
 }
 
 bool C_ASW_Weapon::ShouldDraw()
@@ -448,7 +527,7 @@ bool C_ASW_Weapon::ShouldDraw()
 		{
 			return false;
 		}
-		return (pMarine->GetActiveWeapon() == this);
+		return (pMarine->GetActiveWeapon() == this) || ( rd_marine_gear.GetBool() && ViewModelIsMarineAttachment() && pMarine->GetRenderAlpha() > 0 );
 	}
 	if (!BaseClass::ShouldDraw())
 	{
@@ -608,12 +687,12 @@ int C_ASW_Weapon::GetUseIconTextureID()
 {
 	if (m_nUseIconTextureID == -1)
 	{
-		const CASW_WeaponInfo *pInfo = GetWeaponInfo();
-		if ( pInfo )
+		const CASW_EquipItem *pItem = GetEquipItem();
+		if ( pItem )
 		{
 			m_nUseIconTextureID = vgui::surface()->CreateNewTextureID();
 			char buffer[ 256 ];
-			Q_snprintf( buffer, sizeof( buffer ), "vgui/%s", pInfo->szEquipIcon );
+			Q_snprintf( buffer, sizeof( buffer ), "vgui/%s", pItem->m_szEquipIcon );
 			vgui::surface()->DrawSetTextureFile( m_nUseIconTextureID, buffer, true, false);
 		}
 	}
@@ -635,11 +714,23 @@ bool C_ASW_Weapon::GetUseAction( ASWUseAction &action, C_ASW_Inhabitable_NPC *pU
 	action.bWideIcon = ( action.iInventorySlot != ASW_INVENTORY_SLOT_EXTRA );
 
 	// build the appropriate take string
-	const CASW_WeaponInfo *pInfo = GetWeaponInfo();
-	if ( pInfo )
+	const CASW_EquipItem *pItem = GetEquipItem();
+	if ( pItem )
 	{
+		wchar_t wszWeaponShortName[128];
+		TryLocalize( pItem->m_szShortName, wszWeaponShortName, sizeof( wszWeaponShortName ) );
 		wchar_t wszWeaponName[128];
-		TryLocalize( pInfo->szPrintName, wszWeaponName, sizeof( wszWeaponName ) );
+		if ( IsInventoryEquipSlotValid() && SteamFriends() )
+		{
+			wchar_t wszPlayerName[128];
+			V_UTF8ToUnicode( SteamFriends()->GetFriendPersonaName( m_hOriginalOwnerPlayer->GetSteamID() ), wszPlayerName, sizeof( wszPlayerName ) );
+			g_pVGuiLocalize->ConstructString( wszWeaponName, sizeof( wszWeaponName ), g_pVGuiLocalize->Find( "#asw_owned_weapon_format" ), 2, wszPlayerName, wszWeaponShortName );
+		}
+		else
+		{
+			V_wcsncpy( wszWeaponName, wszWeaponShortName, sizeof( wszWeaponName ) );
+		}
+
 		if ( m_bSwappingWeapon )
 		{
 			g_pVGuiLocalize->ConstructString( action.wszText, sizeof( action.wszText ), g_pVGuiLocalize->Find( "#asw_swap_weapon_format" ), 1, wszWeaponName );
@@ -732,6 +823,17 @@ bool C_ASW_Weapon::ShouldAlignWeaponToLaserPointer()
 //--------------------------------------------------------------------------------------------------------
 void C_ASW_Weapon::SimulateLaserPointer()
 {
+	if ( m_nLaserBodyGroup == -2 )
+	{
+		m_nLaserBodyGroup = FindBodygroupByName( "laser" );
+		Assert( m_nLaserBodyGroup == -1 || GetBodygroupCount( m_nLaserBodyGroup ) == 2 );
+	}
+
+	if ( m_nLaserBodyGroup != -1 )
+	{
+		SetBodygroup( m_nLaserBodyGroup, asw_laser_sight.GetBool() ? 0 : 1 );
+	}
+
 	if ( !ShouldShowLaserPointer() )
 	{
 		RemoveLaserPointerEffect();
@@ -799,7 +901,7 @@ void C_ASW_Weapon::SimulateLaserPointer()
 	else if ( IsOffensiveWeapon() )
 	{
 		C_BaseEntity *pEnt = GetLaserTargetEntity();
-		if ( pEnt && pEnt->Classify() == CLASS_ASW_MARINE )
+		if ( pEnt && pEnt->Classify() == CLASS_ASW_MARINE && ( !ASWDeathmatchMode() || ( ASWDeathmatchMode()->IsTeamDeathmatchEnabled() && pEnt->GetTeamNumber() == pMarine->GetTeamNumber() ) ) )
 			alphaFF = 0.65f;
 	}
 
@@ -828,6 +930,14 @@ void C_ASW_Weapon::SimulateLaserPointer()
 	}
 
 	trace_t tr;
+	UTIL_TraceLine( pMarine->WorldSpaceCenter(), vecOrigin, MASK_SHOT_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr );
+	if ( tr.DidHit() )
+	{
+		// if the laser would start on the other side of a wall from the marine, don't draw it at all.
+		alpha = 0;
+		alphaFF = 0;
+	}
+
 	// used to call GetWeaponRange() which was defined per weapon
 	UTIL_TraceLine( vecOrigin, vecOrigin + (vecDirShooting * flDistance), MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
 
@@ -868,12 +978,7 @@ void C_ASW_Weapon::SimulateLaserPointer()
 		m_pMuzzleFlashEffect->SetControlPoint( 10, Vector( GetMuzzleFlashScale(), 0, 0 ) );
 
 		// color
-		Vector vecColor = Vector( 1, 1, 1 );
-		if ( GetMuzzleFlashRed() )
-		{
-			vecColor = Vector( 1, 0.55, 0.55 );
-		}
-		m_pMuzzleFlashEffect->SetControlPoint( 20, vecColor );
+		m_pMuzzleFlashEffect->SetControlPoint( 20, GetMuzzleFlashTint() );
 
 		// Set Alpha control point
 		float fAlpha;
@@ -894,7 +999,7 @@ void C_ASW_Weapon::CreateLaserPointerEffect( bool bLocalPlayer, int iAttachment 
 	if ( !m_pLaserPointerEffect )
 	{
 		if ( bLocalPlayer )
-			m_pLaserPointerEffect = ParticleProp()->Create( "weapon_laser_sight", PATTACH_POINT_FOLLOW, iAttachment );
+			m_pLaserPointerEffect = ParticleProp()->Create( GetLaserPointerEffectName(), PATTACH_POINT_FOLLOW, iAttachment);
 		else
 			m_pLaserPointerEffect = ParticleProp()->Create( "weapon_laser_sight_other", PATTACH_POINT_FOLLOW, iAttachment );
 
@@ -961,3 +1066,5 @@ bool C_ASW_Weapon::GroundSecondary()
 {
 	return asw_ground_secondary.GetBool();
 }
+
+LINK_ENTITY_TO_CLASS( rd_weapon_accessory, C_RD_Weapon_Accessory );

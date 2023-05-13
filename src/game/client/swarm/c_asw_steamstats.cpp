@@ -21,6 +21,8 @@
 #include "rd_missions_shared.h"
 #include "c_user_message_register.h"
 #include "asw_alien_classes.h"
+#include "rd_cause_of_death.h"
+#include "rd_inventory_shared.h"
 
 CASW_Steamstats g_ASW_Steamstats;
 
@@ -61,6 +63,9 @@ namespace
 	const char* szBestDifficulty = ".difficulty.best";
 	const char* szBestTime = ".time.best";
 	const char* szBestSpeedrunDifficulty = ".time.best.difficulty";
+	const char* szScoreTotal = ".score.total";
+	const char* szScoreSuccess = ".score.success";
+	const char* szBestScore = ".score.best";
 
 	// difficulty names used when fetching steam stats
 	const char* g_szDifficulties[] =
@@ -79,16 +84,18 @@ namespace
 		"rd_research7",
 		"rd-area9800",
 		"rd-tarnorcampaign1",
+#ifdef RD__CAMPAIGNS_DEADCITY
 		"rd_deadcity",
+#endif
 		"tilarus5",
 		"rd_lanasescape_campaign",
+#ifdef RD__CAMPAIGNS_REDUCTION
 		"rd_reduction_campaign",
+#endif
 		"rd_paranoia",
 		"rd_nh_campaigns",
 		"rd_biogen_corporation",
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 		"rd_accident32",
-#endif
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 		"rd_adanaxis",
 #endif
@@ -120,9 +127,11 @@ namespace
 		"rd-tft1desertoutpost",
 		"rd-tft2abandonedmaintenance",
 		"rd-tft3spaceport",
+#ifdef RD__CAMPAIGNS_DEADCITY
 		"rd-dc1_omega_city",
 		"rd-dc2_breaking_an_entry",
 		"rd-dc3_search_and_rescue",
+#endif
 		"rd-til1midnightport",
 		"rd-til2roadtodawn",
 		"rd-til3arcticinfiltration",
@@ -137,12 +146,14 @@ namespace
 		"rd-lan3_maintenance",
 		"rd-lan4_vent",
 		"rd-lan5_complex",
+#ifdef RD__CAMPAIGNS_REDUCTION
 		"rd-reduction1",
 		"rd-reduction2",
 		"rd-reduction3",
 		"rd-reduction4",
 		"rd-reduction5",
 		"rd-reduction6",
+#endif
 		"rd-par1unexpected_encounter",
 		"rd-par2hostile_places",
 		"rd-par3close_contact",
@@ -154,7 +165,6 @@ namespace
 		"rd-bio1operationx5",
 		"rd-bio2invisiblethreat",
 		"rd-bio3biogenlabs",
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 		"rd-acc1_infodep",
 		"rd-acc2_powerhood",
 		"rd-acc3_rescenter",
@@ -162,7 +172,7 @@ namespace
 		"rd-acc5_j5connector",
 		"rd-acc6_labruins",
 		"rd-acc_complex",
-#endif
+		"rd-ht-marine_academy",
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 		"rd-ada_sector_a9",
 		"rd-ada_nexus_subnode",
@@ -180,13 +190,20 @@ namespace
 		"rd-bonus_mission5",
 		"rd-bonus_mission6",
 		"rd-bonus_mission7",
+		"rd-bonus10_sewrev",
+		"rd-bonus12_rydrev",
+		"rd-bonus14_cargrev",
+		"rd-bonus15_landrev",
 	};
 
 	const char *const g_OfficialNonCampaignMaps[] =
 	{
 		"rd-acc_complex",
+		"rd-ht-marine_academy",
+#ifdef RD_6A_CAMPAIGNS_ADANAXIS
 		"rd-ada_new_beginning",
 		"rd-ada_anomaly",
+#endif
 		"dm_desert",
 		"dm_deima",
 		"dm_residential",
@@ -198,6 +215,20 @@ namespace
 		"rd-bonus_mission5",
 		"rd-bonus_mission6",
 		"rd-bonus_mission7",
+		"rd-bonus10_sewrev",
+		"rd-bonus12_rydrev",
+		"rd-bonus14_cargrev",
+		"rd-bonus15_landrev",
+	};
+
+	const char *const g_OfficialPointsMaps[] =
+	{
+		"rd-ht-marine_academy",
+	};
+
+	const char *const g_OfficialPointsMapsUploadOnFailure[] =
+	{
+		"rd-ht-marine_academy",
 	};
 }
 
@@ -248,13 +279,43 @@ bool IsOfficialCampaign()
 	return false;
 }
 
+bool IsOfficialPointsMission()
+{
+	const char *szMapName = engine->GetLevelNameShort();
+
+	for ( int i = 0; i < ARRAYSIZE( g_OfficialPointsMaps ); i++ )
+	{
+		if ( FStrEq( szMapName, g_OfficialPointsMaps[i] ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool IsOfficialPointsMissionUploadOnFailure()
+{
+	const char *szMapName = engine->GetLevelNameShort();
+
+	for ( int i = 0; i < ARRAYSIZE( g_OfficialPointsMapsUploadOnFailure ); i++ )
+	{
+		if ( FStrEq( szMapName, g_OfficialPointsMapsUploadOnFailure[i] ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool IsWorkshopCampaign()
 {
 	if ( !engine->IsInGame() )
 		return false;
 
 	CASW_Campaign_Save *pCampaign = ASWGameRules()->GetCampaignSave();
-	if ( pCampaign )
+	if ( pCampaign && ASWGameRules()->IsCampaignGame() )
 	{
 		const char *szCampaignName = pCampaign->GetCampaignName();
 
@@ -281,18 +342,20 @@ bool ShouldUploadOnFailure()
 	return pMission->HasTag( "upload_on_failure" );
 }
 
-bool IsDamagingWeapon( const char* szWeaponName, bool bIsExtraEquip )
+bool IsDamagingWeapon( const char *szWeaponName, bool bIsExtraEquip )
 {
-	if( bIsExtraEquip )
+	if ( bIsExtraEquip )
 	{
 		// Check for the few damaging weapons
-		if( !Q_strcmp( szWeaponName, "asw_weapon_laser_mines" ) || 
+		if ( !Q_strcmp( szWeaponName, "asw_weapon_laser_mines" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_hornet_barrage" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_mines" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_grenades" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_smart_bomb" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_tesla_trap" ) ||
-			!Q_strcmp( szWeaponName, "asw_weapon_gas_grenades" ))
+			!Q_strcmp( szWeaponName, "asw_weapon_gas_grenades" ) ||
+			!Q_strcmp( szWeaponName, "asw_weapon_stun_grenades" ) ||
+			!Q_strcmp( szWeaponName, "asw_weapon_incendiary_grenades" ) )
 			return true;
 		else
 			return false;
@@ -300,14 +363,16 @@ bool IsDamagingWeapon( const char* szWeaponName, bool bIsExtraEquip )
 	else
 	{
 		// Check for the few non-damaging weapons
-		if( !Q_strcmp( szWeaponName, "asw_weapon_heal_grenade" ) ||
+		if ( !Q_strcmp( szWeaponName, "asw_weapon_heal_grenade" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_ammo_satchel" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_heal_gun" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_healamp_gun" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_fire_extinguisher" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_t75" ) ||
 			!Q_strcmp( szWeaponName, "asw_weapon_ammo_bag" ) ||
-			!Q_strcmp( szWeaponName, "asw_weapon_medical_satchel" ) )
+			!Q_strcmp( szWeaponName, "asw_weapon_medical_satchel" ) ||
+			!Q_strcmp( szWeaponName, "asw_weapon_hack_tool" ) ||
+			!Q_strcmp( szWeaponName, "asw_weapon_revive_tool" ) )
 			return false;
 		else
 			return true;
@@ -368,6 +433,20 @@ Class_T GetDamagingWeaponClassFromName( const char *szClassName )
 		return (Class_T) CLASS_ASW_HEAVY_RIFLE;
 	else if ( FStrEq( szClassName, "asw_weapon_medrifle" ) )
 		return (Class_T) CLASS_ASW_MEDRIFLE;
+	else if ( FStrEq( szClassName, "asw_weapon_ar2" ) )
+		return ( Class_T )CLASS_ASW_AR2;
+	else if ( FStrEq( szClassName, "asw_weapon_flechette" ) )
+		return ( Class_T )CLASS_ASW_FLECHETTE;
+	else if ( FStrEq( szClassName, "asw_weapon_ricochet" ) )
+		return ( Class_T )CLASS_ASW_RICOCHET;
+	else if ( FStrEq( szClassName, "asw_weapon_cryo_cannon" ) )
+		return ( Class_T )CLASS_ASW_CRYO_CANNON;
+	else if ( FStrEq( szClassName, "asw_weapon_plasma_thrower" ) )
+		return ( Class_T )CLASS_ASW_PLASMA_THROWER;
+	else if ( FStrEq( szClassName, "asw_weapon_sentry_railgun" ) )
+		return ( Class_T )CLASS_ASW_SENTRY_RAILGUN;
+	else if ( FStrEq( szClassName, "asw_weapon_energy_shield" ) )
+		return ( Class_T )CLASS_ASW_ENERGY_SHIELD;
 
 	else if( FStrEq( szClassName, "asw_weapon_laser_mines") )
 		return (Class_T)CLASS_ASW_LASER_MINES;
@@ -385,6 +464,10 @@ Class_T GetDamagingWeaponClassFromName( const char *szClassName )
 		return (Class_T)CLASS_ASW_TESLA_TRAP;
 	else if( FStrEq( szClassName, "asw_weapon_gas_grenades") )
 		return (Class_T)CLASS_ASW_GAS_GRENADES;
+	else if ( FStrEq( szClassName, "asw_weapon_stun_grenades" ) )
+		return ( Class_T )CLASS_ASW_GRENADE_BOX_PRIFLE;
+	else if ( FStrEq( szClassName, "asw_weapon_incendiary_grenades" ) )
+		return ( Class_T )CLASS_ASW_GRENADE_BOX_VINDICATOR;
 
 	else if( FStrEq( szClassName, "asw_rifle_grenade") )
 		return (Class_T)CLASS_ASW_RIFLE_GRENADE;
@@ -394,6 +477,12 @@ Class_T GetDamagingWeaponClassFromName( const char *szClassName )
 		return (Class_T)CLASS_ASW_GRENADE_VINDICATOR;
 	else if( FStrEq( szClassName, "asw_combat_rifle_shotgun") )
 		return (Class_T)CLASS_ASW_COMBAT_RIFLE_SHOTGUN;
+	else if( FStrEq( szClassName, "asw_ricochet_shotgun") )
+		return (Class_T)CLASS_ASW_RICOCHET_SHOTGUN;
+	else if( FStrEq( szClassName, "prop_combine_ball" ) )
+		return (Class_T)CLASS_ASW_COMBINE_BALL;
+	else if ( FStrEq( szClassName, "asw_plasma_thrower_airblast" ) )
+		return (Class_T)CLASS_ASW_PLASMA_THROWER_AIRBLAST;
 
 	else
 		return (Class_T)CLASS_ASW_UNKNOWN;
@@ -419,7 +508,7 @@ static void __MsgFunc_RDAlienKillStat( bf_read &msg )
 	}
 
 	int32_t nCount = 0;
-	if ( SteamUserStats()->GetStat( szApiName, &nCount ) )
+	if ( SteamUserStats() && SteamUserStats()->GetStat( szApiName, &nCount ) )
 	{
 		SteamUserStats()->SetStat( szApiName, nCount + 1 );
 	}
@@ -430,6 +519,31 @@ static void __MsgFunc_RDAlienKillStat( bf_read &msg )
 }
 USER_MESSAGE_REGISTER( RDAlienKillStat );
 
+extern void CheckDeathTypeCount();
+
+static void __MsgFunc_RDCauseOfDeath( bf_read &msg )
+{
+	RD_Cause_of_Death_t iCause = ( RD_Cause_of_Death_t )msg.ReadShort();
+	Assert( iCause >= DEATHCAUSE_UNKNOWN && iCause < DEATHCAUSE_COUNT );
+	if ( iCause < DEATHCAUSE_UNKNOWN || iCause >= DEATHCAUSE_COUNT )
+		return;
+
+	const char *szApiName = g_szDeathCauseStatName[iCause];
+
+	int32_t nCount = 0;
+	if ( SteamUserStats() && SteamUserStats()->GetStat( szApiName, &nCount ) )
+	{
+		SteamUserStats()->SetStat( szApiName, nCount + 1 );
+	}
+	else
+	{
+		DevMsg( "STEAMSTATS: Failed to retrieve stat %s.\n", szApiName );
+	}
+
+	CheckDeathTypeCount();
+}
+USER_MESSAGE_REGISTER( RDCauseOfDeath );
+
 bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 {
 	bool bOK = true;
@@ -438,6 +552,7 @@ bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 	m_SecondaryEquipCounts.Purge();
 	m_ExtraEquipCounts.Purge();
 	m_MarineSelectionCounts.Purge();
+	m_MissionPlayerCounts.Purge();
 	m_DifficultyCounts.Purge();
 	m_WeaponStats.Purge();
 
@@ -455,7 +570,9 @@ bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 	FETCH_STEAM_STATS( "iAliensBurned", m_iAliensBurned );
 	FETCH_STEAM_STATS( "iBiomassIgnited", m_iBiomassIgnited );
 	FETCH_STEAM_STATS( "iHealing", m_iHealing );
-	FETCH_STEAM_STATS( "iFastHacks", m_iFastHacks );
+	FETCH_STEAM_STATS( "iFastHacks", m_iFastHacksLegacy );
+	FETCH_STEAM_STATS( "iFastHacksWire", m_iFastHacksWire );
+	FETCH_STEAM_STATS( "iFastHacksComputer", m_iFastHacksComputer );
 	FETCH_STEAM_STATS( "iGamesTotal", m_iGamesTotal );
 	FETCH_STEAM_STATS( "iGamesSuccess", m_iGamesSuccess );
 	FETCH_STEAM_STATS( "fGamesSuccessPercent", m_fGamesSuccessPercent );
@@ -464,6 +581,7 @@ bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 	FETCH_STEAM_STATS( "sentry_flamers_deployed", m_iSentryFlamerDeployed );
 	FETCH_STEAM_STATS( "sentry_freeze_deployed", m_iSentryFreezeDeployed );
 	FETCH_STEAM_STATS( "sentry_cannon_deployed", m_iSentryCannonDeployed );
+	FETCH_STEAM_STATS( "sentry_railgun_deployed", m_iSentryRailgunDeployed );
 	FETCH_STEAM_STATS( "medkits_used", m_iMedkitsUsed );
 	FETCH_STEAM_STATS( "flares_used", m_iFlaresUsed );
 	FETCH_STEAM_STATS( "adrenaline_used", m_iAdrenalineUsed );
@@ -485,56 +603,73 @@ bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 	FETCH_STEAM_STATS( "healampgun_heals", m_iHealAmpGunHeals );
 	FETCH_STEAM_STATS( "healampgun_amps", m_iHealAmpGunAmps );
 	FETCH_STEAM_STATS( "medrifle_heals", m_iMedRifleHeals );
+	FETCH_STEAM_STATS( "cryo_cannon_freeze_aliens", m_iCryoCannonFreezeAlien );
+	FETCH_STEAM_STATS( "plasma_thrower_extinguish_marines", m_iPlasmaThrowerExtinguishMarine );
+	FETCH_STEAM_STATS( "hack_tool_wire_hacks_tech", m_iHackToolWireHacksTech );
+	FETCH_STEAM_STATS( "hack_tool_wire_hacks_other", m_iHackToolWireHacksOther );
+	FETCH_STEAM_STATS( "hack_tool_computer_hacks_tech", m_iHackToolComputerHacksTech );
+	FETCH_STEAM_STATS( "hack_tool_computer_hacks_other", m_iHackToolComputerHacksOther );
+	FETCH_STEAM_STATS( "energy_shield_projectiles_destroyed", m_iEnergyShieldProjectilesDestroyed );
+	FETCH_STEAM_STATS( "reanimator_revives_officer", m_iReanimatorRevivesOfficer );
+	FETCH_STEAM_STATS( "reanimator_revives_sw", m_iReanimatorRevivesSpecialWeapons );
+	FETCH_STEAM_STATS( "reanimator_revives_medic", m_iReanimatorRevivesMedic );
+	FETCH_STEAM_STATS( "reanimator_revives_tech", m_iReanimatorRevivesTech );
+	FETCH_STEAM_STATS( "speed_boosts_used", m_iSpeedBoostsUsed );
+	FETCH_STEAM_STATS( "shield_bubbles_thrown", m_iShieldBubblesThrown );
+	FETCH_STEAM_STATS( "shield_bubble_pushed_enemy", m_iShieldBubblePushedEnemy );
+	FETCH_STEAM_STATS( "shield_bubble_damage_absorbed", m_iShieldBubbleDamageAbsorbed );
+	FETCH_STEAM_STATS( "leadership.procs.accuracy", m_iLeadershipProcsAccuracy );
+	FETCH_STEAM_STATS( "leadership.procs.resist", m_iLeadershipProcsResist );
+	FETCH_STEAM_STATS( "leadership.damage.accuracy", m_iLeadershipDamageAccuracy );
+	FETCH_STEAM_STATS( "leadership.damage.resist", m_iLeadershipDamageResist );
 	FETCH_STEAM_STATS( "playtime.total", m_iTotalPlayTime );
 
 	// Fetch starting equip information
-	int i = 0;
-	while ( ASWEquipmentList()->GetRegular( i ) )
+	for ( int i = 0; i < ASW_NUM_EQUIP_REGULAR; i++ )
 	{
 		// Get weapon information
-		if ( IsDamagingWeapon( ASWEquipmentList()->GetRegular( i )->m_EquipClass, false ) )
+		if ( IsDamagingWeapon( g_ASWEquipmentList.GetRegular( i )->m_EquipClass, false ) )
 		{
 			int weaponIndex = m_WeaponStats.AddToTail();
-			const char *szClassname = ASWEquipmentList()->GetRegular( i )->m_EquipClass;
+			const char *szClassname = g_ASWEquipmentList.GetRegular( i )->m_EquipClass;
 			m_WeaponStats[weaponIndex].FetchWeaponStats( playerSteamID, szClassname );
 			m_WeaponStats[weaponIndex].m_iWeaponIndex = GetDamagingWeaponClassFromName( szClassname );
 			m_WeaponStats[weaponIndex].m_bIsExtra = false;
-			m_WeaponStats[weaponIndex].m_szClassName = const_cast< char * >( szClassname );
+			m_WeaponStats[weaponIndex].m_szClassName = szClassname;
 		}
 
 		// For primary equips
 		int32 iTempCount;
-		FETCH_STEAM_STATS( CFmtStr( "equips.%s.primary", ASWEquipmentList()->GetRegular( i )->m_EquipClass ), iTempCount );
+		FETCH_STEAM_STATS( CFmtStr( "equips.%s.primary", g_ASWEquipmentList.GetRegular( i )->m_EquipClass ), iTempCount );
 		m_PrimaryEquipCounts.AddToTail( iTempCount );
 
 		// For secondary equips
 		iTempCount;
-		FETCH_STEAM_STATS( CFmtStr( "equips.%s.secondary", ASWEquipmentList()->GetRegular( i++ )->m_EquipClass ), iTempCount );
+		FETCH_STEAM_STATS( CFmtStr( "equips.%s.secondary", g_ASWEquipmentList.GetRegular( i )->m_EquipClass ), iTempCount );
 		m_SecondaryEquipCounts.AddToTail( iTempCount );
 	}
 
-	i = 0;
-	while ( ASWEquipmentList()->GetExtra( i ) )
+	for ( int i = 0; i < ASW_NUM_EQUIP_EXTRA; i++ )
 	{
 		// Get weapon information
-		if ( IsDamagingWeapon( ASWEquipmentList()->GetExtra( i )->m_EquipClass, true ) )
+		if ( IsDamagingWeapon( g_ASWEquipmentList.GetExtra( i )->m_EquipClass, true ) )
 		{
 			int weaponIndex = m_WeaponStats.AddToTail();
-			const char *szClassname = ASWEquipmentList()->GetExtra( i )->m_EquipClass;
+			const char *szClassname = g_ASWEquipmentList.GetExtra( i )->m_EquipClass;
 			m_WeaponStats[weaponIndex].FetchWeaponStats( playerSteamID, szClassname );
 			m_WeaponStats[weaponIndex].m_iWeaponIndex = GetDamagingWeaponClassFromName( szClassname );
 			m_WeaponStats[weaponIndex].m_bIsExtra = true;
-			m_WeaponStats[weaponIndex].m_szClassName = const_cast< char * >( szClassname );
+			m_WeaponStats[weaponIndex].m_szClassName = szClassname;
 		}
 
 		int32 iTempCount;
-		FETCH_STEAM_STATS( CFmtStr( "equips.%s.total", ASWEquipmentList()->GetExtra( i++ )->m_EquipClass ), iTempCount );
+		FETCH_STEAM_STATS( CFmtStr( "equips.%s.total", g_ASWEquipmentList.GetExtra( i )->m_EquipClass ), iTempCount );
 		m_ExtraEquipCounts.AddToTail( iTempCount );
 	}
 
 	// Get weapon stats for rifle grenade and vindicator grenade
 	int weaponIndex = m_WeaponStats.AddToTail();
-	char *szClassname = "asw_rifle_grenade";
+	const char *szClassname = "asw_rifle_grenade";
 	m_WeaponStats[weaponIndex].FetchWeaponStats( playerSteamID, szClassname );
 	m_WeaponStats[weaponIndex].m_iWeaponIndex = GetDamagingWeaponClassFromName( szClassname );
 	m_WeaponStats[weaponIndex].m_bIsExtra = false;
@@ -561,18 +696,32 @@ bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 	m_WeaponStats[weaponIndex].m_bIsExtra = false;
 	m_WeaponStats[weaponIndex].m_szClassName = szClassname;
 
+	weaponIndex = m_WeaponStats.AddToTail();
+	szClassname = "prop_combine_ball";
+	m_WeaponStats[weaponIndex].FetchWeaponStats( playerSteamID, szClassname );
+	m_WeaponStats[weaponIndex].m_iWeaponIndex = GetDamagingWeaponClassFromName( szClassname );
+	m_WeaponStats[weaponIndex].m_bIsExtra = false;
+	m_WeaponStats[weaponIndex].m_szClassName = szClassname;
+
+	weaponIndex = m_WeaponStats.AddToTail();
+	szClassname = "asw_plasma_thrower_airblast";
+	m_WeaponStats[weaponIndex].FetchWeaponStats( playerSteamID, szClassname );
+	m_WeaponStats[weaponIndex].m_iWeaponIndex = GetDamagingWeaponClassFromName( szClassname );
+	m_WeaponStats[weaponIndex].m_bIsExtra = false;
+	m_WeaponStats[weaponIndex].m_szClassName = szClassname;
 
 	// Fetch marine counts
-	i = 0;
-	while ( MarineProfileList()->GetProfile( i ) )
+	for ( int i = 0; i < ASW_NUM_MARINE_PROFILES; i++ )
 	{
 		int32 iTempCount;
-		FETCH_STEAM_STATS( CFmtStr( "marines.%i.total", i++ ), iTempCount );
+		FETCH_STEAM_STATS( CFmtStr( "marines.%i.total", i ), iTempCount );
 		m_MarineSelectionCounts.AddToTail( iTempCount );
+		FETCH_STEAM_STATS( CFmtStr( "player_count.%d.missions", i + 1 ), iTempCount );
+		m_MissionPlayerCounts.AddToTail( iTempCount );
 	}
 
 	// Get difficulty counts
-	for ( int i = 0; i < 5; ++i )
+	for ( int i = 0; i < 5; i++ )
 	{
 		int32 iTempCount;
 		FETCH_STEAM_STATS( CFmtStr( "%s.games.total", g_szDifficulties[i] ), iTempCount );
@@ -584,7 +733,7 @@ bool CASW_Steamstats::FetchStats( CSteamID playerSteamID, CASW_Player *pPlayer )
 
 	// Get stats for this mission/difficulty/marine
 	bOK &= m_MissionStats.FetchMissionStats( playerSteamID );
-	
+
 	return bOK;
 }
 
@@ -593,14 +742,10 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 	if( !SteamUserStats() )
 		return;
 
-	// Update stats from the briefing screen
-	if( !GetDebriefStats() 
-		|| !ASWGameResource() 
-#ifndef DEBUG 
-		|| ASWGameRules()->m_bCheated 
-#endif
-		|| engine->IsPlayingDemo()
-		)
+	if ( !GetDebriefStats() || !ASWGameResource() || !ASWGameRules() )
+		return;
+
+	if ( ASWGameRules()->m_bCheated || engine->IsPlayingDemo() )
 		return;
 
 	if ( !IsOfficialCampaign() && !IsWorkshopCampaign() )
@@ -608,10 +753,11 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 
 	PrepStatsForSend_Leaderboard( pPlayer, !IsOfficialCampaign() );
 
-	if( m_MarineSelectionCounts.Count() == 0 || 
-		m_DifficultyCounts.Count() == 0 || 
-		m_PrimaryEquipCounts.Count() == 0 || 
-		m_SecondaryEquipCounts.Count() == 0 || 
+	if ( m_MarineSelectionCounts.Count() == 0 ||
+		m_MissionPlayerCounts.Count() == 0 ||
+		m_DifficultyCounts.Count() == 0 ||
+		m_PrimaryEquipCounts.Count() == 0 ||
+		m_SecondaryEquipCounts.Count() == 0 ||
 		m_ExtraEquipCounts.Count() == 0 )
 		return;
 
@@ -625,6 +771,16 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 
 	int iMarineProfileIndex = pMR->m_MarineProfileIndex;
 
+	int iPlayersWithMarines = 0;
+	for ( int i = 1; i <= gpGlobals->maxClients; i++ )
+	{
+		C_ASW_Player *pOtherPlayer = ToASW_Player( UTIL_PlayerByIndex( i ) );
+		if ( pOtherPlayer && ASWGameResource()->GetFirstMarineResourceForPlayer( pOtherPlayer ) )
+		{
+			iPlayersWithMarines++;
+		}
+	}
+
 	m_iTotalKills += GetDebriefStats()->GetKills( iMarineIndex );
 	m_iFriendlyFire += GetDebriefStats()->GetFriendlyFire( iMarineIndex );
 	m_iDamage += GetDebriefStats()->GetDamageTaken( iMarineIndex );
@@ -634,19 +790,25 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 	m_iAliensBurned += GetDebriefStats()->GetAliensBurned( iMarineIndex );
 	m_iBiomassIgnited += GetDebriefStats()->GetBiomassIgnited( iMarineIndex );
 	m_iHealing += GetDebriefStats()->GetHealthHealed( iMarineIndex );
-	m_iFastHacks += GetDebriefStats()->GetFastHacks( iMarineIndex );
+	m_iFastHacksLegacy += GetDebriefStats()->GetFastHacksWire( iMarineIndex );
+	m_iFastHacksWire += GetDebriefStats()->GetFastHacksWire( iMarineIndex );
+	m_iFastHacksLegacy += GetDebriefStats()->GetFastHacksComputer( iMarineIndex );
+	m_iFastHacksComputer += GetDebriefStats()->GetFastHacksComputer( iMarineIndex );
 	m_iGamesTotal++;
-	if( m_DifficultyCounts.IsValidIndex( ASWGameRules()->GetSkillLevel() - 1 ) )
-		m_DifficultyCounts[ ASWGameRules()->GetSkillLevel() - 1 ] += 1;
+	if ( m_DifficultyCounts.IsValidIndex( ASWGameRules()->GetSkillLevel() - 1 ) )
+		m_DifficultyCounts[ASWGameRules()->GetSkillLevel() - 1] += 1;
 	m_iGamesSuccess += ASWGameRules()->GetMissionSuccess() ? 1 : 0;
 	m_fGamesSuccessPercent = m_iGamesSuccess / m_iGamesTotal * 100.0f;
-	if( m_MarineSelectionCounts.IsValidIndex( iMarineProfileIndex ) )
+	if ( m_MarineSelectionCounts.IsValidIndex( iMarineProfileIndex ) )
 		m_MarineSelectionCounts[iMarineProfileIndex] += 1;
+	if ( m_MissionPlayerCounts.IsValidIndex( iPlayersWithMarines - 1 ) )
+		m_MissionPlayerCounts[iPlayersWithMarines - 1] += 1;
 	m_iAmmoDeployed += GetDebriefStats()->GetAmmoDeployed( iMarineIndex );
 	m_iSentryGunsDeployed += GetDebriefStats()->GetSentrygunsDeployed( iMarineIndex );
 	m_iSentryFlamerDeployed += GetDebriefStats()->GetSentryFlamersDeployed( iMarineIndex );
 	m_iSentryFreezeDeployed += GetDebriefStats()->GetSentryFreezeDeployed( iMarineIndex );
 	m_iSentryCannonDeployed += GetDebriefStats()->GetSentryCannonDeployed( iMarineIndex );
+	m_iSentryRailgunDeployed += GetDebriefStats()->GetSentryRailgunsDeployed( iMarineIndex );
 	m_iMedkitsUsed += GetDebriefStats()->GetMedkitsUsed( iMarineIndex );
 	m_iFlaresUsed += GetDebriefStats()->GetFlaresUsed( iMarineIndex );
 	m_iAdrenalineUsed += GetDebriefStats()->GetAdrenalineUsed( iMarineIndex );
@@ -668,15 +830,34 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 	m_iHealAmpGunHeals += GetDebriefStats()->GetHealampgunHeals( iMarineIndex );
 	m_iHealAmpGunAmps += GetDebriefStats()->GetHealampgunAmps( iMarineIndex );
 	m_iMedRifleHeals += GetDebriefStats()->GetMedRifleHeals( iMarineIndex );
+	m_iCryoCannonFreezeAlien += GetDebriefStats()->GetCryoCannonFreezeAlien( iMarineIndex );
+	m_iPlasmaThrowerExtinguishMarine += GetDebriefStats()->GetPlasmaThrowerExtinguishMarine( iMarineIndex );
+	m_iHackToolWireHacksTech += GetDebriefStats()->GetHackToolWireHacksTech( iMarineIndex );
+	m_iHackToolWireHacksOther += GetDebriefStats()->GetHackToolWireHacksOther( iMarineIndex );
+	m_iHackToolComputerHacksTech += GetDebriefStats()->GetHackToolComputerHacksTech( iMarineIndex );
+	m_iHackToolComputerHacksOther += GetDebriefStats()->GetHackToolComputerHacksOther( iMarineIndex );
+	m_iEnergyShieldProjectilesDestroyed += GetDebriefStats()->GetEnergyShieldProjectilesDestroyed( iMarineIndex );
+	m_iReanimatorRevivesOfficer += GetDebriefStats()->GetReanimatorRevivesOfficer( iMarineIndex );
+	m_iReanimatorRevivesSpecialWeapons += GetDebriefStats()->GetReanimatorRevivesSpecialWeapons( iMarineIndex );
+	m_iReanimatorRevivesMedic += GetDebriefStats()->GetReanimatorRevivesMedic( iMarineIndex );
+	m_iReanimatorRevivesTech += GetDebriefStats()->GetReanimatorRevivesTech( iMarineIndex );
+	m_iSpeedBoostsUsed += GetDebriefStats()->GetSpeedBoostsUsed( iMarineIndex );
+	m_iShieldBubblesThrown += GetDebriefStats()->GetShieldBubblesThrown( iMarineIndex );
+	m_iShieldBubblePushedEnemy += GetDebriefStats()->GetShieldBubblePushedEnemy( iMarineIndex );
+	m_iShieldBubbleDamageAbsorbed += GetDebriefStats()->GetShieldBubbleDamageAbsorbed( iMarineIndex );
+	m_iLeadershipProcsAccuracy += GetDebriefStats()->GetLeadershipProcsAccuracy( iMarineIndex );
+	m_iLeadershipProcsResist += GetDebriefStats()->GetLeadershipProcsResist( iMarineIndex );
+	m_iLeadershipDamageAccuracy += GetDebriefStats()->GetLeadershipDamageAccuracy( iMarineIndex );
+	m_iLeadershipDamageResist += GetDebriefStats()->GetLeadershipDamageResist( iMarineIndex );
 	m_iTotalPlayTime += (int)GetDebriefStats()->m_fTimeTaken;
 
 	// Get starting equips
 	int iPrimaryIndex = GetDebriefStats()->GetStartingPrimaryEquip( iMarineIndex );
 	int iSecondaryIndex = GetDebriefStats()->GetStartingSecondaryEquip( iMarineIndex );
 	int iExtraIndex = GetDebriefStats()->GetStartingExtraEquip( iMarineIndex );
-	CASW_EquipItem *pPrimary = ASWEquipmentList()->GetRegular( iPrimaryIndex );
-	CASW_EquipItem *pSecondary = ASWEquipmentList()->GetRegular( iSecondaryIndex );
-	CASW_EquipItem *pExtra = ASWEquipmentList()->GetExtra( iExtraIndex );
+	CASW_EquipItem *pPrimary = g_ASWEquipmentList.GetRegular( iPrimaryIndex );
+	CASW_EquipItem *pSecondary = g_ASWEquipmentList.GetRegular( iSecondaryIndex );
+	CASW_EquipItem *pExtra = g_ASWEquipmentList.GetExtra( iExtraIndex );
 
 	Assert( pPrimary && pSecondary && pExtra );
 
@@ -697,7 +878,9 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 	SEND_STEAM_STATS( "iAliensBurned", m_iAliensBurned );
 	SEND_STEAM_STATS( "iBiomassIgnited", m_iBiomassIgnited );
 	SEND_STEAM_STATS( "iHealing", m_iHealing );
-	SEND_STEAM_STATS( "iFastHacks", m_iFastHacks );
+	SEND_STEAM_STATS( "iFastHacks", m_iFastHacksLegacy );
+	SEND_STEAM_STATS( "iFastHacksWire", m_iFastHacksWire );
+	SEND_STEAM_STATS( "iFastHacksComputer", m_iFastHacksComputer );
 	SEND_STEAM_STATS( "iGamesTotal", m_iGamesTotal );
 	SEND_STEAM_STATS( "iGamesSuccess", m_iGamesSuccess );
 	SEND_STEAM_STATS( "fGamesSuccessPercent", m_fGamesSuccessPercent );
@@ -707,6 +890,7 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 	SEND_STEAM_STATS( "sentry_flamers_deployed", m_iSentryFlamerDeployed );
 	SEND_STEAM_STATS( "sentry_freeze_deployed", m_iSentryFreezeDeployed );
 	SEND_STEAM_STATS( "sentry_cannon_deployed", m_iSentryCannonDeployed );
+	SEND_STEAM_STATS( "sentry_railgun_deployed", m_iSentryRailgunDeployed );
 	SEND_STEAM_STATS( "medkits_used", m_iMedkitsUsed );
 	SEND_STEAM_STATS( "flares_used", m_iFlaresUsed );
 	SEND_STEAM_STATS( "adrenaline_used", m_iAdrenalineUsed );
@@ -728,12 +912,37 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 	SEND_STEAM_STATS( "healampgun_heals", m_iHealAmpGunHeals );
 	SEND_STEAM_STATS( "healampgun_amps", m_iHealAmpGunAmps );
 	SEND_STEAM_STATS( "medrifle_heals", m_iMedRifleHeals );
+	SEND_STEAM_STATS( "cryo_cannon_freeze_aliens", m_iCryoCannonFreezeAlien );
+	SEND_STEAM_STATS( "plasma_thrower_extinguish_marines", m_iPlasmaThrowerExtinguishMarine );
+	SEND_STEAM_STATS( "hack_tool_wire_hacks_tech", m_iHackToolWireHacksTech );
+	SEND_STEAM_STATS( "hack_tool_wire_hacks_other", m_iHackToolWireHacksOther );
+	SEND_STEAM_STATS( "hack_tool_computer_hacks_tech", m_iHackToolComputerHacksTech );
+	SEND_STEAM_STATS( "hack_tool_computer_hacks_other", m_iHackToolComputerHacksOther );
+	SEND_STEAM_STATS( "energy_shield_projectiles_destroyed", m_iEnergyShieldProjectilesDestroyed );
+	SEND_STEAM_STATS( "reanimator_revives_officer", m_iReanimatorRevivesOfficer );
+	SEND_STEAM_STATS( "reanimator_revives_sw", m_iReanimatorRevivesSpecialWeapons );
+	SEND_STEAM_STATS( "reanimator_revives_medic", m_iReanimatorRevivesMedic );
+	SEND_STEAM_STATS( "reanimator_revives_tech", m_iReanimatorRevivesTech );
+	SEND_STEAM_STATS( "speed_boosts_used", m_iSpeedBoostsUsed );
+	SEND_STEAM_STATS( "shield_bubbles_thrown", m_iShieldBubblesThrown );
+	SEND_STEAM_STATS( "shield_bubble_pushed_enemy", m_iShieldBubblePushedEnemy );
+	SEND_STEAM_STATS( "shield_bubble_damage_absorbed", m_iShieldBubbleDamageAbsorbed );
+	SEND_STEAM_STATS( "leadership.procs.accuracy", m_iLeadershipProcsAccuracy );
+	SEND_STEAM_STATS( "leadership.procs.resist", m_iLeadershipProcsResist );
+	SEND_STEAM_STATS( "leadership.damage.accuracy", m_iLeadershipDamageAccuracy );
+	SEND_STEAM_STATS( "leadership.damage.resist", m_iLeadershipDamageResist );
 	SEND_STEAM_STATS( "playtime.total", m_iTotalPlayTime );
 
-	SEND_STEAM_STATS( CFmtStr( "equips.%s.primary", pPrimary->m_EquipClass), m_PrimaryEquipCounts[iPrimaryIndex] );
-	SEND_STEAM_STATS( CFmtStr( "equips.%s.secondary", pSecondary->m_EquipClass), m_SecondaryEquipCounts[iSecondaryIndex] );
-	SEND_STEAM_STATS( CFmtStr( "equips.%s.total", pExtra->m_EquipClass), m_ExtraEquipCounts[iExtraIndex] );
-	SEND_STEAM_STATS( CFmtStr( "marines.%i.total", iMarineProfileIndex ), m_MarineSelectionCounts[iMarineProfileIndex] );
+	if ( pPrimary && m_PrimaryEquipCounts.IsValidIndex( iPrimaryIndex ) )
+		SEND_STEAM_STATS( CFmtStr( "equips.%s.primary", pPrimary->m_EquipClass ), m_PrimaryEquipCounts[iPrimaryIndex] );
+	if ( pSecondary && m_SecondaryEquipCounts.IsValidIndex( iSecondaryIndex ) )
+		SEND_STEAM_STATS( CFmtStr( "equips.%s.secondary", pSecondary->m_EquipClass ), m_SecondaryEquipCounts[iSecondaryIndex] );
+	if ( pExtra && m_ExtraEquipCounts.IsValidIndex( iExtraIndex ) )
+		SEND_STEAM_STATS( CFmtStr( "equips.%s.total", pExtra->m_EquipClass ), m_ExtraEquipCounts[iExtraIndex] );
+	if ( m_MarineSelectionCounts.IsValidIndex( iMarineProfileIndex ) )
+		SEND_STEAM_STATS( CFmtStr( "marines.%i.total", iMarineProfileIndex ), m_MarineSelectionCounts[iMarineProfileIndex] );
+	if ( m_MissionPlayerCounts.IsValidIndex( iPlayersWithMarines - 1 ) )
+		SEND_STEAM_STATS( CFmtStr( "player_count.%i.missions", iPlayersWithMarines ), m_MissionPlayerCounts[iPlayersWithMarines - 1] );
 	int iLevel = pPlayer->GetLevel();
 	SEND_STEAM_STATS( "level", iLevel );
 	int iPromotion = pPlayer->GetPromotion();
@@ -780,15 +989,13 @@ void CASW_Steamstats::PrepStatsForSend( CASW_Player *pPlayer )
 		}
 	}
 
+	ReactiveDropInventory::CheckPlaytimeItemGenerators( MarineProfileList()->GetProfile( iMarineProfileIndex )->GetMarineClass() );
+
 	char szBetaBranch[256]{};
 	if ( SteamInventory() && SteamApps()->GetCurrentBetaName( szBetaBranch, sizeof( szBetaBranch ) ) && !V_stricmp( szBetaBranch, "beta" ) )
 	{
 		// beta tester medal
-		SteamInventoryResult_t hResult{ k_SteamInventoryResultInvalid };
-		if ( SteamInventory()->AddPromoItem( &hResult, 13 ) )
-		{
-			SteamInventory()->DestroyResult( hResult );
-		}
+		ReactiveDropInventory::AddPromoItem( 13 );
 	}
 }
 
@@ -797,17 +1004,17 @@ int CASW_Steamstats::GetFavoriteEquip( int iSlot )
 	Assert( iSlot < ASW_MAX_EQUIP_SLOTS );
 
 	StatList_Int_t *pList = NULL;
-	if( iSlot == 0 )
+	if ( iSlot == 0 )
 		pList = &m_PrimaryEquipCounts;
-	else if( iSlot == 1 )
+	else if ( iSlot == 1 )
 		pList = &m_SecondaryEquipCounts;
 	else
 		pList = &m_ExtraEquipCounts;
 
 	int iFav = 0;
-	for( int i=0; i<pList->Count(); ++i )
+	for ( int i = 0; i < pList->Count(); ++i )
 	{
-		if( pList->operator []( iFav ) < pList->operator [](i) )
+		if ( ( *pList )[iFav] < ( *pList )[i] )
 			iFav = i;
 	}
 
@@ -1057,6 +1264,15 @@ bool MissionStats_t::FetchMissionStats( CSteamID playerSteamID )
 		FETCH_STEAM_STATS( CFmtStr( "%s%s.%s", szLevelName, szBestTime, g_szDifficulties[i] ), m_iBestSpeedrunTimes[i] );
 	}
 
+	if ( IsOfficialPointsMission() )
+	{
+		FETCH_STEAM_STATS( CFmtStr( "%s%s", szLevelName, szScoreTotal ), m_iScoreTotal );
+		for ( int i = 0; i < 5; ++i )
+		{
+			FETCH_STEAM_STATS( CFmtStr( "%s%s.%s", szLevelName, szBestScore, g_szDifficulties[i] ), m_iBestHighScores[i] );
+		}
+	}
+
 	return bOK;
 }
 
@@ -1088,20 +1304,36 @@ void MissionStats_t::PrepStatsForSend( CASW_Player *pPlayer )
 			m_iGamesSuccess += ASWGameRules()->GetMissionSuccess() ? 1 : 0;
 			m_fGamesSuccessPercent = m_iGamesSuccess / (float)m_iGamesTotal * 100.0f;
 			m_iTimeTotal += GetDebriefStats()->m_fTimeTaken;
-			if( ASWGameRules()->GetMissionSuccess() )
+			m_iScoreTotal += pMR->m_iScore;
+			if ( ASWGameRules()->GetMissionSuccess() )
 			{
 				m_iTimeSuccess += GetDebriefStats()->m_fTimeTaken;
+				m_iScoreSuccess += pMR->m_iScore;
+			}
 
-				if( iDifficulty > m_iHighestDifficulty )
+			bool bPoints = IsOfficialPointsMission();
+			if ( ( bPoints && IsOfficialPointsMissionUploadOnFailure() ) || ASWGameRules()->GetMissionSuccess() )
+			{
+				if ( iDifficulty > m_iHighestDifficulty )
 					m_iHighestDifficulty = iDifficulty;
 
-				if( (unsigned int)m_iBestSpeedrunTimes[ iDifficulty - 1 ] > GetDebriefStats()->m_fTimeTaken )
+				if ( bPoints )
 				{
-					m_iBestSpeedrunTimes[ iDifficulty - 1 ] = GetDebriefStats()->m_fTimeTaken;
+					if ( m_iBestHighScores[iDifficulty - 1] < pMR->m_iScore )
+					{
+						m_iBestHighScores[iDifficulty - 1] = pMR->m_iScore;
+						m_iBestSpeedrunTimes[iDifficulty - 1] = GetDebriefStats()->m_fTimeTaken;
+					}
+				}
+				else
+				{
+					if ( ( unsigned int )m_iBestSpeedrunTimes[iDifficulty - 1] > GetDebriefStats()->m_fTimeTaken )
+					{
+						m_iBestSpeedrunTimes[iDifficulty - 1] = GetDebriefStats()->m_fTimeTaken;
+					}
 				}
 			}
-			
-			
+
 			// Safely compute averages
 			m_fKillsAvg = m_iKillsTotal / (float)m_iGamesTotal;
 			m_fFFAvg = m_iFFTotal / (float)m_iGamesTotal;
@@ -1133,6 +1365,13 @@ void MissionStats_t::PrepStatsForSend( CASW_Player *pPlayer )
 	SEND_STEAM_STATS( CFmtStr( "%s%s", szLevelName, szTimeAvg ), m_iTimeAvg );
 	SEND_STEAM_STATS( CFmtStr( "%s%s", szLevelName, szBestDifficulty ), m_iHighestDifficulty );
 	SEND_STEAM_STATS( CFmtStr( "%s%s.%s", szLevelName, szBestTime, g_szDifficulties[ iDifficulty - 1 ] ), m_iBestSpeedrunTimes[ iDifficulty - 1 ] );
+
+	if ( IsOfficialPointsMission() )
+	{
+		SEND_STEAM_STATS( CFmtStr( "%s%s", szLevelName, szScoreTotal ), m_iScoreTotal );
+		SEND_STEAM_STATS( CFmtStr( "%s%s", szLevelName, szScoreSuccess ), m_iScoreSuccess );
+		SEND_STEAM_STATS( CFmtStr( "%s%s.%s", szLevelName, szBestScore, g_szDifficulties[iDifficulty - 1] ), m_iBestHighScores[iDifficulty - 1] );
+	}
 }
 
 bool WeaponStats_t::FetchWeaponStats( CSteamID playerSteamID, const char *szClassName )
@@ -1157,7 +1396,7 @@ bool WeaponStats_t::FetchWeaponStats( CSteamID playerSteamID, const char *szClas
 
 void WeaponStats_t::PrepStatsForSend( CASW_Player *pPlayer )
 {
-	if( !GetDebriefStats() || !ASWGameResource() || !ASWEquipmentList() )
+	if( !GetDebriefStats() || !ASWGameResource() )
 		return;
 
 	// Check to see if the weapon is in the debrief stats
@@ -1262,7 +1501,7 @@ void CASW_Steamstats::PrepStatsForSend_Leaderboard( CASW_Player *pPlayer, bool b
 	char szMissionFileName[MAX_PATH];
 	Q_snprintf( szMissionFileName, sizeof( szMissionFileName ), "resource/overviews/%s.txt", IGameSystem::MapName() );
 	PublishedFileId_t nWorkshopFileID = g_ReactiveDropWorkshop.FindAddonProvidingFile( szMissionFileName );
-	if ( nWorkshopFileID == k_PublishedFileIdInvalid && bUnofficial )
+	if ( nWorkshopFileID == k_PublishedFileIdInvalid ? bUnofficial : nWorkshopFileID < 1000000 )
 	{
 		if ( asw_stats_leaderboard_debug.GetBool() )
 		{
@@ -1271,9 +1510,6 @@ void CASW_Steamstats::PrepStatsForSend_Leaderboard( CASW_Player *pPlayer, bool b
 		engine->ServerCmd( "cl_leaderboard_ready\n" );
 		return;
 	}
-
-	if ( !bUnofficial )	// if official
-		nWorkshopFileID = k_PublishedFileIdInvalid;	// #iss67 game considers workshop overview files as separate maps for leaderboards
 
 	extern ConVar rd_challenge;
 	char szChallengeFileName[MAX_PATH];
@@ -1368,9 +1604,9 @@ void CASW_Steamstats::PrepStatsForSend_Leaderboard( CASW_Player *pPlayer, bool b
 		SteamAPICall_t hAPICall = SteamUserStats()->FindOrCreateLeaderboard( szLeaderboardName, eSortMethod, eDisplayType );
 		m_LeaderboardFindResultCallback.Set( hAPICall, this, &CASW_Steamstats::LeaderboardFindResultCallback );
 	}
-	else
+	else if ( asw_stats_leaderboard_debug.GetBool() )
 	{
-		DevWarning( "Not sending leaderboard entry: Not whitelisted %s\n", szLeaderboardName );
+		DevMsg( "Not sending leaderboard entry: Not whitelisted %s\n", szLeaderboardName );
 	}
 
 	if ( IsLBWhitelisted( szDifficultyLeaderboardName ) )
@@ -1378,9 +1614,9 @@ void CASW_Steamstats::PrepStatsForSend_Leaderboard( CASW_Player *pPlayer, bool b
 		SteamAPICall_t hAPICall = SteamUserStats()->FindOrCreateLeaderboard( szDifficultyLeaderboardName, eSortMethod, eDisplayType );
 		m_LeaderboardDifficultyFindResultCallback.Set( hAPICall, this, &CASW_Steamstats::LeaderboardDifficultyFindResultCallback );
 	}
-	else
+	else if ( asw_stats_leaderboard_debug.GetBool() )
 	{
-		DevWarning( "Not sending leaderboard entry: Not whitelisted %s\n", szDifficultyLeaderboardName );
+		DevMsg( "Not sending leaderboard entry: Not whitelisted %s\n", szDifficultyLeaderboardName );
 	}
 }
 
@@ -1575,152 +1811,90 @@ static const char *LB_whitelist[] =
 {
 	"RD_MapPoints_0/",
 	"RD_SpeedRun_0/",
-	"RD_Hard_SpeedRun_0/",
-	"RD_Insane_SpeedRun_0/",
 	"RD_imba_SpeedRun_0/",
 
 	"RD_SpeedRun_0_asbi/",
-	"RD_Hard_SpeedRun_0_asbi/",
-	"RD_Insane_SpeedRun_0_asbi/",
 	"RD_imba_SpeedRun_0_asbi/",
 
 	"RD_SpeedRun_0_difficulty_tier1/",
-	"RD_Easy_SpeedRun_0_difficulty_tier1/",
-	"RD_Normal_SpeedRun_0_difficulty_tier1/",
-	"RD_Hard_SpeedRun_0_difficulty_tier1/",
-	"RD_Insane_SpeedRun_0_difficulty_tier1/",
 	"RD_imba_SpeedRun_0_difficulty_tier1/",
 
 	"RD_SpeedRun_0_difficulty_tier2/",
-	"RD_Easy_SpeedRun_0_difficulty_tier2/",
-	"RD_Normal_SpeedRun_0_difficulty_tier2/",
-	"RD_Hard_SpeedRun_0_difficulty_tier2/",
-	"RD_Insane_SpeedRun_0_difficulty_tier2/",
 	"RD_imba_SpeedRun_0_difficulty_tier2/",
 
 	"RD_SpeedRun_0_energy_weapons/",
-	"RD_Hard_SpeedRun_0_energy_weapons/",
-	"RD_Insane_SpeedRun_0_energy_weapons/",
 	"RD_imba_SpeedRun_0_energy_weapons/",
 
 	"RD_SpeedRun_0_level_one/",
-	"RD_Hard_SpeedRun_0_level_one/",
-	"RD_Insane_SpeedRun_0_level_one/",
 	"RD_imba_SpeedRun_0_level_one/",
 
 	"RD_SpeedRun_0_one_hit/",
-	"RD_Hard_SpeedRun_0_one_hit/",
-	"RD_Insane_SpeedRun_0_one_hit/",
 	"RD_imba_SpeedRun_0_one_hit/",
 
 	"RD_SpeedRun_0_riflemod_classic/",
-	"RD_Hard_SpeedRun_0_riflemod_classic/",
-	"RD_Insane_SpeedRun_0_riflemod_classic/",
 	"RD_imba_SpeedRun_0_riflemod_classic/",
 
 	"RD_SpeedRun_1366599495_asbipro/",
-	"RD_Hard_SpeedRun_1366599495_asbipro/",
-	"RD_Insane_SpeedRun_1366599495_asbipro/",
 	"RD_imba_SpeedRun_1366599495_asbipro/",
 
 	"RD_SpeedRun_1374886583_asb2/",
-	"RD_Hard_SpeedRun_1374886583_asb2/",
-	"RD_Insane_SpeedRun_1374886583_asb2/",
 	"RD_imba_SpeedRun_1374886583_asb2/",
 
 	"RD_SpeedRun_1374886583_asb2_carnage/",
-	"RD_Hard_SpeedRun_1374886583_asb2_carnage/",
-	"RD_Insane_SpeedRun_1374886583_asb2_carnage/",
 	"RD_imba_SpeedRun_1374886583_asb2_carnage/",
 
 	"RD_SpeedRun_1568035792_asbisolo/",
-	"RD_Hard_SpeedRun_1568035792_asbisolo/",
-	"RD_Insane_SpeedRun_1568035792_asbisolo/",
 	"RD_imba_SpeedRun_1568035792_asbisolo/",
 
 	"RD_SpeedRun_1358596669_asbi_classic/",
-	"RD_Hard_SpeedRun_1358596669_asbi_classic/",
-	"RD_Insane_SpeedRun_1358596669_asbi_classic/",
 	"RD_imba_SpeedRun_1358596669_asbi_classic/",
 
 	"RD_SpeedRun_1098363725_vanasbi/",
-	"RD_Hard_SpeedRun_1098363725_vanasbi/",
-	"RD_Insane_SpeedRun_1098363725_vanasbi/",
 	"RD_imba_SpeedRun_1098363725_vanasbi/",
 
 	"RD_SpeedRun_1447743649_onehitasbi/",
-	"RD_Hard_SpeedRun_1447743649_onehitasbi/",
-	"RD_Insane_SpeedRun_1447743649_onehitasbi/",
 	"RD_imba_SpeedRun_1447743649_onehitasbi/",
 
 	"RD_SpeedRun_1125436820_single_player/",
-	"RD_Hard_SpeedRun_1125436820_single_player/",
-	"RD_Insane_SpeedRun_1125436820_single_player/",
 	"RD_imba_SpeedRun_1125436820_single_player/",
 
 	"RD_SpeedRun_1429436524_single_player_asbi/",
-	"RD_Hard_SpeedRun_1429436524_single_player_asbi/",
-	"RD_Insane_SpeedRun_1429436524_single_player_asbi/",
 	"RD_imba_SpeedRun_1429436524_single_player_asbi/",
 
 	"RD_SpeedRun_1274862258_minefield/",
-	"RD_Hard_SpeedRun_1274862258_minefield/",
-	"RD_Insane_SpeedRun_1274862258_minefield/",
 	"RD_imba_SpeedRun_1274862258_minefield/",
 
 	"RD_SpeedRun_1274862258_minefield_light/",
-	"RD_Hard_SpeedRun_1274862258_minefield_light/",
-	"RD_Insane_SpeedRun_1274862258_minefield_light/",
 	"RD_imba_SpeedRun_1274862258_minefield_light/",
 
 	"RD_SpeedRun_1274862258_minefield_asbi/",
-	"RD_Hard_SpeedRun_1274862258_minefield_asbi/",
-	"RD_Insane_SpeedRun_1274862258_minefield_asbi/",
 	"RD_imba_SpeedRun_1274862258_minefield_asbi/",
 
 	"RD_SpeedRun_1274862258_minefieldnotech_asbi/",
-	"RD_Hard_SpeedRun_1274862258_minefieldnotech_asbi/",
-	"RD_Insane_SpeedRun_1274862258_minefieldnotech_asbi/",
 	"RD_imba_SpeedRun_1274862258_minefieldnotech_asbi/",
 
 	"RD_SpeedRun_1274862258_minefieldnotech/",
-	"RD_Hard_SpeedRun_1274862258_minefieldnotech/",
-	"RD_Insane_SpeedRun_1274862258_minefieldnotech/",
 	"RD_imba_SpeedRun_1274862258_minefieldnotech/",
 
 	"RD_SpeedRun_1873361988_strafejumpsair/",
-	"RD_Hard_SpeedRun_1873361988_strafejumpsair/",
-	"RD_Insane_SpeedRun_1873361988_strafejumpsair/",
 	"RD_imba_SpeedRun_1873361988_strafejumpsair/",
 
 	"RD_SpeedRun_1873361988_strafejumps/",
-	"RD_Hard_SpeedRun_1873361988_strafejumps/",
-	"RD_Insane_SpeedRun_1873361988_strafejumps/",
 	"RD_imba_SpeedRun_1873361988_strafejumps/",
 
 	"RD_SpeedRun_1873361988_asbi_strafe_air/",
-	"RD_Hard_SpeedRun_1873361988_asbi_strafe_air/",
-	"RD_Insane_SpeedRun_1873361988_asbi_strafe_air/",
 	"RD_imba_SpeedRun_1873361988_asbi_strafe_air/",
 
 	"RD_SpeedRun_1873361988_asbi_strafe/",
-	"RD_Hard_SpeedRun_1873361988_asbi_strafe/",
-	"RD_Insane_SpeedRun_1873361988_asbi_strafe/",
 	"RD_imba_SpeedRun_1873361988_asbi_strafe/",
 
 	"RD_SpeedRun_1167497265_asbit1/",
-	"RD_Hard_SpeedRun_1167497265_asbit1/",
-	"RD_Insane_SpeedRun_1167497265_asbit1/",
 	"RD_imba_SpeedRun_1167497265_asbit1/",
 
 	"RD_SpeedRun_1167497265_asbit1x2/",
-	"RD_Hard_SpeedRun_1167497265_asbit1x2/",
-	"RD_Insane_SpeedRun_1167497265_asbit1x2/",
 	"RD_imba_SpeedRun_1167497265_asbit1x2/",
 
 	"RD_SpeedRun_935767408_asbicarnagex2/",
-	"RD_Hard_SpeedRun_935767408_asbicarnagex2/",
-	"RD_Insane_SpeedRun_935767408_asbicarnagex2/",
 	"RD_imba_SpeedRun_935767408_asbicarnagex2/",
 
 	"RD_SpeedRun_2082369328_asbi_weapons_balancing_rng/",
@@ -1740,19 +1914,19 @@ static const char *LB_whitelist[] =
 	"RD_SpeedRun_2178770089_turbo_asbi_wb_rng2_c2/",
 
 	"RD_SpeedRun_2381921032_asbi2077/",
-	
+
 	"RD_SpeedRun_2461568606_elite/",
-	
+
 	"RD_SpeedRun_2461568606_elite_c2/",
-	
+
 	"RD_SpeedRun_2461568606_asbi_elite/",
-	
+
 	"RD_SpeedRun_2461568606_asbi_elite_c2/",
-	
+
 	"RD_SpeedRun_1940930023_asbi_carnage2_classic/",
-	
+
 	"RD_SpeedRun_2647127742_asbi_ultimate/",
-	
+
 	"RD_SpeedRun_2811007850_campaignexecution/",
 	"RD_SpeedRun_2811007850_asbi_campaignexecution/",
 };

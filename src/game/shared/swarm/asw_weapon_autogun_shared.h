@@ -34,17 +34,13 @@ public:
 
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
-			
 
-		virtual const char* GetPickupClass() { return "asw_pickup_autogun"; }
 		virtual void Spawn();
 		virtual void SecondaryAttack();		
 		virtual float GetMadFiringBias() { return 1.0f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
 	#else
 		DECLARE_PREDICTABLE();
 		virtual bool HasSecondaryExplosive( void ) const { return false; }
-		virtual float GetMuzzleFlashScale();
-		virtual bool GetMuzzleFlashRed();
 		virtual void OnMuzzleFlashed();
 		virtual void ReachedEndOfSequence();
 		float m_flLastMuzzleFlashTime;
@@ -58,8 +54,9 @@ public:
 
 		virtual const char* GetTracerEffectName() { return "tracer_autogun"; }	// particle effect name
 		virtual const char* GetMuzzleEffectName() { return "muzzle_autogun"; }	// particle effect name
-		
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/autogun_empty_clip.mdl"; }
+	virtual bool ShouldPlayFiringAnimations() { return false; }
 	virtual float GetWeaponDamage();
 	virtual float GetMovementScale();
 	virtual bool SupportsBayonet();

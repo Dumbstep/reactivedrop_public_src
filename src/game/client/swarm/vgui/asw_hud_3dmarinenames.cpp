@@ -60,10 +60,10 @@ extern ConVar rd_show_arrow_to_marine;
 //
 
 ConVar asw_voice_side_icon("asw_voice_side_icon", "0", FCVAR_ARCHIVE, "Set to 1 to use the voice indicators on the side of the screen instead of the ones next to the 3d player names");
-ConVar asw_player_names("asw_player_names", "1", FCVAR_ARCHIVE, "Whether to show player names under marines or not.  Set to 2 to show both player and marine name. Set to 3 for colorful names.");
+ConVar asw_player_names("asw_player_names", "3", FCVAR_ARCHIVE, "Whether to show player names under marines or not.  Set to 2 to show both player and marine name. Set to 3 for colorful names.");
 ConVar asw_marine_edge_names("asw_marine_edge_names", "1", FCVAR_NONE, "Prevent marine names from going off the edge of the screen");
 ConVar asw_marine_labels_cursor_maxdist( "asw_marine_labels_cursor_maxdist", "70", FCVAR_ARCHIVE, "Only marines within this distance of the cursor will get their health bar drawn" );
-ConVar asw_fast_reload_under_marine( "asw_fast_reload_under_marine", "0", FCVAR_ARCHIVE, "Draw the active reload bar under the marine?" );
+ConVar asw_fast_reload_under_marine( "asw_fast_reload_under_marine", "1", FCVAR_ARCHIVE, "Draw the active reload bar under the marine?" );
 ConVar asw_world_healthbar_class_icon( "asw_world_healthbar_class_icon", "0", FCVAR_ARCHIVE, "Show class icon on mouse over" );
 ConVar rd_fast_reload_under_marine_scale( "rd_fast_reload_under_marine_scale" , "1" , FCVAR_ARCHIVE , "Scales the original Fast Reload Bar" , true , 1 , true , 12 ); //p2k scalable fast reload bar
 ConVar rd_fast_reload_under_marine_height_scale( "rd_fast_reload_under_marine_height_scale", "0", FCVAR_ARCHIVE, "Scales the original Fast Reload Bar. 0 to use the same rd_fast_reload_under_marine_scale", true, 0, true, 12 );
@@ -197,11 +197,11 @@ void CASWHud3DMarineNames::Paint()
 					PaintAutoaimCrosshairOn(pPlayer->m_ASWLocal.m_hAutoAimTarget.Get());
 			}			
 		}
-		*/
 		if (pPlayer->GetHighlightEntity())
 		{
 			PaintBoxAround(pPlayer->GetHighlightEntity(), 6);
 		}
+		*/
 	}
 
 	if ( ASWInput() && ASWInput()->GetAutoaimEntity() )
@@ -229,7 +229,8 @@ void CASWHud3DMarineNames::PaintAutoaimCrosshairOn(C_BaseEntity *pEnt)
 	if (!pEnt)
 		return;
 
-	Vector pos = (pEnt->WorldSpaceCenter() - pEnt->GetAbsOrigin()) + pEnt->GetRenderOrigin();
+	IASW_Client_Aim_Target *pAimTarget = dynamic_cast< IASW_Client_Aim_Target * >( pEnt );
+	Vector pos = ( ( pAimTarget ? pAimTarget->GetAimTargetPos(vec3_origin, false ) : pEnt->WorldSpaceCenter() ) - pEnt->GetAbsOrigin() ) + pEnt->GetRenderOrigin();
 	Vector screenPos;
 	debugoverlay->ScreenPosition( pos, screenPos );
 
@@ -541,14 +542,6 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 	Vector vMarinePos = pMarine->GetRenderOrigin();
 	//bool bMarineIsKnockedOut = pMarine->m_hKnockedOutRagdoll.Get() || pMarine->IsIncap() ;
 	bool bMarineIsKnockedOut = false;
-	if ( pMarine->IsInVehicle() && pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->GetEntity() )
-	{
-		vMarinePos = pMarine->GetASWVehicle()->GetEntity()->GetAbsOrigin();
-		if ( gpGlobals->maxClients>1 && pMarine->GetClientsideVehicle() && pMarine->GetClientsideVehicle()->GetEntity() )
-		{
-			vMarinePos = pMarine->GetClientsideVehicle()->GetEntity()->GetAbsOrigin();		
-		}
-	}
 	//if ( bMarineIsKnockedOut )
 	//{
 	//	CBaseEntity *pRagdoll = pMarine->m_hKnockedOutRagdoll.Get();
@@ -650,7 +643,7 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 			// only draw health bars for marines near the cursor or their health is low/healing
 			int idx = ASWGameResource()->GetMarineCrosshairCache()->FindIndexForMarine( pMarine );
 			if ( //!bMarineOnScreen ||
-				 ( idx >= 0 && ASWGameResource()->GetMarineCrosshairCache()->GetElement(idx).m_fDistToCursor < asw_marine_labels_cursor_maxdist.GetFloat() ) || 
+				 ( idx >= 0 && ( asw_marine_labels_cursor_maxdist.GetFloat() < 0 || ASWGameResource()->GetMarineCrosshairCache()->GetElement(idx).m_fDistToCursor < asw_marine_labels_cursor_maxdist.GetFloat() ) ) ||
 				 pMR->GetHealthPercent() < 0.4f || pMR->IsInfested() || pMarine->m_fLastHealTime + 1.0f > gpGlobals->curtime )
 			{
 				nHealthBarWidth  = GetHealthBarMaxWidth( bMarineIsKnockedOut );
@@ -868,7 +861,7 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 			if ( !bMarineIsKnockedOut && bMarineOnScreen && rd_ammo_under_marine.GetBool() )
 			{
 				int idx = ASWGameResource()->GetMarineCrosshairCache()->FindIndexForMarine( pMarine );
-				if ( idx >= 0 && ASWGameResource()->GetMarineCrosshairCache()->GetElement( idx ).m_fDistToCursor < asw_marine_labels_cursor_maxdist.GetFloat() )
+				if ( idx >= 0 && ( asw_marine_labels_cursor_maxdist.GetFloat() < 0 || ASWGameResource()->GetMarineCrosshairCache()->GetElement( idx ).m_fDistToCursor < asw_marine_labels_cursor_maxdist.GetFloat() ) )
 				{
 					PaintAmmoBar( pWeapon, pMR->GetAmmoPercent(), nBoxCenterX, nCursorY );
 					nCursorY += nHealthBarHeight + nLineSpacing;

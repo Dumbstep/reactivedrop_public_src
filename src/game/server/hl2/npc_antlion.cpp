@@ -5,10 +5,6 @@
 //=============================================================================//
 
 #include "cbase.h"
-
-// reactivedrop: TODO remove this 
-#define HL2_EPISODIC 1
-
 #include "ai_hint.h"
 #include "ai_squad.h"
 #include "ai_moveprobe.h"
@@ -52,7 +48,6 @@ ConVar	sk_antlion_health( "sk_antlion_health", "24", FCVAR_CHEAT ); // was 30 in
 ConVar	sk_antlion_swipe_damage( "sk_antlion_swipe_damage", "10", FCVAR_CHEAT ); // was 5 in HL2
 ConVar	sk_antlion_jump_damage( "sk_antlion_jump_damage", "15", FCVAR_CHEAT ); // was 5 in HL2
 ConVar  sk_antlion_air_attack_dmg( "sk_antlion_air_attack_dmg", "10", FCVAR_CHEAT );
-
 
 #ifdef HL2_EPISODIC
 
@@ -318,8 +313,6 @@ void CNPC_Antlion::Spawn( void )
 
 	m_NPCState	= NPC_STATE_NONE;
 
-	SetHealthByDifficultyLevel();
-
 	SetSolid( SOLID_BBOX );
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
 	
@@ -380,15 +373,12 @@ void CNPC_Antlion::Spawn( void )
 	m_nSkin = random->RandomInt( 0, ANTLION_SKIN_COUNT-1 );
 }
 
-void CNPC_Antlion::SetHealthByDifficultyLevel()
+int CNPC_Antlion::GetBaseHealth()
 {
-	int iHealth = ( IsWorker() ) ? sk_antlion_worker_health.GetFloat() : sk_antlion_health.GetFloat();
-	iHealth = MAX( 1, ASWGameRules()->ModifyAlienHealthBySkillLevel( iHealth ) );
-	extern ConVar asw_debug_alien_damage;
-	if ( asw_debug_alien_damage.GetBool() )
-		Msg( "Setting antlion's initial health to %d\n", iHealth + m_iHealthBonus );
-	SetHealth( iHealth + m_iHealthBonus );
-	SetMaxHealth( iHealth + m_iHealthBonus );
+	if ( IsWorker() )
+		return sk_antlion_worker_health.GetInt();
+
+	return sk_antlion_health.GetInt();
 }
 
 //-----------------------------------------------------------------------------
@@ -5141,5 +5131,3 @@ float AntlionWorkerBurstRadius( void )
 	return sk_antlion_worker_burst_radius.GetFloat();
 }
 #endif // HL2_EPISODIC
-// reactivedrop: TODO: remove 
-#undef HL2_EPISODIC

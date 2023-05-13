@@ -8,9 +8,11 @@
 #endif
 #include "fmtstr.h"
 #include "rd_workshop.h"
+#include "asw_util_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
 
 #define RD_CAMPAIGNS_STRINGTABLE_NAME "ReactiveDropCampaigns"
 #define RD_MISSIONS_STRINGTABLE_NAME "ReactiveDropMissions"
@@ -26,19 +28,16 @@ int ReactiveDropMissions::s_nDataResets = 1;
 static const char *s_szCampaignNamesFirst[] =
 {
 	"jacob",
-#if defined( RD_6A_CAMPAIGNS ) && defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
-	"rd_accident32",
+#if defined( RD_6A_CAMPAIGNS_ADANAXIS ) && defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_adanaxis",
 #endif
 	"rd-operationcleansweep",
 	"rd_nh_campaigns",
 	"rd-tarnorcampaign1",
 	"rd_paranoia",
-#if defined( RD_6A_CAMPAIGNS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_accident32",
-#endif
 	"rd-area9800",
-#if defined( RD_6A_CAMPAIGNS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
+#if defined( RD_6A_CAMPAIGNS_ADANAXIS ) && !defined( RD_NEW_CAMPAIGN_SPOTLIGHT )
 	"rd_adanaxis",
 #endif
 	"tilarus5",
@@ -60,13 +59,16 @@ static const char *s_szMissionNamesFirst[] =
 	"rd-bonus_mission5",
 	"rd-bonus_mission6",
 	"rd-bonus_mission7",
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 	"rd-acc_complex",
-#endif
+	"rd-ht-marine_academy",
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 	"rd-ada_new_beginning",
 	"rd-ada_anomaly",
 #endif
+	"rd-bonus10_sewrev",
+	"rd-bonus12_rydrev",
+	"rd-bonus14_cargrev",
+	"rd-bonus15_landrev",
 };
 
 #pragma pack(push, 1)
@@ -76,6 +78,11 @@ struct NetworkedMissionMetadata_t
 	bool TagBonus : 1;
 	bool TagDeathmatch : 1;
 	bool TagEndless : 1;
+	bool _Reserved1 : 1;
+	bool _Reserved2 : 1;
+	bool _Reserved3 : 1;
+	bool _Reserved4 : 1;
+	bool _Reserved5 : 1;
 
 	constexpr void Clear()
 	{
@@ -103,7 +110,7 @@ struct NetworkedMissionMetadata_t
 		}
 
 		KeyValues::AutoDelete pKV( "GAME" );
-		if ( pKV->LoadFromFile( filesystem, szKVFileName, "GAME" ) )
+		if ( UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szKVFileName, "GAME" ) )
 		{
 			FOR_EACH_VALUE( pKV, pValue )
 			{
@@ -142,6 +149,8 @@ static bool ShouldIgnoreCampaign( const char *szName )
 }
 
 #ifdef GAME_DLL
+ConVar rd_debug_string_tables( "rd_debug_string_tables", "0", FCVAR_NONE, "log the creation of string tables for the mission chooser" );
+
 void ReactiveDropMissions::CreateNetworkStringTables()
 {
 	g_StringTableReactiveDropCampaigns = networkstringtable->CreateStringTable( RD_CAMPAIGNS_STRINGTABLE_NAME, RD_MAX_CAMPAIGNS );
@@ -149,6 +158,20 @@ void ReactiveDropMissions::CreateNetworkStringTables()
 
 	g_StringTableReactiveDropMissions = networkstringtable->CreateStringTable( RD_MISSIONS_STRINGTABLE_NAME, RD_MAX_MISSIONS );
 	Assert( g_StringTableReactiveDropMissions );
+
+	ClearServerCache();
+}
+void ReactiveDropMissions::ClearServerCache()
+{
+	if ( !g_StringTableReactiveDropCampaigns )
+	{
+		Assert( !g_StringTableReactiveDropMissions );
+		// not initialized yet
+		return;
+	}
+	Assert( g_StringTableReactiveDropMissions );
+
+	// TODO: purge old data
 
 	char szKVFileName[MAX_PATH];
 	NetworkedMissionMetadata_t metadata{};
@@ -161,12 +184,18 @@ void ReactiveDropMissions::CreateNetworkStringTables()
 
 		if ( ShouldIgnoreCampaign( szBaseName ) )
 		{
-			DevMsg( 2, "Not adding campaign to string table (marked as single mission by admin): %s, workshop %llu (official)\n", szBaseName, metadata.WorkshopID );
+			if ( rd_debug_string_tables.GetBool() )
+			{
+				Msg( "Not adding campaign to string table (marked as single mission by admin): %s, workshop %llu (official)\n", szBaseName, metadata.WorkshopID );
+			}
 			continue;
 		}
 
 		int index = g_StringTableReactiveDropCampaigns->AddString( true, szBaseName, sizeof( metadata ), &metadata );
-		DevMsg( 2, "Adding campaign %d to string table: %s, workshop %llu (official)\n", index, szBaseName, metadata.WorkshopID );
+		if ( rd_debug_string_tables.GetBool() )
+		{
+			Msg( "Adding campaign %d to string table: %s, workshop %llu (official)\n", index, szBaseName, metadata.WorkshopID );
+		}
 	}
 
 	for ( int i = 0; i < NELEMS( s_szMissionNamesFirst ); i++ )
@@ -176,7 +205,10 @@ void ReactiveDropMissions::CreateNetworkStringTables()
 		metadata.SetFromFile( szKVFileName );
 
 		int index = g_StringTableReactiveDropMissions->AddString( true, szBaseName, sizeof( metadata ), &metadata );
-		DevMsg( 2, "Adding mission %d to string table: %s, workshop %llu (official)\n", index, szBaseName, metadata.WorkshopID );
+		if ( rd_debug_string_tables.GetBool() )
+		{
+			Msg( "Adding mission %d to string table: %s, workshop %llu (official)\n", index, szBaseName, metadata.WorkshopID );
+		}
 	}
 
 	char szBaseName[MAX_PATH];
@@ -189,12 +221,18 @@ void ReactiveDropMissions::CreateNetworkStringTables()
 
 		if ( ShouldIgnoreCampaign( szBaseName ) )
 		{
-			DevMsg( 2, "Not adding campaign to string table (marked as single mission by admin): %s, workshop %llu\n", szBaseName, metadata.WorkshopID );
+			if ( rd_debug_string_tables.GetBool() )
+			{
+				Msg( "Not adding campaign to string table (marked as single mission by admin): %s, workshop %llu\n", szBaseName, metadata.WorkshopID );
+			}
 			continue;
 		}
 
 		int index = g_StringTableReactiveDropCampaigns->AddString( true, szBaseName, sizeof( metadata ), &metadata );
-		DevMsg( 2, "Adding campaign %d to string table: %s, workshop %llu\n", index, szBaseName, metadata.WorkshopID );
+		if ( rd_debug_string_tables.GetBool() )
+		{
+			Msg( "Adding campaign %d to string table: %s, workshop %llu\n", index, szBaseName, metadata.WorkshopID );
+		}
 	}
 	filesystem->FindClose( hFind );
 
@@ -205,7 +243,10 @@ void ReactiveDropMissions::CreateNetworkStringTables()
 		metadata.SetFromFile( szKVFileName );
 
 		int index = g_StringTableReactiveDropMissions->AddString( true, szBaseName, sizeof( metadata ), &metadata );
-		DevMsg( 2, "Adding mission %d to string table: %s, workshop %llu\n", index, szBaseName, metadata.WorkshopID );
+		if ( rd_debug_string_tables.GetBool() )
+		{
+			Msg( "Adding mission %d to string table: %s, workshop %llu\n", index, szBaseName, metadata.WorkshopID );
+		}
 	}
 	filesystem->FindClose( hFind );
 
@@ -429,7 +470,7 @@ static bool ReadCampaignData( KeyValues *pKV, int index )
 	char szPath[MAX_PATH];
 	V_snprintf( szPath, sizeof( szPath ), "resource/campaigns/%s.txt", pszCampaignName );
 
-	return pKV->LoadFromFile( filesystem, szPath, "GAME" );
+	return UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szPath, "GAME" );
 }
 
 static bool ReadMissionData( KeyValues *pKV, int index )
@@ -455,7 +496,7 @@ static bool ReadMissionData( KeyValues *pKV, int index )
 	char szPath[MAX_PATH];
 	V_snprintf( szPath, sizeof( szPath ), "resource/overviews/%s.txt", pszMissionName );
 
-	return pKV->LoadFromFile( filesystem, szPath, "GAME" );
+	return UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szPath, "GAME" );
 }
 
 static void ClearUnpackedMissionData()
@@ -501,6 +542,10 @@ const RD_Campaign_t *ReactiveDropMissions::GetCampaign( int index )
 		ClearUnpackedMissionData();
 
 	Assert( s_UnpackedCampaigns.Count() == CountCampaigns() );
+	// somehow, the campaign string table is getting stuff added to it without firing the change listener.
+	// pretend it did notify us of the change if that happens.
+	if ( s_UnpackedCampaigns.Count() != CountCampaigns() )
+		ClearUnpackedMissionData();
 
 	if ( index < 0 || index >= CountCampaigns() )
 	{
@@ -537,6 +582,8 @@ const RD_Campaign_t *ReactiveDropMissions::GetCampaign( int index )
 
 		return pCampaign;
 	}
+
+	pCampaign->Installed = true;
 
 	pCampaign->CampaignName = AllocMissionsPooledString( pKV->GetString( "CampaignName" ) );
 	pCampaign->CampaignDescription = AllocMissionsPooledString( pKV->GetString( "CampaignDescription" ) );
@@ -627,6 +674,8 @@ const RD_Mission_t *ReactiveDropMissions::GetMission( int index )
 		ClearUnpackedMissionData();
 
 	Assert( s_UnpackedMissions.Count() == CountMissions() );
+	if ( s_UnpackedMissions.Count() != CountMissions() )
+		ClearUnpackedMissionData();
 
 	if ( index < 0 || index >= CountMissions() )
 	{
@@ -644,8 +693,8 @@ const RD_Mission_t *ReactiveDropMissions::GetMission( int index )
 	KeyValues::AutoDelete pKV( "GAME" );
 	if ( !ReadMissionData( pKV, index ) )
 	{
-		pMission->Material = MAKE_STRING( "../tools/toolsblack" );
-		pMission->BriefingMaterial = MAKE_STRING( "../tools/toolsblack" );
+		pMission->Material = MAKE_STRING( "tools/toolsblack" );
+		pMission->BriefingMaterial = MAKE_STRING( "tools/toolsblack" );
 
 		pMission->MissionTitle = AllocMissionsPooledString( pMission->BaseName );
 		pMission->Description = MAKE_STRING( "" );
@@ -659,6 +708,8 @@ const RD_Mission_t *ReactiveDropMissions::GetMission( int index )
 
 		return pMission;
 	}
+
+	pMission->Installed = true;
 
 	pMission->PosX = pKV->GetInt( "pos_x" );
 	pMission->PosY = pKV->GetInt( "pos_y" );
@@ -689,7 +740,7 @@ const RD_Mission_t *ReactiveDropMissions::GetMission( int index )
 				{
 					V_strncpy( szSuffix, campaignMissions[i], pCampaignNameEnd - campaignMissions[i] );
 					pCampaign.Assign( new KeyValues( "GAME" ) );
-					if ( pCampaign->LoadFromFile( filesystem, CFmtStr( "resource/campaigns/%s.txt", szSuffix ), "GAME" ) )
+					if ( UTIL_RD_LoadKeyValuesFromFile( pCampaign, filesystem, CFmtStr( "resource/campaigns/%s.txt", szSuffix ), "GAME" ) )
 					{
 						szDefaultCredits = pCampaign->GetString( "CustomCreditsFile", szDefaultCredits );
 					}

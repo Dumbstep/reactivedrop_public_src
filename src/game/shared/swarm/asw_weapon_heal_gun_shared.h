@@ -78,11 +78,12 @@ public:
 	virtual bool ShouldShowLaserPointer();
 	virtual float GetLaserPointerRange( void ) { return 240; }// Give a chance for non-local weapons to update their effects on the client
 #else
-	virtual const char* GetPickupClass() { return "asw_pickup_heal_gun"; }
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
 	virtual void GetButtons(bool& bAttack1, bool& bAttack2, bool& bReload, bool& bOldReload, bool& bOldAttack1 );
 	float m_fLastForcedFireTime;
 #endif
+	virtual bool ShouldHealSelfOnInvalidTarget( CBaseEntity *pTarget );
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/healgun_empty_clip.mdl"; }
 
 protected:
 	void	Attack( void );

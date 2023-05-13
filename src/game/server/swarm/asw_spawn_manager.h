@@ -57,8 +57,8 @@ public:
 	void PrespawnEntityAtRandomNode( const char *szEntityClass, const int iNumEntitiesToSpawn, const Vector &playerStartPos, const int iNumNodes );
 	int SpawnAlienBatch( const char *szAlienClass, int iNumAliens, const Vector &vecPosition, const QAngle &angle, float flMarinesBeyondDist = 0 );
 	int SpawnAlienBatch( CASW_Spawn_Definition *pSpawn, int iNumAliens, const Vector &vecPosition, const QAngle &angle, float flMarinesBeyondDist = 0 );
-	CBaseEntity *SpawnAlienAt( const char *szAlienClass, const Vector & vecPos, const QAngle & angle );
-	CBaseEntity *SpawnAlienAtWithOrders( const char *szAlienClass, const Vector & vecPos, const QAngle & angle, AlienOrder_t orders );
+	//CBaseEntity *SpawnAlienAt( const char *szAlienClass, const Vector & vecPos, const QAngle & angle );
+	//CBaseEntity *SpawnAlienAtWithOrders( const char *szAlienClass, const Vector & vecPos, const QAngle & angle, AlienOrder_t orders );
 	CBaseEntity *SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vector & vecPos, const QAngle & angle, bool bAllowSpawner = false );
 	bool SpawnAlienAt( CASW_Spawn_Definition *pSpawn, const Vector & vecPos, const QAngle & angle, bool bAllowSpawner = false );
 
@@ -78,7 +78,7 @@ public:
 	int GetAwakeDrones() { return m_nAwakeDrones; }
 
 	int GetNumAlienClasses();
-	ASW_Alien_Class_Entry* GetAlienClass( int i );
+	const ASW_Alien_Class_Entry* GetAlienClass( int i );
 
 private:
 	template <typename Alien> int SpawnAlienBatch(Alien szAlienClass, int iNumAliens, const Vector &vecPosition, const QAngle &angFacing, float flMarinesBeyondDist, const Vector & vecMins, const Vector & vecMaxs);

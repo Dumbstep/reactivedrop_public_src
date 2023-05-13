@@ -45,6 +45,7 @@
 #include "asw_game_resource.h"
 #include "asw_spawn_manager.h"
 #include "gameinterface.h"
+#include "asw_physics_prop_statue.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -173,26 +174,10 @@ BEGIN_DATADESC( CASW_Buzzer )
 	DEFINE_FIELD( m_vecBurstDirection,	FIELD_VECTOR ),
 	DEFINE_FIELD( m_bShowingHostile,	FIELD_BOOLEAN ),
 
-	DEFINE_FIELD( m_hSpawner, FIELD_EHANDLE ),
-
 	DEFINE_FIELD(m_fNextPainSound, FIELD_FLOAT),
 	DEFINE_SOUNDPATCH( m_pMoanSound ),
 	DEFINE_FIELD( m_flMoanPitch, FIELD_FLOAT ),
 	DEFINE_FIELD( m_flNextMoanSound, FIELD_TIME ),
-	DEFINE_FIELD( m_bOnFire, FIELD_BOOLEAN ),
-	DEFINE_FIELD(m_fHurtSlowMoveTime, FIELD_TIME),
-	DEFINE_FIELD(m_flElectroStunSlowMoveTime, FIELD_TIME),
-	DEFINE_FIELD(m_bElectroStunned, FIELD_BOOLEAN),
-	DEFINE_FIELD( m_bHoldoutAlien, FIELD_BOOLEAN ),
-
-	DEFINE_KEYFIELD( m_bFlammable, FIELD_BOOLEAN, "flammable" ),
-    DEFINE_KEYFIELD( m_bTeslable, FIELD_BOOLEAN, "teslable" ),
-    DEFINE_KEYFIELD( m_bFreezable, FIELD_BOOLEAN, "freezable" ),
-    DEFINE_KEYFIELD( m_bFlinchable, FIELD_BOOLEAN, "flinchable" ),
-	DEFINE_KEYFIELD( m_bGrenadeReflector, FIELD_BOOLEAN, "reflector" ),
-	DEFINE_KEYFIELD( m_iHealthBonus, FIELD_INTEGER, "healthbonus" ),
-    DEFINE_KEYFIELD( m_fSizeScale, FIELD_FLOAT, "sizescale" ),
-    DEFINE_KEYFIELD( m_fSpeedScale, FIELD_FLOAT, "speedscale" ),
 
 	// Function Pointers
 	DEFINE_INPUTFUNC( FIELD_VOID,	"DisableSwarm", InputDisableSwarm ),
@@ -205,20 +190,7 @@ LINK_ENTITY_TO_CLASS( asw_buzzer, CASW_Buzzer );
 IMPLEMENT_SERVERCLASS_ST(CASW_Buzzer, DT_ASW_Buzzer)
 	SendPropIntWithMinusOneFlag	(SENDINFO(m_nEnginePitch1), 8 ),
 	SendPropFloat(SENDINFO(m_flEnginePitch1Time), 0, SPROP_NOSCALE),	
-	SendPropBool(SENDINFO(m_bOnFire)),
-	SendPropBool(SENDINFO(m_bElectroStunned)),
 END_SEND_TABLE()
-
-BEGIN_ENT_SCRIPTDESC( CASW_Buzzer, CBaseCombatCharacter, "Alien Swarm buzzer" )
-	DEFINE_SCRIPTFUNC_NAMED( ClearAlienOrders, "ClearOrders", "clear the buzzer's orders" )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptOrderMoveTo, "OrderMoveTo", "order the buzzer to move to an entity handle, second parameter ignore marines" )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptChaseNearestMarine, "ChaseNearestMarine", "order the buzzer to chase the nearest marine" )
-	DEFINE_SCRIPTFUNC( Extinguish, "Extinguish a burning buzzer." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptIgnite, "Ignite", "Ignites the buzzer into flames." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptFreeze, "Freeze", "Freezes the buzzer." )
-	DEFINE_SCRIPTFUNC_NAMED( ScriptElectroStun, "ElectroStun", "Stuns the buzzer." )
-	DEFINE_SCRIPTFUNC( Wake, "Wake up the buzzer." )
-END_SCRIPTDESC()
 
 CASW_Buzzer::CASW_Buzzer()
 {
@@ -235,17 +207,7 @@ CASW_Buzzer::CASW_Buzzer()
 	m_flEnginePitch1Time = 0;
 	m_bDoSwarmBehavior = true;
 	m_fNextPainSound = 0;
-	m_bHoldoutAlien = false;
 	m_flLastMarineDamageTime = 0;
-	m_bWasOnFireForStats = false;
-	m_bFlammable = true;
-	m_bTeslable = true;
-	m_bFreezable = true;
-	m_bFlinchable = true;
-	m_bGrenadeReflector = false;
-	m_iHealthBonus = 0;
-	m_fSizeScale = 1.0f;
-	m_fSpeedScale = 1.0f;
 }
 
 CASW_Buzzer::~CASW_Buzzer()
@@ -527,24 +489,13 @@ bool CASW_Buzzer::ShouldGib( const CTakeDamageInfo &info )
 
 void CASW_Buzzer::Event_Killed( const CTakeDamageInfo &info )
 {
-	if (ASWGameRules())
-	{
-		ASWGameRules()->AlienKilled(this, info);
-	}	
-
-	CASW_GameStats.Event_AlienKilled( this, info );
-
-	if ( ASWDirector() )
-		ASWDirector()->Event_AlienKilled( this, info );
-
-	// notify our spawner, so it can spit out more buzzers if need be
-	if (m_hSpawner.Get())
-		m_hSpawner->AlienKilled(this);
-
 	// turn off the blur!
 	SetBodygroup( ASW_BUZZER_BODYGROUP_BLUR, ASW_BUZZER_BODYGROUP_OFF );
 
-	UTIL_ASW_BuzzerDeath( GetAbsOrigin() );
+	if ( !IsFrozen() )
+	{
+		UTIL_ASW_BuzzerDeath( GetAbsOrigin() );
+	}
 
 	if ( m_nEnginePitch1 <= 0 )
 	{
@@ -564,8 +515,6 @@ void CASW_Buzzer::Event_Killed( const CTakeDamageInfo &info )
 	}
 
 	BaseClass::Event_Killed( info );
-
-	UTIL_Remove( this );
 }
 
 void CASW_Buzzer::HitPhysicsObject( CBaseEntity *pOther )
@@ -695,24 +644,12 @@ int	CASW_Buzzer::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 	// Hafta make a copy of info cause we might need to scale damage.(sjb)
 	CTakeDamageInfo tdInfo = info;
 
-	// undo lag compensation if we're getting hurt			- TODO: this is incorrect if multiple rounds were meant to hit us within this player command - would happen with the shotguns if they were hitscan?
-	m_LagCompensation.UndoLaggedPosition();
-
 	// scale damage based on weapons that specifically shoot flyers
 	CASW_Marine* pMarine = NULL;
 	CBaseEntity* pAttacker = info.GetAttacker();
 	if ( pAttacker && pAttacker->Classify() == CLASS_ASW_MARINE )
 	{
 		pMarine = assert_cast<CASW_Marine*>(pAttacker);
-		/*
-		CASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();
-		if ( pWeapon )
-		{
-			float damage = tdInfo.GetDamage();
-			//CALL_ATTRIB_HOOK_FLOAT_ON_OTHER( pWeapon, damage, mod_damage_flyers );
-			tdInfo.SetDamage( damage );
-		}
-		*/
 	}
 
 	m_flWingFlapSpeed = 20.0;
@@ -747,18 +684,6 @@ int	CASW_Buzzer::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 			)
 			ASW_Ignite(30.0f, 0, pAttacker, info.GetWeapon() );
 	}
-
-	// make the alien move slower for 0.5 seconds
-	if (info.GetDamageType() & DMG_SHOCK && m_bTeslable)
-	{
-		ElectroStun( asw_stun_grenade_time.GetFloat() );
-	}
-
-	if (pMarine)
-		pMarine->HurtAlien(this, info);
-
-	// Notify gamestats of the damage
-	CASW_GameStats.Event_AlienTookDamage( this, info );
 
 	return nRetVal;
 }
@@ -869,7 +794,7 @@ int CASW_Buzzer::TranslateSchedule( int scheduleType )
 				return SCHED_ASW_BUZZER_SWARM;
 			}
 
-			if ( !m_bDoSwarmBehavior || OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
+			if ( !m_bDoSwarmBehavior || OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, GetMaxAttackSquadSlot() ) )
 			{
 				return SCHED_CHASE_ENEMY;
 			}
@@ -1300,6 +1225,24 @@ void CASW_Buzzer::Splash( const Vector &vecSplashPos )
 	}
 
 	DispatchEffect( "watersplash", data );
+}
+
+void CASW_Buzzer::Freeze( float flFreezeAmount, CBaseEntity *pFreezer, Ray_t *pFreezeRay )
+{
+	BaseClass::Freeze( flFreezeAmount, pFreezer, pFreezeRay );
+
+	if ( IsFrozen() )
+	{
+		SetHealth( 1 );
+		CTakeDamageInfo info( pFreezer, pFreezer, 10.0f, DMG_GENERIC );
+		TakeDamage( info );
+	}
+}
+
+void CASW_Buzzer::Unfreeze()
+{
+	// skip NPC freeze logic
+	CBaseAnimating::Unfreeze();
 }
 
 //-----------------------------------------------------------------------------
@@ -2158,10 +2101,9 @@ void CASW_Buzzer::Spawn(void)
 
 	SetSolid( SOLID_BBOX );
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
-	
+
 	SetMoveType( MOVETYPE_VPHYSICS );
 
-	SetHealthByDifficultyLevel();
 	SetViewOffset( Vector(0, 0, 10) );		// Position of the eyes relative to NPC's origin.
 	m_flFieldOfView		= VIEW_FIELD_FULL;
 	m_NPCState			= NPC_STATE_NONE;
@@ -2175,6 +2117,7 @@ void CASW_Buzzer::Spawn(void)
 		SetNavType(NAV_GROUND);
 	}
 
+	BaseClass::Spawn();
 	ChangeFaction( FACTION_ALIENS );
 		 
 	AddEFlags( EFL_NO_DISSOLVE | EFL_NO_MEGAPHYSCANNON_RAGDOLL );
@@ -2186,7 +2129,7 @@ void CASW_Buzzer::Spawn(void)
 
 	m_flNextBurstTime	= gpGlobals->curtime;
 
-	CapabilitiesAdd( bits_CAP_INNATE_MELEE_ATTACK1 | bits_CAP_MOVE_FLY | bits_CAP_SQUAD );
+	CapabilitiesAdd( bits_CAP_INNATE_MELEE_ATTACK1 | bits_CAP_MOVE_FLY );
 
 	m_flNextEngineSoundTime		= gpGlobals->curtime;
 	m_flWaterSuspendTime		= gpGlobals->curtime;
@@ -2226,7 +2169,6 @@ void CASW_Buzzer::Spawn(void)
 
 	m_bHeld = false;
 	StopLoitering();
-	SetModelScale( m_fSizeScale );
 
 	IGameEvent * event = gameeventmanager->CreateEvent( "buzzer_spawn" );
 	if ( event )
@@ -2275,7 +2217,6 @@ void CASW_Buzzer::NPCInit()
 
 	CASW_GameStats.Event_AlienSpawned( this );
 
-	m_LagCompensation.Init(this);
 	SetDistSwarmSense(576.0f);
 }
 
@@ -2286,9 +2227,6 @@ void CASW_Buzzer::NPCThink( void )
 	// stop electro stunning if we're slowed
 	if (m_bElectroStunned && m_flElectroStunSlowMoveTime < gpGlobals->curtime)
 		m_bElectroStunned = false;
-
-	if (gpGlobals->maxClients > 1)
-		m_LagCompensation.StorePositionHistory();
 }
 
 void CASW_Buzzer::SetDistSwarmSense( float flDistSense )
@@ -2523,7 +2461,7 @@ void CASW_Buzzer::StartTask( const Task_t *pTask )
 			AISquadIter_t iter;
 			for (CAI_BaseNPC *pSquadMember = m_pSquad->GetFirstMember( &iter ); pSquadMember; pSquadMember = m_pSquad->GetNextMember( &iter ) )
 			{
-				if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ))
+				if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, GetMaxAttackSquadSlot() ))
 				{
 					m_vSavePosition += pSquadMember->GetAbsOrigin() * 10;
 					count += 10;
@@ -2561,7 +2499,7 @@ void CASW_Buzzer::StartTask( const Task_t *pTask )
 				for (pSquadMember = m_pSquad->GetFirstMember( &iter ); pSquadMember; pSquadMember = m_pSquad->GetNextMember( &iter ) )
 				{
 					// are they attacking?
-					if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ))
+					if (pSquadMember->HasStrategySlotRange( SQUAD_SLOT_ATTACK1, GetMaxAttackSquadSlot() ))
 					{
 						m_vSavePosition = pSquadMember->GetAbsOrigin();
 						break;
@@ -2735,39 +2673,6 @@ float CASW_Buzzer::GetDefaultNavGoalTolerance()
 }
 
 //-----------------------------------------------------------------------------
-// Freezes this NPC in place for a period of time.
-//-----------------------------------------------------------------------------
-void CASW_Buzzer::Freeze( float flFreezeAmount, CBaseEntity *pFreezer, Ray_t *pFreezeRay ) 
-{
-	if ( !m_bFreezable )
-        return;
-
-	BaseClass::Freeze( flFreezeAmount, pFreezer, pFreezeRay );
-	
-	if ( GetMoveType() != MOVETYPE_NONE && GetFrozenAmount() > 0.0f )
-	{
-		// Freeze makes us hate life!
-		m_flFrozen = 1.0f;
-		m_flFrozenThawRate = 0.0f;
-
-		m_iHealth = 0;
-	}
-}
-
-//-----------------------------------------------------------------------------
-// VScript: Freezes this NPC in place for a period of time.
-//-----------------------------------------------------------------------------
-void CASW_Buzzer::ScriptFreeze( float flFreezeAmount )
-{
-    Freeze( flFreezeAmount, NULL, NULL );
-}
-
-bool CASW_Buzzer::ShouldBecomeStatue( void )
-{
-	return false;
-}
-
-//-----------------------------------------------------------------------------
 // Purpose: Input that disables the buzzer's swarm behavior
 //-----------------------------------------------------------------------------
 void CASW_Buzzer::InputDisableSwarm( inputdata_t &inputdata )
@@ -2870,43 +2775,17 @@ bool CASW_Buzzer::CreateVPhysics( void )
 	return BaseClass::CreateVPhysics();
 }
 
-
-void CASW_Buzzer::SetSpawner(CASW_Base_Spawner* spawner)
-{
-	m_hSpawner = spawner;
-}
-
 // Updates our memory about the enemies we Swarm Sensed
 // todo: add various swarm sense conditions?
-void CASW_Buzzer::OnSwarmSensed(int iDistance)
+void CASW_Buzzer::OnSwarmSensed( int iDistance )
 {
-	// DON'T let visibility information from last frame sit around!
-	//static int conditionsToClear[] =
-	//{
-		//COND_SEE_HATE,
-		//COND_SEE_DISLIKE,
-		//COND_SEE_ENEMY,
-		//COND_SEE_FEAR,
-		//COND_SEE_NEMESIS,
-		//COND_SEE_PLAYER,
-	//};
-
-	//ClearConditions( conditionsToClear, ARRAYSIZE( conditionsToClear ) );
-
 	AISightIter_t iter;
 	CBaseEntity *pSenseEnt;
 
 	pSenseEnt = GetASWSenses()->GetFirstSwarmSenseEntity( &iter );
 
-	while( pSenseEnt )
+	while ( pSenseEnt )
 	{
-#if PLAYER_CHECKS
-		if ( pSenseEnt->IsPlayer() )
-		{
-			// if we see a client, remember that (mostly for scripted AI)
-			//SetCondition(COND_SEE_PLAYER);
-		}
-#endif
 		Disposition_t relation = IRelationType( pSenseEnt );
 
 		// the looker will want to consider this entity
@@ -2924,26 +2803,26 @@ void CASW_Buzzer::OnSwarmSensed(int iDistance)
 			switch ( relation )
 			{
 			case D_HT:
+			{
+				int priority = IRelationPriority( pSenseEnt );
+				if ( priority < 0 )
 				{
-					int priority = IRelationPriority( pSenseEnt );
-					if (priority < 0)
-					{
-						//SetCondition(COND_SEE_DISLIKE);
-					}
-					else if (priority > 10)
-					{
-						//SetCondition(COND_SEE_NEMESIS);
-					}
-					else
-					{
-						//SetCondition(COND_SEE_HATE);
-					}
-					UpdateEnemyMemory(pSenseEnt,pSenseEnt->GetAbsOrigin());
-					break;
-
+					//SetCondition(COND_SEE_DISLIKE);
 				}
+				else if ( priority > 10 )
+				{
+					//SetCondition(COND_SEE_NEMESIS);
+				}
+				else
+				{
+					//SetCondition(COND_SEE_HATE);
+				}
+				UpdateEnemyMemory( pSenseEnt, pSenseEnt->GetAbsOrigin() );
+				break;
+
+			}
 			case D_FR:
-				UpdateEnemyMemory(pSenseEnt,pSenseEnt->GetAbsOrigin());
+				UpdateEnemyMemory( pSenseEnt, pSenseEnt->GetAbsOrigin() );
 				//SetCondition(COND_SEE_FEAR);
 				break;
 			case D_LI:
@@ -2960,62 +2839,16 @@ void CASW_Buzzer::OnSwarmSensed(int iDistance)
 }
 
 // create our custom senses class
-CAI_Senses* CASW_Buzzer::CreateSenses()
+CAI_Senses *CASW_Buzzer::CreateSenses()
 {
 	CAI_Senses *pSenses = new CASW_AI_Senses;
 	pSenses->SetOuter( this );
 	return pSenses;
 }
 
-CASW_AI_Senses* CASW_Buzzer::GetASWSenses()
+CASW_AI_Senses *CASW_Buzzer::GetASWSenses()
 {
-	return dynamic_cast<CASW_AI_Senses*>(GetSenses());
-}
-
-// set orders for our alien
-//   select schedule should activate the appropriate orders
-void CASW_Buzzer::SetAlienOrders(AlienOrder_t Orders, Vector vecOrderSpot, CBaseEntity* pOrderObject)
-{
-	m_AlienOrders = Orders;
-	m_vecAlienOrderSpot = vecOrderSpot;	// unused currently
-	m_AlienOrderObject = pOrderObject;
-
-	Wake(); // Make sure we at least consider following the orders.
-
-	if (Orders == AOT_None)
-	{
-		ClearAlienOrders();
-		return;
-	}
-
-	ForceDecisionThink();	// todo: stagger the decision time if at start of mission?
-
-	//Msg("Buzzer recieved orders\n");
-}
-
-AlienOrder_t CASW_Buzzer::GetAlienOrders()
-{
-	return m_AlienOrders;
-}
-
-void CASW_Buzzer::ClearAlienOrders()
-{
-	//Msg("Buzzer orders cleared\n");
-	m_AlienOrders = AOT_None;
-	m_vecAlienOrderSpot = vec3_origin;
-	m_AlienOrderObject = NULL;
-	m_bIgnoreMarines = false;
-	m_bFailedMoveTo = false;
-}
-
-void CASW_Buzzer::ScriptOrderMoveTo( HSCRIPT hOrderObject, bool bIgnoreMarines )
-{
-	SetAlienOrders( bIgnoreMarines ? AOT_MoveToIgnoringMarines : AOT_MoveTo, vec3_origin, ToEnt( hOrderObject ) );
-}
-
-void CASW_Buzzer::ScriptChaseNearestMarine()
-{
-	SetAlienOrders( AOT_MoveToNearestMarine, vec3_origin, NULL );
+	return assert_cast< CASW_AI_Senses * >( GetSenses() );
 }
 
 void CASW_Buzzer::GatherConditions()
@@ -3181,15 +3014,6 @@ int CASW_Buzzer::SelectSchedule( void )
 	return BaseClass::SelectSchedule();
 }
 
-void CASW_Buzzer::ScriptIgnite( float flFlameLifetime )
-{
-	ASW_Ignite( flFlameLifetime, 0, NULL, NULL );
-}
-
-void CASW_Buzzer::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, bool bCalledByLevelDesigner )
-{
-	return;		// use ASW_Ignite instead
-}
 void CASW_Buzzer::ASW_Ignite( float flFlameLifetime, float flSize, CBaseEntity *pAttacker, CBaseEntity *pDamagingWeapon /*= NULL */ )
 {
 	if (AllowedToIgnite())
@@ -3268,32 +3092,9 @@ void CASW_Buzzer::MoanSound( envelopePoint_t *pEnvelope, int iEnvelopeSize )
 }
 
 
-void CASW_Buzzer::SetHealthByDifficultyLevel()
+int CASW_Buzzer::GetBaseHealth()
 {	
-	SetHealth(ASWGameRules()->ModifyAlienHealthBySkillLevel(sk_asw_buzzer_health.GetFloat()) + m_iHealthBonus);
-	if ( asw_debug_alien_damage.GetBool() )
-		Msg( "Setting buzzer's initial health to %d\n", GetHealth() );
-}
-
-void CASW_Buzzer::ElectroStun( float flStunTime )
-{
-	if (m_flElectroStunSlowMoveTime < gpGlobals->curtime + flStunTime)
-		m_flElectroStunSlowMoveTime = gpGlobals->curtime + flStunTime;
-
-	m_bElectroStunned = true;
-
-	if ( ASWGameResource() )
-	{
-		ASWGameResource()->m_iElectroStunnedAliens++;
-	}
-
-	// can't jump after being elecrostunned
-	CapabilitiesRemove( bits_CAP_MOVE_JUMP );
-}
-
-void CASW_Buzzer::ScriptElectroStun( float flStunTime )
-{
-	ElectroStun( flStunTime );
+	return sk_asw_buzzer_health.GetFloat();
 }
 
 // checks if a marine can see us
@@ -3339,6 +3140,8 @@ void CASW_Buzzer::UpdateSleepState(bool bInPVS)
 				Assert( VPhysicsGetObject() );
 				if ( VPhysicsGetObject() )
 					VPhysicsGetObject()->Wake();
+
+				SetMoveType( MOVETYPE_VPHYSICS );
 			}
 		}
 	}
@@ -3363,6 +3166,8 @@ void CASW_Buzzer::UpdateSleepState(bool bInPVS)
 					Assert( VPhysicsGetObject() );
 					if ( VPhysicsGetObject() )
 						VPhysicsGetObject()->Sleep();
+					SetLocalVelocity( vec3_origin );
+					SetMoveType( MOVETYPE_NONE );
 					if (m_bVisibleWhenAsleep)
 						RemoveEffects(EF_NODRAW);
 				}

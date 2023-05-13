@@ -26,6 +26,7 @@ public:
 	virtual void SetTitle( const wchar_t *title, bool surfaceTitle ) override;
 
 	void ShowFullScreen();
+	void RememberTabIndex( ConVar *pCVar );
 	void AddTab( TGD_Tab *pTab );
 	void RemoveTab( TGD_Tab *pTab );
 	void ActivateTab( TGD_Tab *pTab );
@@ -39,6 +40,8 @@ public:
 	vgui::Dar<TGD_Tab *> m_Tabs;
 	vgui::DHANDLE<TGD_Tab> m_hCurrentTab;
 	vgui::PHandle m_hOverridePanel;
+
+	ConVar *m_pLastTabConVar;
 };
 
 abstract_class TGD_Tab : public vgui::EditablePanel
@@ -104,6 +107,7 @@ public:
 	TGD_Entry( TGD_Grid *parent, const char *panelName );
 
 	virtual void ApplySchemeSettings( vgui::IScheme *pScheme ) override;
+	virtual void OnKeyCodePressed( vgui::KeyCode keycode ) override;
 
 	virtual void ApplyEntry() = 0;
 
@@ -119,6 +123,7 @@ public:
 	explicit TGD_Details( TGD_Tab *pTab );
 
 	virtual void ApplySchemeSettings( vgui::IScheme *pScheme ) override;
+	virtual void PerformLayout() override;
 
 	TGD_Entry *GetCurrentEntry();
 

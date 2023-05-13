@@ -20,7 +20,7 @@ public:
 	virtual void Precache();
 
 	virtual void SecondaryAttack();
-	virtual void FireShotgunPellet( CASW_Marine *pMarine, const FireBulletsInfo_t &info, int iSeed );	// shotgun specific, used to add piercing only for Devastator
+	virtual void FireShotgunPellet( CASW_Inhabitable_NPC *pNPC, const FireBulletsInfo_t &info, int iSeed ) override;	// shotgun specific, used to add piercing only for Devastator
 
 	virtual float GetWeaponDamage();
 	virtual float GetMovementScale();
@@ -28,11 +28,11 @@ public:
 
 #ifndef CLIENT_DLL
 	DECLARE_DATADESC();
-
-	virtual const char* GetPickupClass() { return "asw_pickup_devastator"; }
-#else 
+#else
+	virtual const char *GetPartialReloadSound( int iPart );
 	virtual bool HasSecondaryExplosive(void) const { return false; }
 #endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/devastator_empty_clip.mdl"; }
 
 	virtual bool ShouldMarineMoveSlow();
 	virtual Class_T		Classify(void) { return (Class_T)CLASS_ASW_DEVASTATOR; }

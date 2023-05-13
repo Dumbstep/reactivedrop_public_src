@@ -10,6 +10,10 @@
 #include "tier0/memdbgon.h"
 
 
+#ifdef CLIENT_DLL
+ConVar rd_scale_rates( "rd_scale_rates", "1", FCVAR_NONE, "Automatically change cl_updaterate and cl_cmdrate during slow motion." );
+#endif
+
 CGameTimescale g_GameTimescale;
 CGameTimescale* GameTimescale() { return &g_GameTimescale; }
 
@@ -26,6 +30,20 @@ CGameTimescale::~CGameTimescale()
 
 bool CGameTimescale::Init()
 {
+#ifdef CLIENT_DLL
+	m_pUpdateRate = g_pCVar->FindVar( "cl_updaterate" );
+	Assert( m_pUpdateRate );
+	m_flBaseUpdateRate = m_pUpdateRate->GetFloat();
+	m_pUpdateRate->InstallChangeCallback( &UpdateRateChangedManually );
+
+	m_pCmdRate = g_pCVar->FindVar( "cl_cmdrate" );
+	Assert( m_pCmdRate );
+	m_flBaseCmdRate = m_pCmdRate->GetFloat();
+	m_pCmdRate->InstallChangeCallback( &CmdRateChangedManually );
+
+	m_bUpdatingRates = false;
+#endif
+
 	ResetTimescale();
 
 	return true;
@@ -75,32 +93,20 @@ void CGameTimescale::SetCurrentTimescale( float flTimescale )
 
 #ifndef CLIENT_DLL
 	engine->SetTimescale( m_flCurrentTimescale );
-	// reactivedrop: #iss-adrenaline-lag
-	// 'Adrenaline lag' issue happens when users either use adrenaline or slow
-	// motion happens during mission. Clients get the reduced update rate(usually
-	// 21 updates per second) and sometimes packet loss, which is so huge it
-	// makes client's game freeze for several seconds. 
-
-	// A workaround for this issue is to change host_timescale cvar to the exactly
-	// same value as engine->SetTimescale() call is set to.
-	// This way there is no decrease in update rate and there is no loss during
-	// slow motion. 
-	// host_timescale only works as expected when sv_cheats 1, it can slow down
-	// and speed up game time. Changing host_timescale when sv_cheats 0 results
-	// in update rate change, without game time change
-	// 
-	ConVarRef host_timescale( "host_timescale" ); 
-	ConVarRef sv_cheats( "sv_cheats" );
-	if ( host_timescale.IsValid() && sv_cheats.IsValid() && !sv_cheats.GetBool() )
-	{
-		host_timescale.SetValue( m_flCurrentTimescale );
-	}
 
 	// Pass the change info to the client so it can do prediction
 	CReliableBroadcastRecipientFilter filter;
 	UserMessageBegin( filter, "CurrentTimescale" );
 		WRITE_FLOAT( m_flCurrentTimescale );
 	MessageEnd();
+#else
+	if ( rd_scale_rates.GetBool() )
+	{
+		m_bUpdatingRates = true;
+		m_pUpdateRate->SetValue( m_flBaseUpdateRate / flTimescale );
+		m_pCmdRate->SetValue( m_flBaseCmdRate / flTimescale );
+		m_bUpdatingRates = false;
+	}
 #endif
 }
 
@@ -181,6 +187,16 @@ void CGameTimescale::UpdateTimescale( void )
 			}
 
 			m_flCurrentTimescale = m_flStartTimescale * ( 1.0f - flInterp ) + m_flDesiredTimescale * flInterp;
+
+#ifdef CLIENT_DLL
+			if ( rd_scale_rates.GetBool() )
+			{
+				m_bUpdatingRates = true;
+				m_pUpdateRate->SetValue( m_flBaseUpdateRate / MIN( m_flCurrentTimescale, m_flDesiredTimescale ) );
+				m_pCmdRate->SetValue( m_flBaseCmdRate / MIN( m_flCurrentTimescale, m_flDesiredTimescale ) );
+				m_bUpdatingRates = false;
+			}
+#endif
 		}
 	}
 
@@ -203,19 +219,35 @@ void CGameTimescale::ResetTimescale( void )
 
 	engine->SetTimescale( 1.0f );
 
-#ifndef CLIENT_DLL
-	// reactivedrop: #iss-adrenaline-lag
-	ConVarRef host_timescale( "host_timescale" );
-	ConVarRef sv_cheats( "sv_cheats" );
-	if ( host_timescale.IsValid() && sv_cheats.IsValid() && !sv_cheats.GetBool() )
+#ifdef CLIENT_DLL
+	if ( rd_scale_rates.GetBool() )
 	{
-		host_timescale.SetValue( 1.0f );
+		m_bUpdatingRates = true;
+		m_pUpdateRate->SetValue( m_flBaseUpdateRate );
+		m_pCmdRate->SetValue( m_flBaseCmdRate );
+		m_bUpdatingRates = false;
 	}
-#endif 
+#endif
 }
 
 
 #ifdef CLIENT_DLL
+
+void CGameTimescale::UpdateRateChangedManually( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	if ( !g_GameTimescale.m_bUpdatingRates )
+	{
+		g_GameTimescale.m_flBaseUpdateRate = ConVarRef( var ).GetFloat();
+	}
+}
+
+void CGameTimescale::CmdRateChangedManually( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	if ( !g_GameTimescale.m_bUpdatingRates )
+	{
+		g_GameTimescale.m_flBaseCmdRate = ConVarRef( var ).GetFloat();
+	}
+}
 
 void __MsgFunc_CurrentTimescale( bf_read &msg )
 {

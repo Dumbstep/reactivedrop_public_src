@@ -120,8 +120,9 @@
 	
 	"marine_extinguished"
 	{
-		"entindex"		"long"		// entindex of of the target marine
-		"extinguisher"	"short"		// user ID of extinguisher
+		"entindex"		"short"		// entindex of of the target marine
+		"healer"		"short"		// entindex of extinguisher
+		"weapon"		"short"		// healing weapon or extinguisher particle
 	}
 	
 	"marine_infested"
@@ -132,7 +133,9 @@
 	"marine_infested_cured"
 	{
 		"entindex"		"long"		// entindex of of the target marine
-		"curer"			"short"		// user ID of the curer
+		"userid"		"short"		// user ID of the curer (if marine is inhabited)
+		"marine"		"short"		// marine that cured infestation
+		"weapon"		"short"		// healing weapon that cured the infestation
 	}
 	
 	"marine_infested_killed"
@@ -371,9 +374,11 @@
 	
 	"marine_healed"
 	{
-		"medic_entindex"	"long"		// entindex of the marine medic
-		"patient_entindex"	"long"		// entindex of the marine patient 
+		"medic_entindex"	"short"		// entindex of the marine medic
+		"patient_entindex"	"short"		// entindex of the marine patient 
 		"amount_healed"		"short"		// amount of meds given
+		"amount"			"short"		// amount of meds given (limited to max health)
+		"weapon"			"short"		// entindex of healing weapon
 		"weapon_class"		"string"	// classname of the healing device
 	}
 
@@ -465,7 +470,26 @@
 		"marine"			"long"		// entindex of the marine
 		"weapon"			"long"		// entindex of the weapon
 	}
-	
+
+	"fast_hack_success"
+	{
+		"entindex"		"long"		// entindex of the hack area
+		"marine"		"long"   	// marine entindex who is hacking
+	}
+
+	"fast_hack_failed"
+	{
+		"entindex"		"long"		// entindex of the hack area
+		"marine"		"long"   	// marine entindex who is hacking
+	}
+
+	"entity_frozen"
+	{
+		"entindex"		"short"		// entindex of frozen entity
+		"attacker"		"short"		// entindex of attacker
+		"weapon"		"short"		// entindex of weapon (grenade or sentry base)
+	}
+
 // CLIENTSIDE
 
 	"alien_hurt"

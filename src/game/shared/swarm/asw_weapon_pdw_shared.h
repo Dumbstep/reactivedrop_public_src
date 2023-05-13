@@ -39,22 +39,23 @@ public:
 
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
+		DECLARE_ACTTABLE();
 
-		virtual const char* GetPickupClass() { return "asw_pickup_pdw"; }
 		virtual void Spawn();
 		virtual void SecondaryAttack();
 
 		virtual float GetMadFiringBias() { return 2.5f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
+		virtual const char *GetViewModel( int viewmodelindex = 0 ) const;
+		virtual const char *GetWorldModel( void ) const;
 
 	#else
 		virtual bool HasSecondaryExplosive( void ) const { return false; }
-		virtual void OnMuzzleFlashed();
-		virtual float GetMuzzleFlashScale();
-		virtual bool GetMuzzleFlashRed();
 		virtual bool DisplayClipsDoubled() { return true; }    // dual weilded guns should show ammo doubled up to complete the illusion of holding two guns
 		virtual const char* GetTracerEffectName() { return "tracer_pdw"; }	// particle effect name
 		virtual const char* GetMuzzleEffectName() { return "muzzle_pdw"; }	// particle effect name
+		virtual const char *GetPartialReloadSound( int iPart );
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/pdw_empty_clip.mdl"; }
 
 	virtual const char* GetUTracerType();
 	virtual int ASW_SelectWeaponActivity(int idealActivity);

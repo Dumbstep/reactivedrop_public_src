@@ -32,12 +32,15 @@ public:
 	CNetworkVar( int,  m_MarineProfileIndex );	
 
 	CNetworkHandle (CASW_Marine, m_MarineEntity); 	// the actual marine
+	CNetworkHandle (CASW_Player, m_OriginalCommander);	// the player who was first in charge of this marine
+	bool m_bHadOriginalCommander;					// if true and m_OriginalCommander is null, the original commander disconnected
 	CNetworkHandle (CASW_Player, m_Commander);		// the player in charge of this marine
 	CNetworkVar( int, m_iCommanderIndex );
 
 	// indices into the equipment list for currently selected equipment
 	CNetworkArray( int, m_iWeaponsInSlots, ASW_MAX_EQUIP_SLOTS );
-	int m_iInitialWeaponsInSlots[ ASW_MAX_EQUIP_SLOTS ];
+	CNetworkArray( int, m_iWeaponsInSlotsDynamic, ASW_MAX_EQUIP_SLOTS );
+	CNetworkArray( int, m_iInitialWeaponsInSlots, ASW_MAX_EQUIP_SLOTS );
 
 	CNetworkVar( bool, m_bInfested );
 	CNetworkVar( bool, m_bInhabited );
@@ -79,7 +82,8 @@ public:
 	void SetCommander(CASW_Player* commander);
 	CASW_Player* GetCommander();
 
-	void GetDisplayName( char *pwchDisplayName, int nMaxBytes );
+	void GetDisplayName( char *pchDisplayName, int nMaxBytes );
+	void GetDisplayName( wchar_t *pwchDisplayName, int nMaxBytes );
 
 	void SetMarineEntity(CASW_Marine* marine);
 	CASW_Marine* GetMarineEntity();
@@ -95,10 +99,10 @@ public:
 	bool IsFiring();
 	void SetFiring(int iFiring) { m_iServerFiring = iFiring; }
 	bool IsReloading();
+	bool CanHack();
 
 	// leadership effects
-	float OnFired_GetDamageScale();	// called whenever a weapon is fired.  Leadership and damage amp scaling is done here
-	int m_iLeadershipCount;
+	void OnFired_ScaleDamage( FireBulletsInfo_t & info );	// called whenever a weapon is fired.  Leadership and damage amp scaling is done here
 	Vector m_vecDeathPosition;	// position of the marine when he died
 	float m_fDeathTime;
 
@@ -177,6 +181,7 @@ public:
 	int m_iSentryFlamerDeployed;
 	int m_iSentryFreezeDeployed;
 	int m_iSentryCannonDeployed;
+	int m_iSentryRailgunDeployed;
 	int m_iMedkitsUsed;
 	int m_iFlaresUsed;
 	int m_iAdrenalineUsed;
@@ -198,7 +203,26 @@ public:
 	int m_iHealAmpGunHeals;
 	int m_iHealAmpGunAmps;
 	int m_iMedRifleHeals;
+	int m_iCryoCannonFreezeAlien;
+	int m_iPlasmaThrowerExtinguishMarine;
+	int m_iHackToolWireHacksTech;
+	int m_iHackToolWireHacksOther;
+	int m_iHackToolComputerHacksTech;
+	int m_iHackToolComputerHacksOther;
+	int m_iEnergyShieldProjectilesDestroyed;
+	int m_iReanimatorRevivesOfficer;
+	int m_iReanimatorRevivesSpecialWeapons;
+	int m_iReanimatorRevivesMedic;
+	int m_iReanimatorRevivesTech;
+	int m_iSpeedBoostsUsed;
+	int m_iShieldBubblesThrown;
+	int m_iShieldBubblePushedEnemy;
+	int m_iShieldBubbleDamageAbsorbed;
 	int m_iBiomassIgnited;
+	int m_iLeadershipProcsAccuracy;
+	int m_iLeadershipProcsResist;
+	int m_iLeadershipDamageAccuracy;
+	int m_iLeadershipDamageResist;
 
 	CNetworkVar( int, m_iScore );
 	CNetworkVar( float, m_flFinishedMissionTime );

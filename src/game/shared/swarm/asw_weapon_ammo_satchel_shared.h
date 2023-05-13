@@ -33,14 +33,11 @@ public:
 	virtual bool	OffhandActivate();
 	void	DeployAmmoDrop();
 
-	virtual bool			UsesClipsForAmmo1( void ) const { return false; }
-
 #ifndef CLIENT_DLL
 	DECLARE_DATADESC();
 
 	int		CapabilitiesGet( void ) { return 0; }
 
-	virtual const char* GetPickupClass() { return "asw_pickup_ammo_satchel"; }
 	void	SetAmmoDrops( int nAmmoDrops ) { m_iClip1 = nAmmoDrops; }
 #endif
 	//int m_nAmmoDrops;

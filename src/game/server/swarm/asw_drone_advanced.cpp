@@ -60,6 +60,9 @@ ConVar asw_drone_health("asw_drone_health", "40", FCVAR_CHEAT, "How much health 
 ConVar asw_drone_yaw_speed("asw_drone_yaw_speed", "32.0", FCVAR_CHEAT, "How fast the swarm drone can turn");
 ConVar asw_drone_yaw_speed_attackprep("asw_drone_yaw_speed_attackprep", "64.0", FCVAR_CHEAT, "How fast the swarm drone can turn while starting his melee attack");
 ConVar asw_drone_yaw_speed_attacking("asw_drone_yaw_speed_attacking", "8.0", FCVAR_CHEAT, "How fast the swarm drone can turn while doing a melee attack");
+ConVar asw_drone_run_speed( "asw_drone_run_speed", "1.25", FCVAR_CHEAT );
+ConVar asw_drone_attack_speed( "asw_drone_attack_speed", "1.25", FCVAR_CHEAT );
+ConVar asw_drone_attack_speed_on_fire( "asw_drone_attack_speed_on_fire", "1.75", FCVAR_CHEAT );
 ConVar asw_drone_acceleration("asw_drone_acceleration", "5", FCVAR_CHEAT, "How fast the swarm drone accelerates, as a multiplier on his ideal speed");
 ConVar asw_drone_smooth_speed("asw_drone_smooth_speed", "200", FCVAR_CHEAT, "How fast the swarm drone smooths his current velocity into the ideal, when using overidden movement");
 ConVar asw_drone_override_move("asw_drone_override_move", "0", FCVAR_CHEAT, "Enable to make Swarm drones use custom override movement to chase their enemy");
@@ -217,8 +220,6 @@ void CASW_Drone_Advanced::Spawn( void )
 	UTIL_SetSize(this, Vector(-17,-17,0), Vector(17,17,69));
 
 	//UseClientSideAnimation();	
-		
-	SetHealthByDifficultyLevel();	
 	
 	CapabilitiesAdd( bits_CAP_MOVE_CLIMB | bits_CAP_MOVE_GROUND | bits_CAP_INNATE_MELEE_ATTACK1 | bits_CAP_INNATE_MELEE_ATTACK2 );	// removed: bits_CAP_MOVE_JUMP
 	CapabilitiesAdd( bits_CAP_MOVE_SHOOT );
@@ -797,6 +798,9 @@ int CASW_Drone_Advanced::MeleeAttack1Conditions( float flDot, float flDist )
 	if ( flPrDot < 0 )	// try generous way
 		return COND_NOT_FACING_ATTACK;
 
+	if ( GetNextAttack() > gpGlobals->curtime )
+		return COND_TOO_FAR_TO_ATTACK;
+
 #else
 
 	if ( flDot < 0.5f )
@@ -955,6 +959,9 @@ void CASW_Drone_Advanced::MeleeAttack( float distance, float damage, QAngle &vie
 	Vector vecForceDir;
 
 	m_bHasAttacked = true;
+
+	// Prevent drone from attacking again before this animation would have finished.
+	SetNextAttack( gpGlobals->curtime + SequenceDuration() / GetPlaybackRate() - GetCycle() );
 
 	// Always hurt bullseyes for now
 	if ( ( GetEnemy() != NULL ) && ( GetEnemy()->Classify() == CLASS_BULLSEYE ) )
@@ -1298,14 +1305,18 @@ void CASW_Drone_Advanced::RunTask( const Task_t *pTask )
 		}
 	}
 
-	//if (!HasCondition(COND_NPC_FREEZE) && !IsCurSchedule(SCHED_NPC_FREEZE))
-	//{
-		if (GetActivity() == ACT_RUN || GetActivity() == ACT_DRONE_RUN_ATTACKING
-			|| GetActivity() == ACT_MELEE_ATTACK1)
-			m_flPlaybackRate = 1.25f;
-		else
-			m_flPlaybackRate = 1.0f;
-	//}
+	if ( GetActivity() == ACT_RUN )
+	{
+		SetPlaybackRate( asw_drone_run_speed.GetFloat() );
+	}
+	else if ( GetActivity() == ACT_DRONE_RUN_ATTACKING || GetActivity() == ACT_MELEE_ATTACK1 )
+	{
+		SetPlaybackRate( m_bOnFire ? asw_drone_attack_speed_on_fire.GetFloat() : asw_drone_attack_speed.GetFloat() );
+	}
+	else
+	{
+		SetPlaybackRate( 1.0f );
+	}
 }
 
 bool CASW_Drone_Advanced::ShouldGib( const CTakeDamageInfo &info )
@@ -2395,14 +2406,9 @@ void CASW_Drone_Advanced::SetDoorBashYaw()
 	}
 }
 
-void CASW_Drone_Advanced::SetHealthByDifficultyLevel()
+int CASW_Drone_Advanced::GetBaseHealth()
 {
-	int iHealth = MAX(25, ASWGameRules()->ModifyAlienHealthBySkillLevel(asw_drone_health.GetInt()));
-	if (asw_debug_alien_damage.GetBool())
-		Msg("Setting drone's initial health to %d\n", iHealth + m_iHealthBonus);
-	SetHealth(iHealth + m_iHealthBonus);
-	SetMaxHealth(iHealth + m_iHealthBonus);
-	SetHitboxSet(0);
+	return asw_drone_health.GetInt();
 }
 
 // if we arrive at our destination, clear our orders

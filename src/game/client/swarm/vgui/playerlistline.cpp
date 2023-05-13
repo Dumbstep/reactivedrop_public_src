@@ -112,12 +112,10 @@ void PlayerListLine::OnCommand( const char *command )
 {
 	if ( !Q_stricmp( command, "MuteButton" ) )
 	{
-		CVoiceStatus* pVoiceMgr = GetClientVoiceMgr();
-		if ( pVoiceMgr )
-		{
-			bool bMuted = pVoiceMgr->IsPlayerBlocked( m_iPlayerIndex );
-			pVoiceMgr->SetPlayerBlockedState( m_iPlayerIndex, !bMuted );
-		}
+		C_PlayerResource *p_GR = dynamic_cast< C_PlayerResource* >( GameResources() );
+
+		if ( p_GR )
+			p_GR->TogglePlayerMuteState( m_iPlayerIndex, false );
 	}
 	else if ( !Q_stricmp( command, "PlayerLabel" )  )
 	{
@@ -271,12 +269,12 @@ const wchar_t *PlayerListLine::GetMarineNames()
 		{
 			if ( iMarines == 0 )
 			{
-				V_snwprintf( marines, sizeof( marines ), L"%s", g_pVGuiLocalize->FindSafe( pMR->GetProfile()->m_ShortName ) );
+				V_snwprintf( marines, ARRAYSIZE( marines ), L"%s", g_pVGuiLocalize->FindSafe( pMR->GetProfile()->m_ShortName ) );
 			}
 			else
 			{
-				V_snwprintf( buffer, sizeof( buffer ), L"%s, %s", marines, g_pVGuiLocalize->FindSafe( pMR->GetProfile()->m_ShortName ) );
-				V_snwprintf( marines, sizeof( marines ), L"%s", buffer );
+				V_snwprintf( buffer, ARRAYSIZE( buffer ), L"%s, %s", marines, g_pVGuiLocalize->FindSafe( pMR->GetProfile()->m_ShortName ) );
+				V_snwprintf( marines, ARRAYSIZE( marines ), L"%s", buffer );
 			}
 			iMarines++;
 		}

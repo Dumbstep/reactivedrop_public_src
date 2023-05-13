@@ -26,8 +26,8 @@ using namespace vgui;
 using namespace BaseModUI;
 
 ConVar rd_show_leaderboard_loading( "rd_show_leaderboard_loading", "1", FCVAR_ARCHIVE, "show friends' leaderboard entries on the loading screen" );
-ConVar rd_show_mission_icon_loading( "rd_show_mission_icon_loading", "0", FCVAR_ARCHIVE, "show mission icon on the loading screen" );
-ConVar rd_leaderboard_by_difficulty( "rd_leaderboard_by_difficulty", "1", FCVAR_NONE, "Only show the leaderboard by current difficulty level, rather than all difficulties mixed together" );
+ConVar rd_show_mission_icon_loading( "rd_show_mission_icon_loading", "1", FCVAR_ARCHIVE, "show mission icon on the loading screen" );
+ConVar rd_auto_hide_mission_icon_loading( "rd_auto_hide_mission_icon_loading", "1", FCVAR_ARCHIVE, "hide the mission icon if the mission has a custom loading background" );
 ConVar rd_loading_image_per_map( "rd_loading_image_per_map", "1", FCVAR_ARCHIVE, "If set to 1 each map can have its own background image during loading screen, 0 means same image for every map" );
 ConVar rd_loading_status_text_visible( "rd_loading_status_text_visible", "1", FCVAR_ARCHIVE, "If set to 1 status text is visible on the loading screen." );
 
@@ -277,6 +277,9 @@ void LoadingProgress::PaintBackground()
 	int screenWide, screenTall;
 	surface()->GetScreenSize( screenWide, screenTall );
 
+	surface()->DrawSetColor( m_PosterReflectionColor );
+	surface()->DrawFilledRect( 0, 0, screenWide, screenTall );
+
 	if ( m_bDrawBackground && m_pBGImage )
 	{
 		int x, y, wide, tall;
@@ -290,9 +293,27 @@ void LoadingProgress::PaintBackground()
 	{
 		if ( m_bFullscreenPoster )
 		{
+			int x0 = 0, x1 = screenWide, y0 = 0, y1 = screenTall;
+
+			float aspectRatio = ( float )screenWide / ( float )screenTall;
+			if ( aspectRatio >= 16.0f / 9.0f )
+			{
+				// pillarbox the loading screen
+				int posterWide = screenTall * 16 / 9;
+				x0 = ( screenWide - posterWide ) / 2;
+				x1 -= x0;
+			}
+			else
+			{
+				// letterbox the loading screen
+				int posterTall = screenWide * 9 / 16;
+				y0 = ( screenTall - posterTall ) / 2;
+				y1 -= y0;
+			}
+
 			surface()->DrawSetColor( Color( 255, 255, 255, 255 ) );
 			surface()->DrawSetTexture( m_pPoster->GetImage()->GetID() );
-			surface()->DrawTexturedRect( 0, 0, screenWide, screenTall );
+			surface()->DrawTexturedRect( x0, y0, x1, y1 );
 		}
 		else
 		{
@@ -455,7 +476,7 @@ void LoadingProgress::SetupControlStates()
 			int screenWide, screenTall;
 			surface()->GetScreenSize( screenWide, screenTall );
 			char filename[MAX_PATH];
-			V_snprintf( filename, sizeof( filename ), "console/background01rd" ); // TODO: engine->GetStartupImage( filename, sizeof( filename ), screenWide, screenTall );
+			V_snprintf( filename, sizeof( filename ), "console/background01rd_widescreen" ); // TODO: engine->GetStartupImage( filename, sizeof( filename ), screenWide, screenTall );
 			m_pBGImage->SetImage( CFmtStr( "../%s", filename ) );
 		}
 
@@ -554,16 +575,8 @@ void LoadingProgress::SetLeaderboardData( const char *pszLevelName, PublishedFil
 		Q_snwprintf( m_wszLeaderboardTitle, ARRAYSIZE( m_wszLeaderboardTitle ), L"%s", wszLevelDisplayName );
 	}
 
-	int iSkillLevel = ASWGameRules() ? ASWGameRules()->GetSkillLevel() : asw_skill.GetInt();
 	char szLeaderboardName[k_cchLeaderboardNameMax]{};
-	if ( rd_leaderboard_by_difficulty.GetBool() && iSkillLevel > 2 )
-	{
-		g_ASW_Steamstats.DifficultySpeedRunLeaderboardName( szLeaderboardName, sizeof( szLeaderboardName ), iSkillLevel, pszLevelName, nLevelAddon, pszChallengeName, nChallengeAddon );
-	}
-	if ( !szLeaderboardName[0] || !g_ASW_Steamstats.IsLBWhitelisted( szLeaderboardName ) )
-	{
-		g_ASW_Steamstats.SpeedRunLeaderboardName( szLeaderboardName, sizeof( szLeaderboardName ), pszLevelName, nLevelAddon, pszChallengeName, nChallengeAddon );
-	}
+	g_ASW_Steamstats.SpeedRunLeaderboardName( szLeaderboardName, sizeof( szLeaderboardName ), pszLevelName, nLevelAddon, pszChallengeName, nChallengeAddon );
 	if ( !g_ASW_Steamstats.IsLBWhitelisted( szLeaderboardName ) )
 	{
 		g_ASW_Steamstats.SpeedRunLeaderboardName( szLeaderboardName, sizeof( szLeaderboardName ), pszLevelName, nLevelAddon, "0", k_PublishedFileIdInvalid );
@@ -676,68 +689,59 @@ bool LoadingProgress::ShouldShowPosterForLevel( KeyValues *pMissionInfo, KeyValu
 //=============================================================================
 void LoadingProgress::SetupPoster( void )
 {
-	int i;
+	bool bUsingCustomBackground = false;
+
+	m_PosterReflectionColor = Color( 0, 0, 0, 255 );
 	
-	//bool bNamesVisible = false;
 	vgui::ImagePanel *pPoster = dynamic_cast< vgui::ImagePanel* >( FindChildByName( "Poster" ) );
 	if ( pPoster )
 	{ 
-#if !defined( _X360 )
 		int screenWide, screenTall;
 		surface()->GetScreenSize( screenWide, screenTall );
-		float aspectRatio = (float)screenWide/(float)screenTall;
-		bool bIsWidescreen = aspectRatio >= 1.5999f;
-#else
-		static ConVarRef mat_xbox_iswidescreen( "mat_xbox_iswidescreen" );
-		bool bIsWidescreen = mat_xbox_iswidescreen.GetBool();
-#endif
-		const char *pszPosterImage;
-		//int nChosenLoadingImage = RandomInt( 1, 4 );
-		//switch( nChosenLoadingImage )
-		//{
-			//case 1: pszPosterImage = ( m_bFullscreenPoster && bIsWidescreen ) ? "swarm/loading/BGFX01_wide" : "swarm/loading/BGFX01"; break;
-			//case 2: pszPosterImage = ( m_bFullscreenPoster && bIsWidescreen ) ? "swarm/loading/BGFX02_wide" : "swarm/loading/BGFX02"; break;
-			//case 3: pszPosterImage = ( m_bFullscreenPoster && bIsWidescreen ) ? "swarm/loading/BGFX03_wide" : "swarm/loading/BGFX03"; break;
-			//case 4:
-			//default: pszPosterImage = ( m_bFullscreenPoster && bIsWidescreen ) ? "swarm/loading/RD_BGFX04_wide" : "swarm/loading/RD_BGFX04"; break;
-		//}
-		pszPosterImage = ( m_bFullscreenPoster && bIsWidescreen ) ? "swarm/loading/RD_BGFX04_wide" : "swarm/loading/RD_BGFX04";
 
+		const char *pszPosterImage = "swarm/loading/RD_BGFX04_wide";
 		if ( rd_loading_image_per_map.GetInt() == 1 && m_szLevelName[0] != 0 )
 		{
-			CFmtStr szMapLoadingImageVmt( "materials/vgui/swarm/loading/%s.vmt", m_szLevelName );
-			CFmtStr szMapLoadingImageVmtWide( "materials/vgui/swarm/loading/%s_wide.vmt", m_szLevelName );
-			CFmtStr szMapLoadingImage( "swarm/loading/%s", m_szLevelName );
-			CFmtStr szMapLoadingImageWide( "swarm/loading/%s_wide", m_szLevelName );
+			CFmtStr szMapLoadingImageVmt( "materials/vgui/swarm/loading/%s_wide.vmt", m_szLevelName );
+			CFmtStr szMapLoadingImage( "swarm/loading/%s_wide", m_szLevelName );
 
-			if ( m_bFullscreenPoster && bIsWidescreen && filesystem->FileExists( szMapLoadingImageVmtWide ) )
-			{
-				pPoster->SetImage( szMapLoadingImageWide );
-			}
-			else if ( filesystem->FileExists( szMapLoadingImageVmt ) )
+			IMaterial *pMaterial;
+			if ( m_bFullscreenPoster && filesystem->FileExists( szMapLoadingImageVmt ) )
 			{
 				pPoster->SetImage( szMapLoadingImage );
+				pMaterial = materials->FindMaterial( CFmtStr( "vgui/%s", szMapLoadingImage.Access() ), TEXTURE_GROUP_VGUI );
+				bUsingCustomBackground = true;
 			}
 			else
 			{
 				pPoster->SetImage( pszPosterImage );
+				pMaterial = materials->FindMaterial( CFmtStr( "vgui/%s", pszPosterImage ), TEXTURE_GROUP_VGUI );
 			}
+
+			Vector vecColor{ 0, 0, 0 };
+			if ( !IsErrorMaterial( pMaterial ) )
+			{
+				pMaterial->GetReflectivity( vecColor );
+			}
+
+			m_PosterReflectionColor = Color(
+				clamp( vecColor.x * 255, 0, 255 ),
+				clamp( vecColor.y * 255, 0, 255 ),
+				clamp( vecColor.z * 255, 0, 255 ),
+				255
+			);
 		}
 		else
 		{
 			// if the image was cached this will just hook it up, otherwise it will load it
-			pPoster->SetImage( pszPosterImage) ;
+			pPoster->SetImage( pszPosterImage );
 		}
-		//if ( pPoster->GetImage() )
-		//{
-		//	bNamesVisible = true;
-		//}
 	}
 
 	if ( m_pChapterInfo && m_pChapterInfo->GetString( "image", NULL ) )
 	{
 		m_pMissionPic->SetImage( m_pChapterInfo->GetString( "image" ) );
-		m_pMissionPic->SetVisible( rd_show_mission_icon_loading.GetBool() );
+		m_pMissionPic->SetVisible( rd_show_mission_icon_loading.GetBool() && ( !rd_auto_hide_mission_icon_loading.GetBool() || !bUsingCustomBackground ) );
 	}
 
 	bool bIsLocalized = false;
@@ -755,59 +759,12 @@ void LoadingProgress::SetupPoster( void )
 	SetControlVisible( "LocalizedCampaignName", false );
 	SetControlVisible( "LocalizedCampaignTagline", false );
 
-	wchar_t szPlayerNames[MAX_PATH];
-	Q_memset( szPlayerNames, 0, sizeof( szPlayerNames ) );
-
-	int nNumNames = 0;
-	for ( i=0;i<NUM_LOADING_CHARACTERS;i++ )
-	{
-		if ( !m_PlayerNames[i] || !m_PlayerNames[i][0] )
-		{
-			continue;
-		}
-
-		if ( nNumNames != 0 )
-		{
-			wcsncat( szPlayerNames, L", ", MAX_PATH - wcslen(szPlayerNames) - 1 );
-		}
-		wchar_t szName[64];
-
-		if ( m_PlayerNames[i] && m_PlayerNames[i][0] == '#' )
-		{
-			wchar_t *pName = g_pVGuiLocalize->Find( m_PlayerNames[i] );
-
-			if ( pName == NULL )
-			{
-				g_pVGuiLocalize->ConvertANSIToUnicode( m_PlayerNames[i], szName, sizeof( szPlayerNames ) );
-			}
-			else
-			{
-				Q_wcsncpy( szName, pName, sizeof( szName ) );
-			}
-			nNumNames++;
-		}
-		else
-		{
-			g_pVGuiLocalize->ConvertANSIToUnicode( m_PlayerNames[i], szName, sizeof( szPlayerNames ) );
-			nNumNames++;
-		}
-
-		wcsncat( szPlayerNames, szName, MAX_PATH - wcslen(szPlayerNames) - 1 );
-	}
-
-	if ( nNumNames != 0 )
-	{
-		wcsncat( szPlayerNames, L".", MAX_PATH - wcslen(szPlayerNames) - 1 );
-	}
-
 	SetControlString( "GameModeLabel", m_szGameMode );
 
-	SetControlVisible( "PlayerNames", ( nNumNames > 1 ) );
+	SetControlVisible( "PlayerNames", false );
 
-	SetControlVisible( "StarringLabel", ( nNumNames > 1 ) );
+	SetControlVisible( "StarringLabel", false );
 	SetControlVisible( "GameModeLabel", false );
-
-	SetControlString( "playernames", szPlayerNames );
 
 	SetControlEnabled( "LoadingTipPanel", false );
 }

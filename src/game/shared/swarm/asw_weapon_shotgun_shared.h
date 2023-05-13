@@ -7,6 +7,7 @@
 #define CASW_Weapon C_ASW_Weapon
 #define CASW_Weapon_Shotgun C_ASW_Weapon_Shotgun
 #define CASW_Marine C_ASW_Marine
+#define CASW_Inhabitable_NPC C_ASW_Inhabitable_NPC
 #else
 #include "asw_weapon.h"
 #include "npc_combine.h"
@@ -41,7 +42,7 @@ public:
 	virtual void PrimaryAttack();
 	virtual void SecondaryAttack();
 	virtual void DelayedAttack();
-	virtual void FireShotgunPellet( CASW_Marine *pMarine, const FireBulletsInfo_t &info, int iSeed );	// shotgun specific, re-defined in CASW_Weapon_Devastator
+	virtual void FireShotgunPellet( CASW_Inhabitable_NPC *pNPC, const FireBulletsInfo_t &info, int iSeed );	// shotgun specific, re-defined in CASW_Weapon_Devastator
 	virtual int ASW_SelectWeaponActivity(int idealActivity);
 
 	virtual const float GetAutoAimAmount() { return 0.26; }
@@ -61,10 +62,9 @@ public:
 
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
+		DECLARE_ACTTABLE();
 
 		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-
-		virtual const char* GetPickupClass() { return "asw_pickup_shotgun"; }
 
 		virtual bool IsRapidFire() { return false; }
 		virtual float GetMadFiringBias() { return 1.0f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon

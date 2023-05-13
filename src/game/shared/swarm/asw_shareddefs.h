@@ -170,7 +170,18 @@ enum
 #define VPROF_BUDGETGROUP_ASW_CLIENT			_T("Swarm Client")
 
 // how many marine profiles there are (used by the campaign save system)
-#define ASW_NUM_MARINE_PROFILES 8
+enum
+{
+	ASW_MARINE_PROFILE_SARGE,
+	ASW_MARINE_PROFILE_WILDCAT,
+	ASW_MARINE_PROFILE_FAITH,
+	ASW_MARINE_PROFILE_CRASH,
+	ASW_MARINE_PROFILE_JAEGER,
+	ASW_MARINE_PROFILE_WOLFE,
+	ASW_MARINE_PROFILE_BASTILLE,
+	ASW_MARINE_PROFILE_VEGAS,
+	ASW_NUM_MARINE_PROFILES,
+};
 
 // !!NOTE!! - these numbers are hardcoded into engine's Host_cmd.cpp too :(
 #define ASW_MAX_PLAYERS_PER_SAVE 10
@@ -226,11 +237,17 @@ struct ObjectiveMapMark
 #define EGG_FLAG_DIE					0x0004
 #define EGG_FLAG_GRUBSACK_DIE			0x0008
 
-// door healths and break fractions
-#define ASW_DOOR_REINFORCED_HEALTH 2400
-#define ASW_DOOR_NORMAL_HEALTH 1800
+// door break fractions (max health is a convar)
 #define ASW_DOOR_PARTIAL_DENT_HEALTH 0.66f
 #define ASW_DOOR_COMPLETE_DENT_HEALTH 0.33f
+
+enum ASW_DoorType_t
+{
+	ASWDT_NORMAL = 0,
+	ASWDT_REINFORCED,
+	ASWDT_INDESTRUCTABLE,
+	ASWDT_CUSTOM,
+};
 
 // DamageCustom flags for CTakeDamageInfo
 #define DAMAGE_FLAG_WEAKSPOT			0x0001
@@ -270,15 +287,17 @@ enum
 	ASW_COLLISION_GROUP_PLAYER_MISSILE,				// collides with aliens, not players
 	ASW_COLLISION_GROUP_SENTRY,						// collides with aliens
 	ASW_COLLISION_GROUP_SENTRY_PROJECTILE,			// collides with aliens, marines and doors - nothing else (this is used for the sentry particles)
+	HL2COLLISION_GROUP_COMBINE_BALL,
+	HL2COLLISION_GROUP_GUNSHIP,
 
 	ASW_COLLISION_GROUP_BLOCK_ALIENS,				// asw
 	ASW_COLLISION_GROUP_IGNORE_NPCS,		// asw (fire walls spreading, collides with everything but aliens, marines) NOTE: Has to be after any NPC collision groups
 	ASW_COLLISION_GROUP_FLAMER_PELLETS,		// the pellets that the flamer shoots.  Doesn not collide with small aliens or marines, DOES collide with doors and shieldbugs
 	ASW_COLLISION_GROUP_EXTINGUISHER_PELLETS,	// the pellets that the extinguisher shoots. Hits lots of things, but not other weapons
 	ASW_COLLISION_GROUP_BOTS,			// reactivedrop: collision group for bots
+	ASW_COLLISION_GROUP_BOT_MOVEMENT,
+	ASW_COLLISION_GROUP_CEILINGS,
 	ASW_COLLISION_GROUP_PASSABLE,		// asw (stuff you can walk through) NOTE: Has to be LAST!
-
-	HL2COLLISION_GROUP_COMBINE_BALL_NPC,
 };
 
 
@@ -324,12 +343,7 @@ enum PowerUpTypes
 #define HL2COLLISION_GROUP_FIRST_NPC ASW_COLLISION_GROUP_GRUBS
 #define HL2COLLISION_GROUP_LAST_NPC ASW_COLLISION_GROUP_ALIEN
 
-bool IsAlienCollisionGroup(	int iCollisionGroup );
-#define IN_ASW_STOP		(1 << 26)	// asw: this button will stop the marine's x/y motion immediately (used to hold him still while he plays stationary animations, also may be need for clientside avoidance)
-
 bool IsAlienClass( Class_T npc_class );
-bool IsDamagingWeaponClass( Class_T entity_class );
-bool IsWeaponClass( Class_T entity_class );
 bool IsBulletBasedWeaponClass( Class_T entity_class );
 bool IsSentryClass( Class_T entity_class );
 bool CanMarineGetStuckOnProp( const char *szModelName );
@@ -466,7 +480,7 @@ enum
 	CLASS_ASW_UNKNOWN,
 	CLASS_ASW_HARVESTER,
 	CLASS_ASW_GRUB,
-	CLASS_ASW_HYDRA,
+	CLASS_ASW_JUGGERNAUT, // TODO #530
 	CLASS_ASW_BLOB,
 	CLASS_ASW_SENTRY_GUN,
 	CLASS_ASW_BUTTON_PANEL,
@@ -476,8 +490,8 @@ enum
 	CLASS_ASW_MARINE,
 	CLASS_ASW_COLONIST,
 	CLASS_ASW_BOOMER,
-	CLASS_ASW_BOOMERMINI,
-	CLASS_ASW_MEATBUG,
+	CLASS_ASW_DETONATOR, // TODO #532
+	CLASS_ASW_MEATBUG, // TODO #529
 	CLASS_ASW_QUEEN,
 	CLASS_ASW_BUZZER,
 	CLASS_ASW_QUEEN_DIVER,
@@ -487,10 +501,10 @@ enum
 
 	CLASS_ASW_SHAMAN,
 	CLASS_ASW_EGG,
-	CLASS_ASW_RUNNER,
+	CLASS_ASW_RUNNER, // TODO #534
 	CLASS_ASW_MORTAR_BUG,
 	CLASS_ASW_RANGER,
-	CLASS_ASW_FLOCK,
+	CLASS_ASW_FLOCK, // TODO #533
 	CLASS_ASW_SPAWNER,
 	CLASS_ASW_HOLDOUT_SPAWNER,
 	CLASS_ASW_SPAWN_GROUP,
@@ -504,7 +518,7 @@ enum
 	CLASS_ASW_RIFLE,
 	CLASS_ASW_MINIGUN,
 	CLASS_ASW_PDW,
-	CLASS_ASW_FLECHETTE,
+	CLASS_ASW_FLECHETTE, // TODO #527
 	CLASS_ASW_FIRE_EXTINGUISHER,
 	CLASS_ASW_WELDER,
 	CLASS_ASW_TESLA_TRAP,
@@ -513,7 +527,8 @@ enum
 	CLASS_ASW_SENTRY_FLAMER,
 	CLASS_ASW_SENTRY_CANNON,
 	CLASS_ASW_SENTRY_FREEZE,
-	CLASS_ASW_RICOCHET,
+	CLASS_ASW_RICOCHET, // TODO #528
+	CLASS_ASW_RICOCHET_SHOTGUN,
 	CLASS_ASW_RAILGUN,
 	CLASS_ASW_PRIFLE,
 	CLASS_ASW_PISTOL,
@@ -585,6 +600,33 @@ enum
 	CLASS_ASW_HEAVY_RIFLE,
 	CLASS_ASW_MEDRIFLE,
 	CLASS_RD_WEAPON_GENERIC_OBJECT,
+	CLASS_ASW_ANTLIONGUARD,
+	CLASS_ASW_AR2,
+	CLASS_ASW_COMBINE_BALL,
+	CLASS_ASW_AMMO_AR2,
+	CLASS_ASW_AMMO_GRENADE_LAUNCHER,
+	CLASS_ASW_AMMO_SNIPER_RIFLE,
+	CLASS_ASW_AMMO_HEAVY_RIFLE,
+	CLASS_HELICOPTER,
+	CLASS_COMBINE_STRIDER,
+	CLASS_ASW_BOOMER_BLOB,
+	CLASS_ASW_CRYO_CANNON, // TODO #523
+	CLASS_ASW_PLASMA_THROWER, // TODO #524
+	CLASS_ASW_PLASMA_THROWER_AIRBLAST, // not an entity; exists only for stats
+	CLASS_ASW_HACK_TOOL, // TODO #536
+	CLASS_ASW_SENTRY_RAILGUN, // TODO #537
+	CLASS_ASW_SENTRY_RAILGUN_CASE,
+	CLASS_ASW_ENERGY_SHIELD, // TODO #538
+	CLASS_ASW_REVIVE_TOOL, // TODO #539
+	CLASS_ASW_REVIVE_TOOL_MARKER,
+	CLASS_ASW_GRENADE_BOX_PRIFLE, // TODO #525
+	CLASS_ASW_GRENADE_BOX_VINDICATOR, // TODO #526
+	CLASS_ASW_SPEED_BURST, // TODO #540
+	CLASS_ASW_SHIELD_BUBBLE, // TODO #541
+	CLASS_ASW_SHIELD_BUBBLE_PROJECTILE,
+	CLASS_ASW_SPITTER, // TODO #531
+	CLASS_ASW_SPITTER_FIELD,
+	CLASS_ASW_WATCHER, // TODO #535
 	CLASS_NPC_ANTIIONGUARD_NORMAL,
 	CLASS_NPC_ANTIIONGUARD_CAVERN,
 

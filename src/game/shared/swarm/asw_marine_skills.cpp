@@ -29,6 +29,7 @@ ConVar asw_skill_piercing_base( "asw_skill_piercing_base", "0", FCVAR_REPLICATED
 
 ConVar asw_skill_healing_charges_base( "asw_skill_healing_charges_base", "4", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_self_healing_charges_base( "asw_skill_self_healing_charges_base", "2", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_skill_healing_medrifle_healing_charges_base( "asw_skill_healing_medrifle_healing_charges_base", "50", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_healing_medkit_hps_base( "asw_skill_healing_medkit_hps_base", "50", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_healing_hps_base( "asw_skill_healing_hps_base", "25", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_healing_grenade_base( "asw_skill_healing_grenade_base", "120", FCVAR_REPLICATED | FCVAR_CHEAT );
@@ -78,6 +79,7 @@ ConVar asw_skill_piercing_step( "asw_skill_piercing_step", "0.20", FCVAR_REPLICA
 
 ConVar asw_skill_healing_charges_step( "asw_skill_healing_charges_step", "1", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_self_healing_charges_step( "asw_skill_self_healing_charges_step", "0.5", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_skill_healing_medrifle_healing_charges_step( "asw_skill_healing_medrifle_healing_charges_step", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_healing_hps_step( "asw_skill_healing_hps_step", "8", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_healing_grenade_step( "asw_skill_healing_grenade_step", "30", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_healing_gun_charges_step( "asw_skill_healing_gun_charges_step", "10", FCVAR_REPLICATED | FCVAR_CHEAT );
@@ -149,15 +151,14 @@ ConVar asw_skill_accuracy_heavy_rifle_dmg_base( "asw_skill_accuracy_heavy_rifle_
 ConVar asw_skill_accuracy_heavy_rifle_dmg_step( "asw_skill_accuracy_heavy_rifle_dmg_step", "2", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_accuracy_medrifle_dmg_base( "asw_skill_accuracy_medrifle_dmg_base", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_skill_accuracy_medrifle_dmg_step( "asw_skill_accuracy_medrifle_dmg_step", "2", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_skill_accuracy_ar2_dmg_base( "asw_skill_accuracy_ar2_dmg_base", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_skill_accuracy_ar2_dmg_step( "asw_skill_accuracy_ar2_dmg_step", "2", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_skill_accuracy_devastator_dmg_base( "asw_skill_accuracy_devastator_dmg_base", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_skill_accuracy_devastator_dmg_step( "asw_skill_accuracy_devastator_dmg_step", "1", FCVAR_REPLICATED | FCVAR_CHEAT );
 
 ConVar asw_skill_laser_mines_base( "asw_skill_laser_mines_base", "1", FCVAR_REPLICATED | FCVAR_CHEAT, "Number of laser mines to deploy by marines with no Explosives skills", true, 1, true, 10 );
 ConVar asw_skill_laser_mines_moderate( "asw_skill_laser_mines_moderate", "2", FCVAR_REPLICATED | FCVAR_CHEAT, "Number of laser mines to deploy by marines with moderate(>1) Explosives skills", true, 1, true, 10 );
 ConVar asw_skill_laser_mines_expert( "asw_skill_laser_mines_expert", "3", FCVAR_REPLICATED | FCVAR_CHEAT, "Number of laser mines to deploy by marines with expert(>3) Explosives skills. Currently only Jaeger have it", true, 1, true, 10 );
-
-static float MuzzleFlashScale( int iSkillPoints )
-{
-	return asw_skill_muzzle_flash_base.GetFloat() + asw_skill_muzzle_flash_step.GetFloat() * iSkillPoints;
-}
 
 CASW_Marine_Skills::CASW_Marine_Skills()
 {
@@ -169,14 +170,13 @@ CASW_Marine_Skills::CASW_Marine_Skills()
 // accessor functions to get at any game variables that are based on a skill
 float CASW_Marine_Skills::GetSkillBasedValueByMarine( CASW_Marine *pMarine, ASW_Skill iSkillIndex, int iSubSkill )
 {
-	Assert( pMarine );
 	if ( !pMarine )
-		return 0;
+		return GetSkillBasedValue( NULL, iSkillIndex, iSubSkill, 0 );
 
 	CASW_Marine_Profile *pProfile = pMarine->GetMarineProfile();
 	Assert( pProfile );
 	if ( !pProfile )
-		return 0;
+		return GetSkillBasedValue( NULL, iSkillIndex, iSubSkill, 0 );
 
 	return GetSkillBasedValue( pProfile, iSkillIndex, iSubSkill );
 }
@@ -185,7 +185,7 @@ float CASW_Marine_Skills::GetSkillBasedValueByMarineResource( CASW_Marine_Resour
 {
 	Assert( pMarineResource );
 	if ( !pMarineResource )
-		return 0;
+		return GetSkillBasedValue( NULL, iSkillIndex, iSubSkill, 0 );
 
 	return GetSkillBasedValue( pMarineResource->GetProfile(), iSkillIndex, iSubSkill );
 }
@@ -194,28 +194,7 @@ float CASW_Marine_Skills::GetSkillBasedValue( CASW_Marine_Profile *pProfile, ASW
 {
 	if ( iSkillPoints == -1 )
 	{
-		CASW_Game_Resource *pGameResource = ASWGameResource();
-		Assert( pGameResource );
-		Assert( MarineProfileList() );
-		Assert( pProfile );
-		if ( !pGameResource || !MarineProfileList() || ( !pProfile ) )
-			return 0;
-
-		int iProfileIndex = pProfile->m_ProfileIndex;
-		Assert( iProfileIndex >= 0 && iProfileIndex < MarineProfileList()->m_NumProfiles );
-		if ( iProfileIndex < 0 || iProfileIndex >= MarineProfileList()->m_NumProfiles )
-			return 0;
-
-		int nSkillSlot = pGameResource->GetSlotForSkill( iProfileIndex, iSkillIndex );
-		if ( nSkillSlot == -1 )
-		{
-			iSkillPoints = 0;		// assume zero skill points if the marine doesn't have this skill
-		}
-		else
-		{
-			// get the skill points from the ASWGameResource
-			iSkillPoints = pGameResource->GetMarineSkill( iProfileIndex, nSkillSlot );
-		}
+		iSkillPoints = GetSkillPoints( pProfile, iSkillIndex );
 	}
 
 	Assert( iSkillPoints >= 0 );
@@ -245,7 +224,7 @@ float CASW_Marine_Skills::GetSkillBasedValue( CASW_Marine_Profile *pProfile, ASW
 		case ASW_MARINE_SUBSKILL_VINDICATOR_PELLETS:
 			return asw_skill_vindicator_pellets_base.GetFloat() + asw_skill_vindicator_pellets_step.GetFloat() * iSkillPoints;
 		case ASW_MARINE_SUBSKILL_VINDICATOR_MUZZLE:
-			return MuzzleFlashScale( iSkillPoints );
+			return asw_skill_muzzle_flash_base.GetFloat() + asw_skill_muzzle_flash_step.GetFloat() * iSkillPoints;
 		default:
 			Assert( 0 );
 			return 0.0f;
@@ -256,7 +235,7 @@ float CASW_Marine_Skills::GetSkillBasedValue( CASW_Marine_Profile *pProfile, ASW
 		case ASW_MARINE_SUBSKILL_AUTOGUN_DMG:
 			return asw_skill_autogun_base.GetFloat() + asw_skill_autogun_step.GetFloat() * iSkillPoints;
 		case ASW_MARINE_SUBSKILL_AUTOGUN_MUZZLE:
-			return MuzzleFlashScale( iSkillPoints );
+			return asw_skill_muzzle_flash_base.GetFloat() + asw_skill_muzzle_flash_step.GetFloat() * iSkillPoints;
 		default:
 			Assert( 0 );
 			return 0.0f;
@@ -286,6 +265,8 @@ float CASW_Marine_Skills::GetSkillBasedValue( CASW_Marine_Profile *pProfile, ASW
 			return asw_skill_healing_amp_gun_charges_base.GetFloat() + asw_skill_healing_amp_gun_charges_step.GetFloat() * iSkillPoints;
 		case ASW_MARINE_SUBSKILL_HEALING_MEDKIT_HPS:
 			return asw_skill_healing_medkit_hps_base.GetFloat() + asw_skill_healing_medkit_hps_step.GetFloat() * iSkillPoints;
+		case ASW_MARINE_SUBSKILL_MEDRIFLE_HEALING_CHARGES:
+			return asw_skill_healing_medrifle_healing_charges_base.GetFloat() + asw_skill_healing_medrifle_healing_charges_step.GetFloat() * iSkillPoints;
 		default:
 			Assert( 0 );
 			return 0.0f;
@@ -368,9 +349,13 @@ float CASW_Marine_Skills::GetSkillBasedValue( CASW_Marine_Profile *pProfile, ASW
 		case ASW_MARINE_SUBSKILL_ACCURACY_MEDRIFLE_DMG:
 			return asw_skill_accuracy_medrifle_dmg_base.GetFloat() + asw_skill_accuracy_medrifle_dmg_step.GetFloat() * iSkillPoints;
 		case ASW_MARINE_SUBSKILL_ACCURACY_MUZZLE:
-			return MuzzleFlashScale( iSkillPoints );
+			return asw_skill_muzzle_flash_base.GetFloat() + asw_skill_muzzle_flash_step.GetFloat() * iSkillPoints;
 		case ASW_MARINE_SUBSKILL_ACCURACY_DEAGLE_DMG:
 			return asw_skill_accuracy_deagle_dmg_base.GetFloat() + asw_skill_accuracy_deagle_dmg_step.GetFloat() * iSkillPoints;
+		case ASW_MARINE_SUBSKILL_ACCURACY_AR2_DMG:
+			return asw_skill_accuracy_ar2_dmg_base.GetFloat() + asw_skill_accuracy_ar2_dmg_step.GetFloat() * iSkillPoints;
+		case ASW_MARINE_SUBSKILL_ACCURACY_DEVASTATOR_DMG:
+			return asw_skill_accuracy_devastator_dmg_base.GetFloat() + asw_skill_accuracy_devastator_dmg_step.GetFloat() * iSkillPoints;
 		default:
 			Assert( 0 );
 			return 0.0f;
@@ -564,6 +549,43 @@ float CASW_Marine_Skills::GetLowestSkillValueNearby( const Vector &pos, float Ma
 	return fBestSkill;
 }
 
+#ifdef GAME_DLL
+CASW_Marine *CASW_Marine_Skills::CheckSkillChanceNearby( CBaseEntity *pAlly, const Vector &pos, float MaxDistance, ASW_Skill iSkillIndex, int iSubSkill )
+{
+	CASW_Game_Resource *pGameResource = ASWGameResource();
+	Assert( pGameResource );
+	Assert( MarineProfileList() );
+	if ( !pGameResource || !MarineProfileList() )
+		return NULL;
+
+	MaxDistance = Square( MaxDistance );
+
+	// find the live marine with the highest value for this skill
+	for ( int i = 0; i < pGameResource->GetMaxMarineResources(); i++ )
+	{
+		CASW_Marine_Resource *pMR = pGameResource->GetMarineResource( i );
+		if ( pMR && pMR->GetHealthPercent() > 0 && pMR->IsAlive() && pMR->GetProfile() && pMR->GetMarineEntity() )
+		{
+			if ( pAlly && pMR->GetMarineEntity()->IRelationType( pAlly ) != D_LI )
+				continue;
+
+			// check he's near enough
+			float dist = pMR->GetMarineEntity()->GetAbsOrigin().DistToSqr( pos );
+			if ( dist > MaxDistance )
+				continue;
+
+			float skill = GetSkillBasedValueByMarineResource( pMR, iSkillIndex, iSubSkill );
+			if ( skill > 0 && skill > RandomFloat() )
+			{
+				return pMR->GetMarineEntity();
+			}
+		}
+	}
+
+	return NULL;
+}
+#endif
+
 static const char *const s_szSkillImageName[ASW_NUM_MARINE_SKILLS] =
 {
 #define ENUM_ITEM( name, icon, title, desc, max ) icon,
@@ -620,6 +642,30 @@ const char *CASW_Marine_Skills::GetSkillDescription( ASW_Skill nSkillIndex )
 	return s_szSkillDescription[nSkillIndex];
 }
 #endif
+
+int CASW_Marine_Skills::GetSkillPoints( CASW_Marine_Profile *pProfile, ASW_Skill iSkillIndex )
+{
+	CASW_Game_Resource *pGameResource = ASWGameResource();
+	Assert( pGameResource );
+	Assert( MarineProfileList() );
+	Assert( pProfile );
+	if ( !pGameResource || !MarineProfileList() || ( !pProfile ) )
+		return 0;
+
+	int iProfileIndex = pProfile->m_ProfileIndex;
+	Assert( iProfileIndex >= 0 && iProfileIndex < MarineProfileList()->m_NumProfiles );
+	if ( iProfileIndex < 0 || iProfileIndex >= MarineProfileList()->m_NumProfiles )
+		return 0;
+
+	int nSkillSlot = pGameResource->GetSlotForSkill( iProfileIndex, iSkillIndex );
+	if ( nSkillSlot != -1 )
+	{
+		// get the skill points from the ASWGameResource
+		return pGameResource->GetMarineSkill( iProfileIndex, nSkillSlot );
+	}
+
+	return 0; // assume zero skill points if the marine doesn't have this skill
+}
 
 int CASW_Marine_Skills::GetMaxSkillPoints( ASW_Skill nSkillIndex )
 {

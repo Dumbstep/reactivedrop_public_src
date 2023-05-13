@@ -80,15 +80,21 @@ float UTIL_ASW_CalcFastDoorHackTime(int iNumRows, int iNumColumns, int iNumWires
 	class CASW_ViewNPCRecipientFilter : public CRecipientFilter
 	{
 	public:
-		CASW_ViewNPCRecipientFilter( CASW_Inhabitable_NPC *pNPC );
+		CASW_ViewNPCRecipientFilter();
+		CASW_ViewNPCRecipientFilter( CASW_Inhabitable_NPC *pNPC, bool bSendToRecorders = true );
+
+		void AddRecipientsByViewNPC( CASW_Inhabitable_NPC *pNPC, bool bSendToRecorders = true );
 	};
+
+	void UTIL_RD_HitConfirm( CBaseEntity *pTarget, int iHealthBefore, const CTakeDamageInfo &info );
 #else
 	bool UTIL_ASW_ClientsideGib(C_BaseAnimating* pEnt);
 	CNewParticleEffect *UTIL_ASW_CreateFireEffect( C_BaseEntity *pEntity );
-	void TryLocalize(const char *token, wchar_t *unicode, int unicodeBufferSizeInBytes);
 	void UTIL_ASW_ClientFloatingDamageNumber( const CTakeDamageInfo &info );
-	void UTIL_ASW_ParticleDamageNumber( C_BaseEntity *pEnt, Vector vecPos, int iDamage, int iDmgCustom, float flScale, bool bRandomVelocity );
+	HPARTICLEFFECT UTIL_ASW_ParticleDamageNumber( C_BaseEntity *pEnt, Vector vecPos, int iDamage, int iDmgCustom, float flScale, bool bRandomVelocity, bool bSkipRampUp );
 #endif
+
+void TryLocalize( const char *token, wchar_t *unicode, int unicodeBufferSizeInBytes );
 
 void ASW_TransmitShakeEvent( CASW_Inhabitable_NPC *pNPC, float localAmplitude, float frequency, float duration, ShakeCommand_t eCommand, const Vector &direction = Vector(0,0,0) );
 void ASW_TransmitShakeEvent( CASW_Inhabitable_NPC *pNPC, const ScreenShake_t &shake );
@@ -124,6 +130,8 @@ bool UTIL_ASW_CommanderLevelAtLeast( C_ASW_Player *pPlayer, int iLevel, int iPro
 bool UTIL_ASW_CommanderLevelAtLeast( CASW_Player *pPlayer, int iLevel, int iPromotion = 0 );
 #endif
 
+bool UTIL_RD_LoadKeyValues( KeyValues *pKV, const char *resourceName, const CUtlBuffer &buf );
+bool UTIL_RD_LoadKeyValuesFromFile( KeyValues *pKV, IFileSystem *pFileSystem, const char *szFileName, const char *szPath = NULL );
 typedef void (*UTIL_RD_LoadAllKeyValuesCallback)( const char *pszPath, KeyValues *pKV, void *pUserData );
 void UTIL_RD_LoadAllKeyValues( const char *fileName, const char *pPathID, const char *pKVName, UTIL_RD_LoadAllKeyValuesCallback callback, void *pUserData );
 
@@ -136,5 +144,10 @@ const char *UTIL_RD_HashToCaption( CRC32_t hash );
 const char *UTIL_RD_EResultToString( EResult eResult );
 
 const wchar_t *UTIL_RD_CommaNumber( int64_t num );
+
+int UTIL_RD_IndexToBit( unsigned bits, int n );
+int UTIL_RD_BitToIndex( unsigned bits, int n );
+
+void CmdMsg( _Printf_format_string_ const char *pszFormat, ... );
 
 #endif // _INCLUDE_ASW_UTIL_SHARED_H

@@ -66,7 +66,7 @@ CExperienceReport::CExperienceReport( vgui::Panel *parent, const char *name ) : 
 	m_pCheatsUsedLabel->SetVisible( ASWGameRules() && ASWGameRules()->m_bCheated.Get() );
 
 	m_pUnofficialMapLabel = new vgui::Label( this, "UnofficialMapLabel", "#asw_unofficial_map" );
-	m_pUnofficialMapLabel->SetVisible( false ); //GetClientModeASW() && !GetClientModeASW()->IsOfficialMap() );
+	m_pUnofficialMapLabel->SetVisible( false );
 
 	m_pLeaderboard = new CReactiveDrop_VGUI_Leaderboard_Panel( this, "Leaderboard" );
 
@@ -198,7 +198,7 @@ void CExperienceReport::OnThink()
 		m_pCheatsUsedLabel->SetVisible( bShowCheatsLabel );
 		InvalidateLayout();
 	}
-	bool bShowUnofficialMapLabel = false; //( GetClientModeASW() && !GetClientModeASW()->IsOfficialMap() );
+	bool bShowUnofficialMapLabel = false;
 	if ( bShowUnofficialMapLabel != m_pUnofficialMapLabel->IsVisible() )
 	{
 		m_pUnofficialMapLabel->SetVisible( bShowUnofficialMapLabel );
@@ -208,6 +208,11 @@ void CExperienceReport::OnThink()
 	// monitor local player's experience bar to see when it loops
 	float flBarMin = m_pExperienceBar[ 0 ]->m_pExperienceBar->GetBarMin();
 	bool bCapped = false;
+
+	if ( BaseModUI::CBaseModPanel::GetSingleton().GetWindow( BaseModUI::WT_ITEMSHOWCASE ) )
+	{
+		m_bPendingUnlockSequence = true;
+	}
 	
 	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
 	if ( pPlayer )
@@ -282,13 +287,13 @@ void CExperienceReport::OnThink()
 		if ( bShowAnniversaryBonus )
 			flTotalXP = floorf( flTotalXP ) * 2;
 
+		m_pXPBonusEventScaleNumber->SetText( "x2" );
+		m_pXPBonusEventScaleTitle->SetText( "#rd_xp_bonus_anniversary" );
+
 		if ( bShowAnniversaryBonus != m_pXPBonusEventScaleNumber->IsVisible() )
 		{
 			m_pXPBonusEventScaleNumber->SetVisible( bShowAnniversaryBonus );
 			m_pXPBonusEventScaleTitle->SetVisible( bShowAnniversaryBonus );
-
-			m_pXPBonusEventScaleNumber->SetText( "x2" );
-			m_pXPBonusEventScaleTitle->SetText( "#rd_xp_bonus_anniversary" );
 
 			InvalidateLayout();
 		}
@@ -330,7 +335,6 @@ void CExperienceReport::OnThink()
 				m_iPlayerLevel++;
 				m_pWeaponUnlockPanel->SetDetails( m_pszWeaponUnlockClass, m_iPlayerLevel );
 
-				
 				if ( pComplete )
 				{
 					pComplete->ShowQueuedUnlockPanels();

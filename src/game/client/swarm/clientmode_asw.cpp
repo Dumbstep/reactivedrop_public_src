@@ -54,7 +54,7 @@
 #include "c_gib.h"
 #include "asw_hud_chat.h"
 #include "game_timescale_shared.h"
-
+#include "rd_demo_utils.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -66,6 +66,7 @@
 #define INFESTED_CC_FADE_TIME 0.5f
 
 extern bool IsInCommentaryMode( void );
+extern void UpdateHitConfirmRotation();
 
 extern ConVar mat_object_motion_blur_enable;
 
@@ -93,6 +94,11 @@ ConVar dub_fov_desired("dub_fov_desired", "0", FCVAR_NONE, "Sets the base field-
 
 ConVar asw_instant_restart_cleanup( "asw_instant_restart_cleanup", "1", FCVAR_NONE, "remove corpses, gibs, and decals when performing an instant restart" );
 ConVar cl_auto_restart_mission( "cl_auto_restart_mission", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "After failed mission, if you are the leader will auto restart on the client side." );
+extern ConVar rd_auto_record_stop_on_retry;
+extern ConVar asw_floating_number_type;
+
+// SourceMod wants this ConVar to exist and be empty or it spams the log any time USERINFO ConVars change. Doesn't do anything.
+ConVar networkid_force( "networkid_force", "", FCVAR_DEVELOPMENTONLY | FCVAR_USERINFO );
 
 vgui::HScheme g_hVGuiCombineScheme = 0;
 
@@ -354,12 +360,11 @@ IClientMode *GetFullscreenClientMode( void )
 // gives the current marine some 'poison blur' (causes motion blur over his screen for the duration, making it harder to see)
 static void __MsgFunc_ASWBlur( bf_read &msg )
 {
-	float duration = msg.ReadShort() * 0.1f;
-	
-	C_ASW_Marine *marine = C_ASW_Marine::GetViewMarine();
-	if ( marine )
+	C_ASW_Marine *pMarine = C_ASW_Marine::AsMarine( ClientEntityList().GetBaseEntity( msg.ReadShort() ) );
+	float flDuration = msg.ReadShort() * 0.1f;
+	if ( pMarine )
 	{
-		marine->SetPoisoned( duration );
+		pMarine->SetPoisoned( flDuration );
 	}
 }
 
@@ -556,7 +561,6 @@ void ASW_Handle_Fixed_Input( bool active )
 	s_bFixedInputActive = active;
 }
 
-ConVar asw_camera_shake( "asw_camera_shake", "1", FCVAR_NONE, "Enable camera shakes" );
 ConVar asw_fix_cam( "asw_fix_cam", "-1", FCVAR_CHEAT, "Set to 1 to fix the camera in place." );
 
 void ClientModeASW::OverrideView( CViewSetup *pSetup )
@@ -575,10 +579,8 @@ void ClientModeASW::OverrideView( CViewSetup *pSetup )
 		int omx, omy;
 		ASWInput()->ASW_GetCameraLocation(pPlayer, pSetup->origin, pSetup->angles, omx, omy, true);
 #ifdef CLIENT_DLL
-		if ( asw_camera_shake.GetBool() )
-		{
-			GetViewEffects()->ApplyShake( pSetup->origin, pSetup->angles, 1.0 );
-		}
+
+		GetViewEffects()->ApplyShake( pSetup->origin, pSetup->angles, 1.0 );
 #endif
 	}
 	else if (::input->CAM_IsOrthographic())
@@ -612,29 +614,6 @@ void ClientModeASW::OverrideView( CViewSetup *pSetup )
 		ASW_Handle_Fixed_Input( vgui::input()->IsKeyDown( KEY_LSHIFT ) && vgui::input()->IsMouseDown( MOUSE_LEFT ) );
 	}
 }
-
-class MapDescription_t
-{
-public:
-	MapDescription_t( const char *szMapName, unsigned int nFileSize, unsigned int nEntityStringLength ) :
-		m_szMapName( szMapName ), m_nFileSize( nFileSize ), m_nEntityStringLength( nEntityStringLength )
-	{
-	}
-	const char *m_szMapName;
-	unsigned int m_nFileSize;
-	unsigned int m_nEntityStringLength;
-};
-
-static MapDescription_t s_OfficialMaps[]=
-{
-	MapDescription_t( "maps/asi-jac1-landingbay_01.bsp",	45793676, 412634 ),
-	MapDescription_t( "maps/asi-jac1-landingbay_02.bsp",	25773204, 324141 ),
-	MapDescription_t( "maps/asi-jac2-deima.bsp",			44665212, 345367 ),
-	MapDescription_t( "maps/asi-jac3-rydberg.bsp",			27302616, 359228 ),
-	MapDescription_t( "maps/asi-jac4-residential.bsp",		31244468, 455840 ),
-	MapDescription_t( "maps/asi-jac6-sewerjunction.bsp",	18986884, 287554 ),
-	MapDescription_t( "maps/asi-jac7-timorstation.bsp",		37830468, 506193 ),
-};
 
 void ClientModeASW::LevelInit( const char *newmap )
 {
@@ -746,25 +725,14 @@ void ClientModeASW::LevelInit( const char *newmap )
 		Briefing()->ResetLastChatterTime();
 	}
 
+#ifdef _DEBUG
 	const char *szMapName = engine->GetLevelName();
 	unsigned int nFileSize = g_pFullFileSystem->Size( szMapName, "GAME" );
 
 	unsigned int nEntityLen = Q_strlen( engine->GetMapEntitiesString() );
 
-	m_bOfficialMap = false;
-	for ( int i = 0; i < NELEMS( s_OfficialMaps ); i++ )
-	{
-		if ( !Q_stricmp( szMapName, s_OfficialMaps[i].m_szMapName ) )
-		{
-			m_bOfficialMap = ( ( s_OfficialMaps[i].m_nFileSize == nFileSize ) && ( s_OfficialMaps[i].m_nEntityStringLength == nEntityLen ) );
-			break;
-		}
-	}
-
-#ifdef _DEBUG
 	Msg( "map %s file size is %d\n", szMapName, nFileSize );
 	Msg( "    entity string is %d chars long\n", nEntityLen );
-	Msg( "Official map = %d\n", m_bOfficialMap );
 #endif
 }
 
@@ -817,7 +785,13 @@ void ClientModeASW::FireGameEvent( IGameEvent *event )
 
 		// re-init some systems
 		GameTimescale()->LevelInitPostEntity();
+		if ( rd_auto_record_stop_on_retry.GetBool() )
+		{
+			g_RD_Auto_Record_System.LevelShutdownPreEntity();
+			g_RD_Auto_Record_System.LevelInitPostEntity();
+		}
 
+		m_bTechFailure = false;
 		m_aAchievementsEarned.Purge();
 		m_aAwardedExperience.Purge();
 
@@ -1133,9 +1107,7 @@ void ClientModeASW::Update( void )
 
 	engine->SetMouseWindowLock( ASWGameRules() && ASWGameRules()->GetGameState() == ASW_GS_INGAME && !enginevgui->IsGameUIVisible() );
 
-#ifndef _X360
-
-#endif
+	UpdateHitConfirmRotation();
 }
 
 void ClientModeASW::DoPostScreenSpaceEffects( const CViewSetup *pSetup )

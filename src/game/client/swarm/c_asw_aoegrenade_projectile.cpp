@@ -64,11 +64,10 @@ IMPLEMENT_CLIENTCLASS_DT( C_ASW_AOEGrenade_Projectile, DT_ASW_AOEGrenade_Project
 	RecvPropFloat( RECVINFO( m_flScale ) ),
 	RecvPropBool( RECVINFO( m_bSettled ) ),
 	RecvPropFloat( RECVINFO( m_flRadius ) ),
+	RecvPropDataTable( RECVINFO_DT( m_ProjectileData ), 0, &REFERENCE_RECV_TABLE( DT_RD_ProjectileData ) ),
 END_RECV_TABLE()
 
-// aoegrenades maintain a linked list of themselves, for quick checking for autoaim
-C_ASW_AOEGrenade_Projectile* g_pHeadAOEGrenade = NULL;
-
+IMPLEMENT_AUTO_LIST( IASW_AOEGrenade_Projectile_List );
 
 //-----------------------------------------------------------------------------
 // Constructor
@@ -433,8 +432,6 @@ void C_ASW_AOEGrenade_Projectile::ClientThink( void )
 	C_BaseAnimating *pSphere = static_cast<C_BaseAnimating*>( m_hSphereModel.Get() );
 	if ( pSphere )
 	{
-		float	flTimeLeft = m_flTimeBurnOut - gpGlobals->curtime;
-
 		float flScale = GetSphereScale();
 
 		if ( m_flTimeCreated > 0 && ( gpGlobals->curtime - m_flTimeCreated ) < 0.25f )

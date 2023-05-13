@@ -291,12 +291,10 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 			{
 				pPlayer->AwardAchievement( ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_BIO );
 			}
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 			else if ( !Q_stricmp( pszCampaignName, "rd_accident32" ) )
 			{
 				pPlayer->AwardAchievement( ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_ACC );
 			}
-#endif
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 			else if ( !Q_stricmp( pszCampaignName, "rd_adanaxis" ) )
 			{
@@ -317,7 +315,7 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 	
 	// Clear Firing - awarded for having no friendly fire incidents
 	if (pMR->m_fFriendlyFireDamageDealt <= 0 && ASWGameRules()->GetMissionSuccess() && pMR->m_iAliensKilled >= 25
-		&& pMR->m_iPlayerShotsFired >= 25 )
+		&& pMR->m_iPlayerShotsFired >= 25 && pMR->GetHealthPercent() > 0 )
 	{
 		if (ASWGameResource() && ASWGameResource()->GetNumMarines(NULL) >= 4)
 		{
@@ -335,7 +333,7 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 		AwardSingleMedalTo(MEDAL_EXPLOSIVES_MERIT, pMR);
 
 	// Perfect - awarded for finishing a mission taking no damage
-	if ( !pMR->m_bHurt && pMR->m_iAliensKilled >= 25 && ASWGameRules()->GetSkillLevel() >= 2 && ASWGameRules()->GetMissionSuccess() && !ASWGameRules()->m_bChallengeActiveThisCampaign )
+	if ( !pMR->m_bHurt && pMR->m_iAliensKilled >= 25 && ASWGameRules()->GetSkillLevel() >= 2 && ASWGameRules()->GetMissionSuccess() && !ASWGameRules()->m_bChallengeActiveThisMission )
 	{
 		AwardSingleMedalTo( MEDAL_PERFECT, pMR );
 		pPlayer->AwardAchievement( ACHIEVEMENT_ASW_NO_DAMAGE_TAKEN );
@@ -543,14 +541,22 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 	// awarded for killing X aliens with barrels
 	if ( pMR->m_iBarrelKills >= asw_medal_barrel_kills.GetInt() )
 	{
-		AwardSingleMedalTo( MEDAL_COLLATERAL_DAMAGE, pMR );		
+		AwardSingleMedalTo( MEDAL_COLLATERAL_DAMAGE, pMR );
+	}
+
+	if ( !Q_stricmp( STRING( gpGlobals->mapname ), "rd-ht-marine_academy" ) )
+	{
+		if ( pMR->m_iScore >= 100 )
+		{
+			pPlayer->AwardAchievement( ACHIEVEMENT_RD_MA_SCORE_POINTS );
+		}
 	}
 	
 	if ( ASWGameRules()->GetMissionSuccess() )
 	{
-		if ( !Q_stricmp( STRING(gpGlobals->mapname), "rd-nh03_groundworklabs") )
+		if ( !Q_stricmp( STRING( gpGlobals->mapname ), "rd-nh03_groundworklabs" ) )
 		{
-			CASW_Objective *pOptional = assert_cast<CASW_Objective *>( gEntList.FindEntityByName( NULL, "Objectif_8" ) );
+			CASW_Objective *pOptional = assert_cast< CASW_Objective * >( gEntList.FindEntityByName( NULL, "Objectif_8" ) );
 			Assert( pOptional && pOptional->IsObjectiveOptional() );
 			if ( pOptional && pOptional->IsObjectiveComplete() )
 			{
@@ -612,6 +618,36 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 				AwardSingleMedalTo(MEDAL_SPEED_RUN_MINE, pMR);
 				pPlayer->AwardAchievement( ACHIEVEMENT_ASW_SPEEDRUN_TIMOR );
 			}
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission1" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_BONUS_SPC );
+			}
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission2" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_BONUS_RAPTURE );
+			}
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission3" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_BONUS_BUNKER );
+			}
+#ifdef RD_BONUS_MISSION_ACHIEVEMENTS
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission4" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_UNSPLIT_JACOBS_1_2 );
+			}
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission5" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_UNSPLIT_PARANOIA_2_3 );
+			}
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission6" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_UNSPLIT_PARANOIA_4_5 );
+			}
+			else if ( !Q_stricmp( mapName, "rd-bonus_mission7" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_UNSPLIT_AREA9800_2_3 );
+			}
+#endif
 			else if ( !Q_stricmp( mapName, "rd-ocs1storagefacility" ) )
 			{
 				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_OCS_STORAGE_FACILITY );
@@ -768,7 +804,6 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 			{
 				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_BIO_BIOGEN_LABS );
 			}
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 			else if ( !Q_stricmp( mapName, "rd-acc1_infodep" ) )
 			{
 				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_ACC_INFODEP );
@@ -793,7 +828,10 @@ void CASW_Medals::AwardMedalsTo(CASW_Marine_Resource *pMR)
 			{
 				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_ACC_LABRUINS );
 			}
-#endif
+			else if ( !Q_stricmp( mapName, "rd-acc_complex" ) )
+			{
+				pPlayer->AwardAchievement( ACHIEVEMENT_RD_SPEEDRUN_ACC_COMPLEX );
+			}
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 			else if ( !Q_stricmp( mapName, "rd-ada_sector_a9" ) )
 			{

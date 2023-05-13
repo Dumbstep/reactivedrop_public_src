@@ -20,11 +20,6 @@
 #define RD_NUM_WORKSHOP_CAMPAIGN_TAGS 0
 #define RD_NUM_WORKSHOP_MISSION_TAGS 5
 
-#if RD_NUM_WORKSHOP_CAMPAIGN_TAGS
-extern const char *const g_RDWorkshopCampaignTags[RD_NUM_WORKSHOP_CAMPAIGN_TAGS];
-#endif
-extern const char *const g_RDWorkshopMissionTags[RD_NUM_WORKSHOP_MISSION_TAGS];
-
 namespace BaseModUI
 {
 	class AddonListItem;
@@ -34,6 +29,8 @@ namespace BaseModUI
 	class ReactiveDropWorkshop;
 	class ReactiveDropWorkshopListItem;
 }
+
+class CPackedStore;
 
 class CReactiveDropWorkshop : public CAutoGameSystem
 {
@@ -47,16 +44,41 @@ public:
 #else
 		m_bWorkshopSetupCompleted( false ),
 #endif
-		m_hEnabledAddonsQuery( k_UGCQueryHandleInvalid ),
-		m_hFavoritedAddonsQuery( k_UGCQueryHandleInvalid ) {}
+		m_hEnabledAddonsQuery( k_UGCQueryHandleInvalid )
+	{
+	}
+
+#if RD_NUM_WORKSHOP_CAMPAIGN_TAGS
+	static const char *const s_RDWorkshopCampaignTags[RD_NUM_WORKSHOP_CAMPAIGN_TAGS];
+#endif
+	static const char *const s_RDWorkshopMissionTags[RD_NUM_WORKSHOP_MISSION_TAGS];
 
 	virtual bool Init();
 	void InitNonWorkshopAddons();
 	void OnMissionStart();
 	virtual void LevelInitPostEntity();
 	virtual void LevelShutdownPreEntity();
+
+	void PrepareForUnloadCacheClear();
+	void ClearCaches( const char *szReason );
+	void GetActiveAddons( CUtlVector<PublishedFileId_t> &active );
+	bool UpdateAndLoadAddon( PublishedFileId_t id, bool bHighPriority = false, bool bUnload = false );
+	void RealLoadAddon( PublishedFileId_t id );
+	bool LoadAddon( PublishedFileId_t id, bool bFromDownload );
+	void RealUnloadAddon( PublishedFileId_t id );
+	void UnloadAddon( PublishedFileId_t id );
+	void AddToFileNameAddonMapping( PublishedFileId_t id, const char *szFileName, CRC32_t nFileHash );
+	void AddToFileNameAddonMapping( PublishedFileId_t id, CPackedStore &vpk );
+	void AddToFileNameAddonMapping( PublishedFileId_t id, const char *szDirName, IFileSystem *pFileSystem, const char *szPrefix, CUtlBuffer &buf );
+	void AddToFileNameAddonMapping( PublishedFileId_t id, const char *szDirName, IFileSystem *pFileSystem );
+	void SaveDisabledAddons();
+	void DumpWorkshopMapping( const char *szPrefix );
+	void DumpWorkshopConflicts();
+
 #ifdef GAME_DLL
 	void SetupThink();
+	bool DedicatedServerWorkshopSetup();
+	void EnableServerWorkshopItem( PublishedFileId_t id );
 	bool m_bWorkshopSetupCompleted;
 #endif
 
@@ -137,15 +159,12 @@ private:
 	CUtlVector<WorkshopItem_t> m_EnabledAddons;
 	UGCQueryHandle_t m_hEnabledAddonsQuery;
 	CUtlVector<PublishedFileId_t> m_EnabledAddonsForQuery;
-	int m_iFavoritedAddonsPage;
-	void RequestNextFavoritedAddonsPage();
-	UGCQueryHandle_t m_hFavoritedAddonsQuery;
 	int m_iPublishedAddonsPage;
 	bool m_bHaveAllPublishedAddons;
 	void RequestNextPublishedAddonsPage();
 	UGCQueryHandle_t m_hPublishedAddonsQuery;
 public:
-	bool IsSubscribedToFile( PublishedFileId_t nPublishedFileId );
+	bool IsSubscribedToFile( PublishedFileId_t nPublishedFileId, bool bIncludeTemporary = true );
 	void SetSubscribedToFile( PublishedFileId_t nPublishedFileId, bool bSubscribe );
 	bool IsAddonEnabled( PublishedFileId_t nPublishedFileId );
 	void SetAddonEnabled( PublishedFileId_t nPublishedFileId, bool bEnabled );
@@ -166,7 +185,37 @@ public:
 	int FindAddonConflicts( PublishedFileId_t nPublishedFileId, CUtlVector<const AddonFileConflict_t *> *pConflicts );
 
 	PublishedFileId_t AddonForFileSystemPath( const char *szPath );
+	void GetRequiredAddons( CUtlVector<PublishedFileId_t> &addons, bool bHighPriorityOnly = true );
+#ifdef CLIENT_DLL
+	CUtlVector<PublishedFileId_t> m_TemporaryAddons;
+	void CheckForRequiredAddons();
+	bool MaybeAddTemporaryAddon( PublishedFileId_t id, bool bHighPriority );
+	void UnloadTemporaryAddons();
+	void RerunAutoExecScripts();
+#endif
 	const wchar_t *AddonName( PublishedFileId_t nPublishedFileId );
+
+	struct PublishedFileIdPair
+	{
+		PublishedFileId_t First;
+		PublishedFileId_t Second;
+
+		bool operator==( const PublishedFileIdPair &other ) const
+		{
+			return First == other.First && Second == other.Second;
+		}
+	};
+
+	struct LoadedAddonPath_t
+	{
+		PublishedFileId_t ID;
+		CUtlString Path;
+
+		bool operator==( const LoadedAddonPath_t &other ) const
+		{
+			return ID == other.ID && Path == other.Path;
+		}
+	};
 
 private:
 	friend class BaseModUI::Addons;
@@ -176,6 +225,23 @@ private:
 	friend class BaseModUI::ReactiveDropWorkshop;
 	friend class BaseModUI::ReactiveDropWorkshopListItem;
 	friend class CRD_VGUI_Workshop_Download_Progress;
+
+	bool m_bStartingUp;
+	CUtlStringList m_NonWorkshopAddons;
+	CUtlVector<LoadedAddonPath_t> m_LoadedAddonPaths;
+	CUtlStringMap<PublishedFileId_t> m_FileNameToAddon;
+	CUtlStringMap<CRC32_t> m_FileNameToCRC;
+	CUtlVectorAutoPurge<AddonFileConflict_t *> m_FileConflicts;
+	CUtlVector<PublishedFileIdPair> m_AddonAllowOverride;
+#ifdef CLIENT_DLL
+	CUtlVector<PublishedFileId_t> m_DelayedLoadAddons;
+	CUtlVector<PublishedFileId_t> m_DelayedUnloadAddons;
+	bool m_bRestartSoundEngine;
+#else
+	CUtlVector<PublishedFileId_t> m_ServerWorkshopAddons;
+	bool m_bAnyServerUpdates;
+#endif
+	CUtlVector<PublishedFileId_t> m_DisabledAddons;
 
 #ifdef CLIENT_DLL
 	STEAM_CALLBACK( CReactiveDropWorkshop, ScreenshotReadyCallback, ScreenshotReady_t );

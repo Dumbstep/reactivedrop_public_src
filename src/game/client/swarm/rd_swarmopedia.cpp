@@ -5,6 +5,8 @@
 #include "asw_equipment_list.h"
 #include "asw_weapon_parse.h"
 #include "asw_weapon_shared.h"
+#include "ammodef.h"
+#include "asw_ammo_drop_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -101,8 +103,9 @@ Collection::Collection( const Collection &copy )
 	Helpers::CopyVector( Weapons, copy.Weapons );
 }
 
-void Collection::ReadFromFiles()
+void Collection::ReadFromFiles( Subset subset )
 {
+	ReadSubset = subset;
 	UTIL_RD_LoadAllKeyValues( SWARMOPEDIA_PATH, "GAME", "Swarmopedia", &ReadHelper, this );
 }
 
@@ -117,11 +120,27 @@ void Collection::ReadFromFile( const char *pszPath, KeyValues *pKV )
 	{
 		if ( FStrEq( pEntry->GetName(), "ALIEN" ) )
 		{
-			Helpers::AddMerge( Aliens, pszPath, pEntry );
+			if ( int( ReadSubset ) & int( Subset::Aliens ) )
+			{
+				Helpers::AddMerge( Aliens, pszPath, pEntry );
+			}
 		}
 		else if ( FStrEq( pEntry->GetName(), "WEAPON" ) )
 		{
-			Helpers::AddMerge( Weapons, pszPath, pEntry );
+			if ( int( ReadSubset ) & int( Subset::Weapons ) )
+			{
+				if ( Weapon *pWeapon = Helpers::ReadFromFile<Weapon>( pszPath, pEntry ) )
+				{
+					if ( int( ReadSubset ) & int( pWeapon->Extra ? Subset::ExtraWeapons : Subset::RegularWeapons ) )
+					{
+						Helpers::AddMerge( Weapons, pWeapon );
+					}
+					else
+					{
+						delete pWeapon;
+					}
+				}
+			}
 		}
 		else
 		{
@@ -430,6 +449,31 @@ static void SetupLightAttenuation( const char *pszPath, LightDesc_t &light, KeyV
 	}
 }
 
+const MaterialLightingState_t &SwarmopediaDefaultLightingState()
+{
+	static MaterialLightingState_t s_State{};
+	static bool s_bInit = false;
+	if ( !s_bInit )
+	{
+		s_bInit = true;
+
+		s_State.m_vecAmbientCube[0].Init( 24.0f / 255.0f, 24.0f / 255.0f, 24.0f / 255.0f );
+		s_State.m_vecAmbientCube[1] = s_State.m_vecAmbientCube[0];
+		s_State.m_vecAmbientCube[2] = s_State.m_vecAmbientCube[0];
+		s_State.m_vecAmbientCube[3] = s_State.m_vecAmbientCube[0];
+		s_State.m_vecAmbientCube[4] = s_State.m_vecAmbientCube[0];
+		s_State.m_vecAmbientCube[5] = s_State.m_vecAmbientCube[0];
+		s_State.m_vecLightingOrigin.Init();
+
+		s_State.m_nLocalLightCount = 3;
+		s_State.m_pLocalLightDesc[0].InitPoint( Vector{ -128.0f, -64.0f, 96.0f }, Vector{ 3.0f, 3.0f, 3.0f } );
+		s_State.m_pLocalLightDesc[1].InitPoint( Vector{ 0.0f, 256.0f, 48.0f }, Vector{ 1.5f, 1.5f, 96.0f / 255.0f } );
+		s_State.m_pLocalLightDesc[2].InitDirectional( Vector{ -128, 192, 16 }.Normalized(), Vector{ 5.0f, 5.0f, 5.0f } );
+	}
+
+	return s_State;
+}
+
 bool Display::ReadFromFile( const char *pszPath, KeyValues *pKV )
 {
 	Caption = pKV->GetString( "Caption" );
@@ -440,6 +484,17 @@ bool Display::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		if ( FStrEq( szName, "Model" ) )
 		{
 			Helpers::AddMerge( Models, pszPath, pSubKey );
+		}
+		else if ( FStrEq( szName, "LightingPreset" ) )
+		{
+			if ( pSubKey->GetInt() == 1 )
+			{
+				LightingState = SwarmopediaDefaultLightingState();
+			}
+			else
+			{
+				Warning( "Swarmopedia: Unknown lighting preset value (only 1 is currently supported) in %s\n", pszPath );
+			}
 		}
 		else if ( FStrEq( szName, "LightingOriginX" ) )
 		{
@@ -679,13 +734,158 @@ void Content::Merge( const Content *pContent )
 
 Weapon::Weapon( const Weapon &copy ) :
 	ClassName{ copy.ClassName },
+	EquipIndex{ copy.EquipIndex },
+	Name{ copy.Name },
 	Icon{ copy.Icon },
 	RequiredClass{ copy.RequiredClass },
 	RequiredLevel{ copy.RequiredLevel },
-	Builtin{ copy.Builtin }
+	Builtin{ copy.Builtin },
+	Extra{ copy.Extra },
+	Unique{ copy.Unique },
+	Hidden{ copy.Hidden }
 {
+	Helpers::CopyVector( GlobalStats, copy.GlobalStats );
+	Helpers::CopyVector( Display, copy.Display );
+	Helpers::CopyVector( Abilities, copy.Abilities );
+	Helpers::CopyVector( Content, copy.Content );
 	Helpers::CopyVector( Facts, copy.Facts );
 	Sources = copy.Sources;
+}
+
+static void PostProcessBuiltin( WeaponFact *pFact, CASW_EquipItem *pItem, CASW_WeaponInfo *pWeaponInfo, bool bIsSecondary )
+{
+	if ( !pFact->UseWeaponInfo )
+	{
+		return;
+	}
+
+	if ( pFact->Type == WeaponFact::Type_T::DamagePerShot || pFact->Type == WeaponFact::Type_T::Ammo )
+	{
+		const char *szSuffix = NULL;
+		int iDamageType = GetAmmoDef()->DamageType( bIsSecondary ? pItem->m_iAmmo2 : pItem->m_iAmmo1 );
+		switch ( iDamageType )
+		{
+		case 0:
+			break;
+		case DMG_BULLET:
+			szSuffix = "_bullet";
+			break;
+		case DMG_SLASH:
+			szSuffix = "_slash";
+			break;
+		case DMG_BURN:
+			szSuffix = "_burn";
+			break;
+		case DMG_BLAST:
+			szSuffix = "_blast";
+			break;
+		case DMG_SHOCK:
+			szSuffix = "_shock";
+			break;
+		case DMG_SONIC:
+			// special case; untyped or non-damaging
+			break;
+		case DMG_ENERGYBEAM:
+			szSuffix = "_beam";
+			break;
+		case DMG_NERVEGAS:
+			szSuffix = "_gas";
+			break;
+		case DMG_DISSOLVE:
+			szSuffix = "_dissolve";
+			break;
+		case DMG_BULLET | DMG_BUCKSHOT:
+			szSuffix = "_buckshot";
+			break;
+		default:
+			Warning( "Swarmopedia: unhandled damage type %d (%s)\n", iDamageType, bIsSecondary ? pItem->m_szAmmo2 : pItem->m_szAmmo1 );
+			DebuggerBreakIfDebugging();
+			break;
+		}
+
+		if ( szSuffix && pFact->Caption.IsEmpty() )
+		{
+			pFact->Caption = pFact->Type == WeaponFact::Type_T::DamagePerShot ? "#rd_weapon_fact_damage_per_shot" : "#rd_weapon_fact_ammo";
+			pFact->Caption += szSuffix;
+		}
+
+		if ( szSuffix && pFact->Icon.IsEmpty() )
+		{
+			pFact->Icon = pFact->Type == WeaponFact::Type_T::DamagePerShot ? "swarm/swarmopedia/fact/damage" : "swarm/swarmopedia/fact/ammo";
+			pFact->Icon += szSuffix;
+		}
+	}
+
+	switch ( pFact->Type )
+	{
+	case WeaponFact::Type_T::Generic:
+		break;
+	case WeaponFact::Type_T::Numeric:
+		break;
+	case WeaponFact::Type_T::HammerUnits:
+		break;
+	case WeaponFact::Type_T::ShotgunPellets:
+		pFact->Base += pWeaponInfo->m_iNumPellets;
+		break;
+	case WeaponFact::Type_T::DamagePerShot:
+		pFact->Base += pWeaponInfo->m_flBaseDamage;
+		break;
+	case WeaponFact::Type_T::LargeAlienDamageScale:
+		break;
+	case WeaponFact::Type_T::BulletSpread:
+		break;
+	case WeaponFact::Type_T::Piercing:
+		break;
+	case WeaponFact::Type_T::FireRate:
+		//pFact->Base += bIsSecondary ? pWeaponInfo->m_flSecondaryFireRate : pWeaponInfo->m_flFireRate;
+		pFact->Base += pWeaponInfo->m_flFireRate;
+		break;
+	case WeaponFact::Type_T::Ammo:
+		pFact->Base += bIsSecondary ? pItem->DefaultAmmo2() : pItem->DefaultAmmo1();
+
+		if ( pFact->ClipSize == 0 )
+		{
+			pFact->ClipSize = bIsSecondary ? pItem->MaxAmmo2() : pItem->MaxAmmo1();
+		}
+
+		if ( pFact->ClipSize == WEAPON_NOCLIP || bIsSecondary || pItem->m_iAmmo1 < 0 )
+		{
+			pFact->ClipSize = 0;
+		}
+		else
+		{
+			Ammo_t *pAmmo = GetAmmoDef()->GetAmmoOfIndex( pItem->m_iAmmo1 );
+			if ( pAmmo->pMaxCarry == USE_CVAR )
+			{
+				pFact->CVar = pAmmo->pMaxCarryCVar->GetName();
+			}
+			else
+			{
+				Assert( pAmmo->pMaxCarry != INFINITE_AMMO );
+				pFact->Base += pAmmo->pMaxCarry;
+			}
+		}
+
+		break;
+	case WeaponFact::Type_T::Secondary:
+		pFact->Caption += pItem->m_szAltFireDescription;
+
+		FOR_EACH_VEC( pFact->Facts, i )
+		{
+			PostProcessBuiltin( pFact->Facts[i], pItem, pWeaponInfo, true );
+		}
+		break;
+	case WeaponFact::Type_T::Deployed:
+		FOR_EACH_VEC( pFact->Facts, i )
+		{
+			PostProcessBuiltin( pFact->Facts[i], pItem, pWeaponInfo, bIsSecondary );
+		}
+		break;
+	case WeaponFact::Type_T::RequirementLevel:
+		break;
+	case WeaponFact::Type_T::RequirementClass:
+		break;
+	}
 }
 
 bool Weapon::ReadFromFile( const char *pszPath, KeyValues *pKV )
@@ -694,6 +894,7 @@ bool Weapon::ReadFromFile( const char *pszPath, KeyValues *pKV )
 	if ( ClassName.IsEmpty() )
 	{
 		Warning( "Swarmopedia: WEAPON entry missing ClassName in %s\n", pszPath );
+		DebuggerBreakIfDebugging();
 		return false;
 	}
 
@@ -702,33 +903,27 @@ bool Weapon::ReadFromFile( const char *pszPath, KeyValues *pKV )
 	Builtin = pKV->GetBool( "Builtin" );
 	if ( Builtin )
 	{
-		CASW_WeaponInfo *pWeaponInfo = ASWEquipmentList()->GetWeaponDataFor( ClassName );
-		Assert( pWeaponInfo );
-		if ( !pWeaponInfo )
+		CASW_EquipItem *pEquipItem = g_ASWEquipmentList.GetEquipItemFor( ClassName );
+		CASW_WeaponInfo *pWeaponInfo = g_ASWEquipmentList.GetWeaponDataFor( ClassName );
+		Assert( pEquipItem && pWeaponInfo );
+		if ( !pEquipItem || !pWeaponInfo )
 		{
 			Warning( "Swarmopedia: no data for builtin weapon %s in %s\n", ClassName.Get(), pszPath );
+			DebuggerBreakIfDebugging();
 			return false;
 		}
 
-		Icon = pWeaponInfo->szEquipIcon;
+		Icon = pEquipItem->m_szEquipIcon;
 		RequiredLevel = GetWeaponLevelRequirement( ClassName ) + 1;
+		RequiredClass = ASW_Marine_Class( pEquipItem->m_iRequiredClass );
 
-		if ( pWeaponInfo->m_bSapper )
-		{
-			RequiredClass = MARINE_CLASS_NCO;
-		}
-		else if ( pWeaponInfo->m_bSpecialWeapons )
-		{
-			RequiredClass = MARINE_CLASS_SPECIAL_WEAPONS;
-		}
-		else if ( pWeaponInfo->m_bFirstAid )
-		{
-			RequiredClass = MARINE_CLASS_MEDIC;
-		}
-		else if ( pWeaponInfo->m_bTech )
-		{
-			RequiredClass = MARINE_CLASS_TECH;
-		}
+		Extra = pEquipItem->m_bIsExtra;
+		Unique = pEquipItem->m_bIsUnique;
+
+		EquipIndex = pEquipItem->m_iItemIndex;
+		Hidden = !pEquipItem->m_bSelectableInBriefing;
+
+		Assert( EquipIndex != -1 );
 
 		if ( RequiredLevel )
 		{
@@ -739,6 +934,91 @@ bool Weapon::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		{
 			Helpers::AddMerge( Facts, "INTERNAL", KeyValues::AutoDeleteInline( new KeyValues( "RequirementClass", "Class", ClassToString( RequiredClass ) ) ) );
 		}
+
+		if ( Unique )
+		{
+			Helpers::AddMerge( Facts, "INTERNAL", KeyValues::AutoDeleteInline( new KeyValues( "Generic", "Icon", "swarm/swarmopedia/fact/unique", "Caption", "#rd_weapon_fact_unique" ) ) );
+		}
+
+		Name = pEquipItem->m_szShortName;
+
+		RD_Swarmopedia::Display *pDisplay = new RD_Swarmopedia::Display{};
+		Display.AddToTail( pDisplay );
+		pDisplay->Caption = pEquipItem->m_szLongName;
+
+		pDisplay->LightingState = SwarmopediaDefaultLightingState();
+
+		int i = pDisplay->Models.AddToTail( new Model{} );
+		if ( pWeaponInfo->szDisplayModel[0] )
+		{
+			pDisplay->Models[i]->ModelName = pWeaponInfo->szDisplayModel;
+			if ( pWeaponInfo->szDisplayModel2[0] )
+			{
+				int j = pDisplay->Models.AddToTail( new Model{} );
+				pDisplay->Models[j]->ModelName = pWeaponInfo->szDisplayModel2;
+			}
+		}
+		else
+		{
+			pDisplay->Models[i]->ModelName = pWeaponInfo->szWorldModel;
+		}
+
+		if ( pWeaponInfo->m_iDisplayModelSkin > 0 )
+		{
+			pDisplay->Models[i]->Skin = pWeaponInfo->m_iDisplayModelSkin;
+		}
+		else
+		{
+			pDisplay->Models[i]->Skin = pWeaponInfo->m_iPlayerModelSkin;
+		}
+
+		if ( KeyValues *pTransform = pKV->FindKey( "BuiltinModelTransform" ) )
+		{
+			FOR_EACH_VEC( pDisplay->Models, j )
+			{
+				Model *pModel = pDisplay->Models[j];
+				pModel->Color = pTransform->GetColor( "Color", pModel->Color );
+				pModel->Pitch = pTransform->GetFloat( "Pitch", pModel->Pitch );
+				pModel->Yaw = pTransform->GetFloat( "Yaw", pModel->Yaw );
+				pModel->Roll = pTransform->GetFloat( "Roll", pModel->Roll );
+				pModel->X = pTransform->GetFloat( "X", pModel->X );
+				pModel->Y = pTransform->GetFloat( "Y", pModel->Y );
+				pModel->Z = pTransform->GetFloat( "Z", pModel->Z );
+				pModel->Scale = pTransform->GetFloat( "Scale", pModel->Scale );
+			}
+		}
+
+		Ability *a = new Ability();
+		a->Caption = pEquipItem->m_szAttributeDescription;
+		Helpers::AddMerge( Abilities, a );
+
+		RD_Swarmopedia::Content *pContent = new RD_Swarmopedia::Content{};
+		Content.AddToTail( pContent );
+		pContent->Text = pEquipItem->m_szDescription1;
+		pContent->Color = Color{ 255, 255, 255, 255 };
+	}
+
+	FOR_EACH_SUBKEY( pKV, pSubKey )
+	{
+		const char *szName = pSubKey->GetName();
+		if ( FStrEq( szName, "GlobalStat" ) )
+		{
+			Helpers::AddMerge( GlobalStats, pszPath, pSubKey );
+		}
+		else if ( FStrEq( szName, "Display" ) )
+		{
+			Helpers::AddMerge( Display, pszPath, pSubKey );
+		}
+		else if ( FStrEq( szName, "Ability" ) )
+		{
+			Ability *a = new Ability();
+			a->Caption = pSubKey->GetString();
+			Helpers::AddMerge( Abilities, a );
+		}
+		else if ( FStrEq( szName, "Paragraph" ) )
+		{
+			Helpers::AddMerge( Content, pszPath, pSubKey );
+		}
 	}
 
 	if ( KeyValues *pFacts = pKV->FindKey( "Facts" ) )
@@ -746,6 +1026,63 @@ bool Weapon::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		FOR_EACH_SUBKEY( pFacts, pFact )
 		{
 			Helpers::AddMerge( Facts, pszPath, pFact );
+		}
+	}
+
+	if ( Builtin )
+	{
+		CASW_EquipItem *pItem = g_ASWEquipmentList.GetEquipItemFor( ClassName );
+		CASW_WeaponInfo *pWeaponInfo = g_ASWEquipmentList.GetWeaponDataFor( ClassName );
+		Assert( pItem && pWeaponInfo && pWeaponInfo->szClassName[0] != '\0' );
+
+		bool bWantAmmoFacts = !Extra && pItem->m_iAmmo1 > 0;
+
+		FOR_EACH_VEC( Facts, i )
+		{
+			PostProcessBuiltin( Facts[i], pItem, pWeaponInfo, false );
+
+			if ( Facts[i]->Type == WeaponFact::Type_T::Ammo && bWantAmmoFacts )
+			{
+				bWantAmmoFacts = false;
+
+				ASSERT_INVARIANT( DEFAULT_AMMO_DROP_UNITS == 100 );
+				int iUnitCost = CASW_Ammo_Drop_Shared::GetAmmoUnitCost( pItem->m_iAmmo1 );
+				int iClipsPerRefill = CASW_Ammo_Drop_Shared::GetAmmoClipsToGive( pItem->m_iAmmo1 );
+
+				int iNext = i;
+				if ( iUnitCost > DEFAULT_AMMO_DROP_UNITS )
+				{
+					Facts.InsertAfter( iNext++, Helpers::ReadFromFile<WeaponFact>( "INTERNAL", KeyValues::AutoDeleteInline( new KeyValues( "Generic", "Icon", "swarm/swarmopedia/fact/generic_ammo_refill", "Caption", "#rd_weapon_fact_generic_ammo_refill_none" ) ) ) );
+				}
+				else
+				{
+					KeyValues::AutoDelete pFact( "Numeric" );
+					pFact->SetString( "Icon", "swarm/swarmopedia/fact/generic_ammo_refill" );
+					pFact->SetString( "Caption", "#rd_weapon_fact_generic_ammo_refill_cost" );
+					pFact->SetInt( "Base", iUnitCost );
+					Facts.InsertAfter( iNext++, Helpers::ReadFromFile<WeaponFact>( "INTERNAL", pFact ) );
+
+					if ( iClipsPerRefill != 1 )
+					{
+						pFact->SetString( "Icon", "swarm/swarmopedia/fact/generic_ammo_refill_clips" );
+						pFact->SetString( "Caption", "#rd_weapon_fact_generic_ammo_refill_clips" );
+						pFact->SetInt( "Base", iClipsPerRefill );
+						Facts.InsertAfter( iNext++, Helpers::ReadFromFile<WeaponFact>( "INTERNAL", pFact ) );
+					}
+				}
+
+				if ( Facts[i]->UseWeaponInfo && Facts[i]->ClipSize )
+				{
+					KeyValues::AutoDelete pFact( "Numeric" );
+					pFact->SetString( "Icon", "swarm/swarmopedia/fact/reload" );
+					pFact->SetString( "Caption", "#rd_weapon_fact_reload" );
+					pFact->SetInt( "Precision", 2 );
+					pFact->SetString( "Skill", "ASW_MARINE_SKILL_RELOADING" );
+					pFact->SetString( "SubSkill", "ASW_MARINE_SUBSKILL_RELOADING_SPEED_SCALE" );
+					pFact->SetFloat( "SkillMultiplier", pWeaponInfo->m_flDisplayReloadTime > 0 ? pWeaponInfo->m_flDisplayReloadTime : pWeaponInfo->flReloadTime );
+					Facts.InsertAfter( iNext++, Helpers::ReadFromFile<WeaponFact>( "INTERNAL", pFact ) );
+				}
+			}
 		}
 	}
 
@@ -769,6 +1106,8 @@ WeaponFact::WeaponFact( const WeaponFact &copy ) :
 	RequireCVar{ copy.RequireCVar },
 	RequireValue{ copy.RequireValue },
 	HaveRequireValue{ copy.HaveRequireValue },
+	UseWeaponInfo{ copy.UseWeaponInfo },
+	Precision{ copy.Precision },
 	Base{ copy.Base },
 	MinimumValue{ copy.MinimumValue },
 	MaximumValue{ copy.MaximumValue },
@@ -777,10 +1116,10 @@ WeaponFact::WeaponFact( const WeaponFact &copy ) :
 	Skill{ copy.Skill },
 	SubSkill{ copy.SubSkill },
 	SkillMultiplier{ copy.SkillMultiplier },
-	UseWeaponInfo{ copy.UseWeaponInfo },
-	Degrees{ copy.Degrees },
+	ShowReciprocal{ copy.ShowReciprocal },
 	Flattened{ copy.Flattened },
-	Damaging{ copy.Damaging },
+	SkillValueIsClipSize{ copy.SkillValueIsClipSize },
+	ClipSize{ copy.ClipSize },
 	Class{ copy.Class }
 {
 	Helpers::CopyVector( BaseMultiplierCVar, copy.BaseMultiplierCVar );
@@ -801,21 +1140,29 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 	{
 		Type = Type_T::Numeric;
 	}
+	else if ( FStrEq( szName, "HammerUnits" ) )
+	{
+		Type = Type_T::HammerUnits;
+	}
 	else if ( FStrEq( szName, "ShotgunPellets" ) )
 	{
 		Type = Type_T::ShotgunPellets;
+		Precision = 0;
 	}
 	else if ( FStrEq( szName, "DamagePerShot" ) )
 	{
 		Type = Type_T::DamagePerShot;
+		Precision = 0;
 	}
 	else if ( FStrEq( szName, "LargeAlienDamageScale" ) )
 	{
 		Type = Type_T::LargeAlienDamageScale;
+		Precision = 1;
 	}
 	else if ( FStrEq( szName, "BulletSpread" ) )
 	{
 		Type = Type_T::BulletSpread;
+		Precision = 0;
 	}
 	else if ( FStrEq( szName, "Piercing" ) )
 	{
@@ -824,14 +1171,12 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 	else if ( FStrEq( szName, "FireRate" ) )
 	{
 		Type = Type_T::FireRate;
+		Precision = 2;
 	}
 	else if ( FStrEq( szName, "Ammo" ) )
 	{
 		Type = Type_T::Ammo;
-	}
-	else if ( FStrEq( szName, "Recharges" ) )
-	{
-		Type = Type_T::Recharges;
+		Precision = 0;
 	}
 	else if ( FStrEq( szName, "Secondary" ) )
 	{
@@ -844,9 +1189,21 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 
 		return true;
 	}
+	else if ( FStrEq( szName, "Deployed" ) )
+	{
+		Type = Type_T::Deployed;
+
+		FOR_EACH_SUBKEY( pKV, pFact )
+		{
+			Helpers::AddMerge( Facts, pszPath, pFact );
+		}
+
+		return true;
+	}
 	else if ( FStrEq( szName, "RequirementLevel" ) )
 	{
 		Type = Type_T::RequirementLevel;
+		Precision = 0;
 	}
 	else if ( FStrEq( szName, "RequirementClass" ) )
 	{
@@ -855,6 +1212,7 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 	else
 	{
 		Warning( "Swarmopedia: unhandled weapon fact type %s in %s\n", szName, pszPath );
+		DebuggerBreakIfDebugging();
 		return false;
 	}
 
@@ -867,6 +1225,9 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		HaveRequireValue = true;
 	}
 
+	UseWeaponInfo = pKV->GetBool( "UseWeaponInfo", true );
+	Precision = pKV->GetInt( "Precision", Precision );
+
 	Base = pKV->GetFloat( "Base" );
 	MinimumValue = pKV->GetFloat( "MinimumValue", -FLT_MAX );
 	MaximumValue = pKV->GetFloat( "MaximumValue", FLT_MAX );
@@ -878,6 +1239,7 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		if ( Skill == ASW_MARINE_SKILL_INVALID )
 		{
 			Warning( "Swarmopedia: Invalid skill %s in weapon fact in %s\n", szSkill, pszPath );
+			DebuggerBreakIfDebugging();
 		}
 	}
 
@@ -886,6 +1248,7 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		if ( Skill == ASW_MARINE_SKILL_INVALID )
 		{
 			Warning( "Swarmopedia: Cannot define subskill %s without valid skill in weapon fact in %s\n", szSubSkill, pszPath );
+			DebuggerBreakIfDebugging();
 		}
 		else
 		{
@@ -893,16 +1256,15 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 			if ( SubSkill == -1 )
 			{
 				Warning( "Swarmopedia: Invalid subskill %s for skill %s in weapon fact in %s\n", szSubSkill, SkillToString( Skill ), pszPath );
+				DebuggerBreakIfDebugging();
 			}
 		}
 	}
 
-	UseWeaponInfo = pKV->GetBool( "UseWeaponInfo", true );
-
-	Degrees = pKV->GetFloat( "Degrees" );
-	Flattened = pKV->GetBool( "Flattened" );
-
-	Damaging = pKV->GetBool( "Damaging", true );
+	ShowReciprocal = pKV->GetBool( "ShowReciprocal", false );
+	Flattened = pKV->GetBool( "Flattened", false );
+	SkillValueIsClipSize = pKV->GetBool( "SkillValueIsClipSize", false );
+	ClipSize = pKV->GetInt( "ClipSize" );
 
 	if ( const char *szClass = pKV->GetString( "Class", NULL ) )
 	{
@@ -910,6 +1272,7 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		if ( Class == MARINE_CLASS_UNDEFINED )
 		{
 			Warning( "Swarmopedia: Invalid class %s in weapon fact in %s\n", szClass, pszPath );
+			DebuggerBreakIfDebugging();
 		}
 	}
 
@@ -920,16 +1283,18 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 			FStrEq( szName, "Caption" ) ||
 			FStrEq( szName, "RequireCVar" ) ||
 			FStrEq( szName, "RequireValue" ) ||
+			FStrEq( szName, "UseWeaponInfo" ) ||
+			FStrEq( szName, "Precision" ) ||
 			FStrEq( szName, "Base" ) ||
 			FStrEq( szName, "MinimumValue" ) ||
 			FStrEq( szName, "MaximumValue" ) ||
 			FStrEq( szName, "CVar" ) ||
 			FStrEq( szName, "Skill" ) ||
 			FStrEq( szName, "SubSkill" ) ||
-			FStrEq( szName, "UseWeaponInfo" ) ||
-			FStrEq( szName, "Degrees" ) ||
+			FStrEq( szName, "ShowReciprocal" ) ||
 			FStrEq( szName, "Flattened" ) ||
-			FStrEq( szName, "Damaging" ) ||
+			FStrEq( szName, "SkillValueIsClipSize" ) ||
+			FStrEq( szName, "ClipSize" ) ||
 			FStrEq( szName, "Class" ) )
 		{
 			// handled
@@ -971,6 +1336,7 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 		else
 		{
 			Warning( "Swarmopedia: unhandled weapon fact key %s in %s\n", szName, pszPath );
+			DebuggerBreakIfDebugging();
 		}
 	}
 
@@ -979,11 +1345,10 @@ bool WeaponFact::ReadFromFile( const char *pszPath, KeyValues *pKV )
 
 bool WeaponFact::IsSame( const WeaponFact *pWeaponFact ) const
 {
-	// TODO
 	return false;
 }
 
 void WeaponFact::Merge( const WeaponFact *pWeaponFact )
 {
-	Assert( !"TODO" );
+	Assert( !"RD_Swarmopedia::WeaponFact::Merge should not have been called." );
 }

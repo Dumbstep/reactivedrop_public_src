@@ -35,6 +35,8 @@
 #include "vgui/cursor.h"
 #include "fmtstr.h"
 #include "vgui_int.h"
+#include "asw_util_shared.h"
+#include "asw_equipment_list.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -530,7 +532,7 @@ CASW_HudElement( pElementName ), BaseClass( NULL, PANEL_RADIAL_MENU )
 
 	// initialize dialog
 	m_resource = new KeyValues( "RadialMenu" );
-	m_resource->LoadFromFile( filesystem, "resource/UI/RadialMenu.res" );
+	UTIL_RD_LoadKeyValuesFromFile( m_resource, filesystem, "resource/UI/RadialMenu.res" );
 	m_menuData = NULL;
 	FlushClientMenus();
 
@@ -1184,7 +1186,7 @@ void CRadialMenu::SetData( KeyValues *data )
 	{
 		m_resource->deleteThis();
 		m_resource = new KeyValues( "RadialMenu" );
-		m_resource->LoadFromFile( filesystem, "resource/UI/RadialMenu.res" );
+		UTIL_RD_LoadKeyValuesFromFile( m_resource, filesystem, "resource/UI/RadialMenu.res" );
 	}
 
 	if ( m_menuData != data )
@@ -1307,7 +1309,7 @@ public:
 		}
 
 		KeyValues *data = new KeyValues( "ClientMenu" );
-		if ( !data->LoadFromFile( filesystem, filename ) )
+		if ( !UTIL_RD_LoadKeyValuesFromFile( data, filesystem, filename ) )
 		{
 			Warning( "Could not load client menu %s\n", filename );
 			data->deleteThis();
@@ -1560,8 +1562,9 @@ public:
 				continue;
 
 			const CASW_WeaponInfo *pInfo = pWeapon->GetWeaponInfo();
-			Assert( pInfo );
-			if ( !pInfo )
+			const CASW_EquipItem *pItem = pWeapon->GetEquipItem();
+			Assert( pInfo && pItem );
+			if ( !pInfo || !pItem )
 				continue;
 
 			if ( pMR->GetCommander() != pPlayer && pInfo->m_iSquadEmote == -1 )
@@ -1576,7 +1579,7 @@ public:
 			g_pVGuiLocalize->ConstructString( wszText, sizeof( wszText ),
 				g_pVGuiLocalize->FindSafe( VarArgs( "#rd_radial_use_extra_%s", pProfile->m_PortraitName ) ),
 				1,
-				g_pVGuiLocalize->FindSafe( pInfo->szPrintName )
+				g_pVGuiLocalize->FindSafe( pItem->m_szShortName )
 			);
 			pDirection->SetWString( "text", wszText );
 
@@ -1646,9 +1649,9 @@ bool IsRadialMenuOpen( const char *menuName, bool includeFadingOut )
 	if ( !pMenu )
 		return false;
 
-	if ( menuName == NULL || FStrEq( s_radialMenuName[ nSlot ], menuName ) )
+	if ( menuName == NULL || FStrEq( s_radialMenuName[nSlot], menuName ) )
 	{
-		bool wasOpen = pMenu->IsVisible() && ( !pMenu->IsFading() || includeFadingOut );
+		bool wasOpen = pMenu->GetAlpha() > 0 && ( !pMenu->IsFading() || includeFadingOut );
 		if ( wasOpen )
 		{
 			return true;
@@ -1677,7 +1680,7 @@ void OpenRadialMenu( const char *menuName )
 
 	if ( FStrEq( s_radialMenuName[ nSlot ], menuName ) )
 	{
-		bool wasOpen = pMenu->IsVisible() && !pMenu->IsFading();
+		bool wasOpen = IsRadialMenuOpen( menuName, false );
 		if ( wasOpen )
 		{
 			return;
@@ -1779,7 +1782,7 @@ void closeradialmenu( void )
 	if ( !pMenu )
 		return;
 
-	bool wasOpen = pMenu->IsVisible() && !pMenu->IsFading();
+	bool wasOpen = IsRadialMenuOpen( NULL, false );
 
 	if ( wasOpen )
 	{
@@ -1815,7 +1818,7 @@ void CloseRadialMenu( const char *menuName, bool sendCommand )
 		if ( !pMenu )
 			return;
 
-		bool wasOpen = pMenu->IsVisible() && !pMenu->IsFading();
+		bool wasOpen = IsRadialMenuOpen( NULL, false );
 
 		if ( wasOpen )
 		{

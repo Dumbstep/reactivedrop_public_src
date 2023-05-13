@@ -48,13 +48,10 @@ inline void TraceHull_SkipPhysics( const Vector &vecAbsStart, const Vector &vecA
 					 int collisionGroup, trace_t *ptr, float minMass );
 
 ConVar	g_debug_antlionguard( "g_debug_antlionguard", "0", FCVAR_CHEAT );
-ConVar	sk_antlionguard_dmg_charge( "sk_antlionguard_dmg_charge", "23", FCVAR_CHEAT ); // was 20 in HL2
-ConVar	sk_antlionguard_dmg_shove( "sk_antlionguard_dmg_shove", "23", FCVAR_CHEAT ); // was 10 in HL2
-ConVar	rd_antlionguard_incavern("rd_antlionguard_incavern", "1", FCVAR_CHEAT, "If 1 antlionguard behavior changes, more agile for tight places");
-ConVar  rd_episodic("rd_episodic", "1", FCVAR_CHEAT, "Internal cvar for overriding hl2_episodic in specific places");
-#define hl2_episodic rd_episodic
-
-#define HL2_EPISODIC 1
+ConVar	sk_antlionguard_dmg_charge( "sk_antlionguard_dmg_charge", "20", FCVAR_CHEAT ); // was 20 in HL2
+ConVar	sk_antlionguard_dmg_shove( "sk_antlionguard_dmg_shove", "10", FCVAR_CHEAT ); // was 10 in HL2
+ConVar	rd_antlionguard_incavern( "rd_antlionguard_incavern", "1", FCVAR_CHEAT, "If 1 antlionguard behavior changes, more agile for tight places" );
+ConVar	rd_antlionguardian_poison( "rd_antlionguardian_poison", "0", FCVAR_CHEAT, "If 1, antlion guardians poison marines down to 12 HP (it will slowly heal)" );
 
 #if HL2_EPISODIC
 // When enabled, add code to have the antlion bleed profusely as it is badly injured.
@@ -255,7 +252,7 @@ public:
 	
 	virtual void	Precache( void );
 	virtual void	Spawn( void );
-	virtual void	SetHealthByDifficultyLevel( void );
+	virtual int		GetBaseHealth( void ) override;
 	virtual void	Activate( void );
 	virtual void	HandleAnimEvent( animevent_t *pEvent );
 	virtual void	UpdateEfficiency( bool bInPVS )	{ SetEfficiency( ( GetSleepState() != AISS_AWAKE ) ? AIE_DORMANT : AIE_NORMAL ); SetMoveEfficiency( AIME_NORMAL ); }
@@ -703,6 +700,7 @@ void CNPC_AntlionGuard::Precache( void )
 {
 	PrecacheModel( ANTLIONGUARD_MODEL );
 
+#if 0
 	// reactivedrop: gibs' models 
 	PrecacheModel( "models/gib_antlionguard_torso.mdl" );
 	PrecacheModel( "models/gib_antlionguard_head.mdl" );
@@ -714,6 +712,7 @@ void CNPC_AntlionGuard::Precache( void )
 	PrecacheModel( "models/gib_antlionguard_leg1_p2.mdl" );
 	PrecacheModel( "models/gib_antlionguard_leg2_p1.mdl" );
 	PrecacheModel( "models/gib_antlionguard_leg2_p2.mdl" );
+#endif
 
 	PrecacheScriptSound( "NPC_AntlionGuard.Shove" );
 	PrecacheScriptSound( "NPC_AntlionGuard.HitHard" );
@@ -896,15 +895,11 @@ void CNPC_AntlionGuard::Spawn( void )
 
 	BaseClass::Spawn();
 
-	// reactivedrop: TODO investigate this
-	SetHullType(HULL_MEDIUMBIG);
+	SetHullType( HULL_LARGE );
 
 	SetViewOffset(Vector(6, 0, 11));		// Position of the eyes relative to NPC's origin.
 
-	SetHealthByDifficultyLevel();
-
 	CapabilitiesRemove(bits_CAP_MOVE_JUMP);
-	// reactivedrop: end of TODO 
 
 	//See if we're supposed to start burrowed
 	if ( m_bIsBurrowed )
@@ -937,16 +932,17 @@ void CNPC_AntlionGuard::Spawn( void )
 	Vector absMax = Vector(100,100,128);
 
 	CollisionProp()->SetSurroundingBoundsType( USE_SPECIFIED_BOUNDS, &absMin, &absMax );
+
+	if ( ClassMatches( "npc_antlionguard" ) )
+	{
+		// swap our classname for stats
+		SetClassname( m_bCavernBreed ? "npc_antlionguard_cavern" : "npc_antlionguard_normal" );
+	}
 }
 
-void CNPC_AntlionGuard::SetHealthByDifficultyLevel()
+int CNPC_AntlionGuard::GetBaseHealth()
 {
-	int iHealth = MAX( 1, ASWGameRules()->ModifyAlienHealthBySkillLevel( sk_antlionguard_health.GetInt() ) );
-	extern ConVar asw_debug_alien_damage;
-	if ( asw_debug_alien_damage.GetBool() )
-		Msg( "Setting antlion guard's initial health to %d\n", iHealth + m_iHealthBonus );
-	SetHealth( iHealth + m_iHealthBonus );
-	SetMaxHealth( iHealth + m_iHealthBonus );
+	return sk_antlionguard_health.GetInt();
 }
 
 //-----------------------------------------------------------------------------
@@ -2701,17 +2697,17 @@ void ApplyChargeDamage( CBaseEntity *pAntlionGuard, CBaseEntity *pTarget, float 
 	Vector vecForce = attackDir * ImpulseScale( 75, 700 );
 
 	// Deal the damage
-	CTakeDamageInfo	info( pAntlionGuard, pAntlionGuard, vecForce, offset, flDamage, DMG_CLUB );
+	CTakeDamageInfo	info( pAntlionGuard, pAntlionGuard, vecForce, offset, ASWGameRules()->ModifyAlienDamageBySkillLevel( flDamage ), DMG_CLUB );
 	pTarget->TakeDamage( info );
 
 #if HL2_EPISODIC
 	// If I am a cavern guard attacking the player, and he still lives, then poison him too.
 	Assert( dynamic_cast<CNPC_AntlionGuard *>(pAntlionGuard) );
 
-	if ( static_cast<CNPC_AntlionGuard *>(pAntlionGuard)->IsInCavern() && pTarget->IsPlayer() && pTarget->IsAlive() && pTarget->m_iHealth > ANTLIONGUARD_POISON_TO)
+	if ( rd_antlionguardian_poison.GetBool() && static_cast<CNPC_AntlionGuard *>(pAntlionGuard)->IsCavernBreed() && pTarget->Classify() == CLASS_ASW_MARINE && pTarget->IsAlive() && pTarget->m_iHealth > ANTLIONGUARD_POISON_TO)
 	{
 		// That didn't finish them. Take them down to one point with poison damage. It'll heal.
-		pTarget->TakeDamage( CTakeDamageInfo( pAntlionGuard, pAntlionGuard, pTarget->m_iHealth - ANTLIONGUARD_POISON_TO, DMG_POISON ) );
+		pTarget->TakeDamage( CTakeDamageInfo( pAntlionGuard, pAntlionGuard, pTarget->m_iHealth - ANTLIONGUARD_POISON_TO, DMG_POISON | DMG_PREVENT_PHYSICS_FORCE ) );
 	}
 #endif
 
@@ -3184,20 +3180,17 @@ void CNPC_AntlionGuard::RunTask( const Task_t *pTask )
 				else if ( moveTrace.pObstruction )
 				{
 					// If we hit an antlion, don't stop, but kill it
-					if ( moveTrace.pObstruction->Classify() == CLASS_ANTLION )
+					if ( moveTrace.pObstruction->Classify() == CLASS_ASW_ANTLIONGUARD )
 					{
-						if ( FClassnameIs( moveTrace.pObstruction, "npc_antlionguard" ) )
+						// Crash unless we're trying to stop already
+						if ( eActivity != ACT_ANTLIONGUARD_CHARGE_STOP )
 						{
-							// Crash unless we're trying to stop already
-							if ( eActivity != ACT_ANTLIONGUARD_CHARGE_STOP )
-							{
-								SetActivity( ACT_ANTLIONGUARD_CHARGE_STOP );
-							}
+							SetActivity( ACT_ANTLIONGUARD_CHARGE_STOP );
 						}
-						else
-						{
-							ApplyChargeDamage( this, moveTrace.pObstruction, moveTrace.pObstruction->GetHealth() );
-						}
+					}
+					else if ( moveTrace.pObstruction->Classify() == CLASS_ANTLION )
+					{
+						ApplyChargeDamage( this, moveTrace.pObstruction, moveTrace.pObstruction->GetHealth() );
 					}
 				}
 			}

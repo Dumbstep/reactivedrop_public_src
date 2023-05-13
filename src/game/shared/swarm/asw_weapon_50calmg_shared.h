@@ -41,12 +41,11 @@ public:
 #ifndef CLIENT_DLL
 	DECLARE_DATADESC();
 
-	virtual const char* GetPickupClass() { return "asw_pickup_50calmg"; }
-
 #else 
 	virtual bool HasSecondaryExplosive(void) const { return false; }
 	virtual bool GroundSecondary() { return false; }
 #endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/50cal_empty_clip.mdl"; }
 
 	virtual Class_T		Classify(void) { return (Class_T)CLASS_ASW_50CALMG; }
 };

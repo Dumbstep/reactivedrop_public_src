@@ -88,7 +88,7 @@ public:
 	}
 
 	virtual void PlayerHasIlluminatedNPC( CBasePlayer *pPlayer, float flDot );
-	virtual void SetHealthByDifficultyLevel( void );
+	virtual int GetBaseHealth( void ) override;
 
 	void DropFromCeiling( void );
 
@@ -335,13 +335,14 @@ public:
 	virtual void AlertSound( void );
 	virtual void ImpactSound( void );
 	virtual void TelegraphSound( void );
-#if HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	virtual bool FInViewCone( CBaseEntity *pEntity );
 #endif
 
 	//
 	// CBaseEntity implementation.
 	//
+	virtual void Spawn( void );
 	virtual void Precache( void );
 
 	DEFINE_CUSTOM_AI;

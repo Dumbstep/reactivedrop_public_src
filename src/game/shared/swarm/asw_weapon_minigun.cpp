@@ -39,6 +39,10 @@ ConVar rd_minigun_additional_piercing_delay("rd_minigun_additional_piercing_dela
 extern ConVar asw_weapon_max_shooting_distance;
 extern ConVar asw_weapon_force_scale;
 extern ConVar asw_DebugAutoAim;
+#ifdef CLIENT_DLL
+extern ConVar rd_tracer_tint_self;
+extern ConVar rd_tracer_tint_other;
+#endif
 
 
 IMPLEMENT_NETWORKCLASS_ALIASED( ASW_Weapon_Minigun, DT_ASW_Weapon_Minigun )
@@ -50,11 +54,6 @@ BEGIN_NETWORK_TABLE( CASW_Weapon_Minigun, DT_ASW_Weapon_Minigun )
 #else
 	SendPropFloat( SENDINFO( m_flSpinRate ), 0, SPROP_NOSCALE ),
 	SendPropBool( SENDINFO( m_bHalfShot ) ),
-	SendPropExclude( "DT_BaseAnimating", "m_flPlaybackRate" ),	
-	SendPropExclude( "DT_BaseAnimating", "m_nSequence" ),	
-	SendPropExclude( "DT_BaseAnimatingOverlay", "overlay_vars" ),
-	SendPropExclude( "DT_BaseAnimating", "m_nNewSequenceParity" ),
-	SendPropExclude( "DT_BaseAnimating", "m_nResetEventsParity" ),
 #endif
 END_NETWORK_TABLE()
 
@@ -62,16 +61,22 @@ END_NETWORK_TABLE()
 BEGIN_PREDICTION_DATA( CASW_Weapon_Minigun )
 	DEFINE_PRED_FIELD_TOL( m_flSpinRate, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),
 	DEFINE_PRED_FIELD( m_bHalfShot, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_flCycle, FIELD_FLOAT, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
-	DEFINE_PRED_FIELD( m_nSequence, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),	
-	DEFINE_PRED_FIELD( m_nNewSequenceParity, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
-	DEFINE_PRED_FIELD( m_nResetEventsParity, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
+	DEFINE_PRED_FIELD( m_bShouldUpdateActivityClient, FIELD_BOOLEAN, FTYPEDESC_PRIVATE ),
 END_PREDICTION_DATA()
 #endif
 
 LINK_ENTITY_TO_CLASS( asw_weapon_minigun, CASW_Weapon_Minigun );
 PRECACHE_WEAPON_REGISTER( asw_weapon_minigun );
 
+BEGIN_ENT_SCRIPTDESC( CASW_Weapon_Minigun, CASW_Weapon, "IAF Minigun" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptClip1, "Clip1", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetMaxClip1, "GetMaxClip1", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetDefaultClip1, "GetDefaultClip1", "" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetMaxAmmo1, "GetMaxAmmo1", "" )
+#ifdef GAME_DLL
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetClip1, "SetClip1", "" )
+#endif
+END_SCRIPTDESC()
 
 #ifndef CLIENT_DLL
 extern ConVar asw_debug_marine_damage;
@@ -262,8 +267,8 @@ void CASW_Weapon_Minigun::PrimaryAttack()
 	if (asw_debug_marine_damage.GetBool())
 		Msg("Weapon dmg = %f\n", info.m_flDamage);
 	CASW_Marine_Resource* pPMR = pMarine->GetMarineResource();
-	if (pPMR)
-		info.m_flDamage *= pPMR->OnFired_GetDamageScale();
+	if ( pPMR )
+		pPMR->OnFired_ScaleDamage( info );
 	if (asw_DebugAutoAim.GetBool())
 	{
 		NDebugOverlay::Line(info.m_vecSrc, info.m_vecSrc + info.m_vecDirShooting * info.m_flDistance, 64, 0, 64, true, 1.0);
@@ -399,9 +404,20 @@ float CASW_Weapon_Minigun::GetMuzzleFlashScale( void )
 	return m_fMuzzleFlashScale;
 }
 
-bool CASW_Weapon_Minigun::GetMuzzleFlashRed()
+Vector CASW_Weapon_Minigun::GetMuzzleFlashTint()
 {
-	return ((GetMuzzleFlashScale() / 2.0f) >= 1.15f);	// red if our muzzle flash is the biggest size based on our skill
+	HACK_GETLOCALPLAYER_GUARD( "need local player to see what color the muzzle flash should be" );
+	C_ASW_Player *pLocalPlayer = C_ASW_Player::GetLocalASWPlayer();
+	C_ASW_Inhabitable_NPC *pViewNPC = pLocalPlayer ? pLocalPlayer->GetViewNPC() : NULL;
+	Vector vecColor = pViewNPC && GetOwner() == pViewNPC ? rd_tracer_tint_self.GetColorAsVector() : rd_tracer_tint_other.GetColorAsVector();
+
+	if ( ( GetMuzzleFlashScale() / 2.0f ) >= 1.15f ) // red if our muzzle flash is the biggest size based on our skill
+	{
+		vecColor.y *= 0.65f;
+		vecColor.z *= 0.65f;
+	}
+
+	return vecColor;
 }
 
 #endif
@@ -442,14 +458,14 @@ float CASW_Weapon_Minigun::GetWeaponDamage()
 
 const Vector &CASW_Weapon_Minigun::GetBulletSpread( void )
 {
-	static Vector cone = Vector( 0.13053, 0.13053, 0.02 );	// VECTOR_CONE_15DEGREES with flattened Z
-	static Vector cone_duck = Vector( 0.05234, 0.05234, 0.01 ); // VECTOR_CONE_6DEGREES with flattened Z
+	const static Vector cone = Vector( 0.13053, 0.13053, 0.02 );	// VECTOR_CONE_15DEGREES with flattened Z
+	const static Vector cone_duck = Vector( 0.05234, 0.05234, 0.01 ); // VECTOR_CONE_6DEGREES with flattened Z
 
 	CASW_Marine *marine = GetMarine();
 
 	if ( marine )
 	{
-		if ( marine->GetAbsVelocity() == Vector( 0, 0, 0 ) && marine->m_bWalking )
+		if ( marine->GetLocalVelocity().IsZero() && marine->m_bWalking )
 			return cone_duck;
 	}
 	return cone;
@@ -491,26 +507,15 @@ ConVar asw_minigun_pitch_max( "asw_minigun_pitch_max", "150", FCVAR_CHEAT | FCVA
 
 void CASW_Weapon_Minigun::UpdateSpinningBarrel()
 {
-	/*
-	if (GetSequenceActivity(GetSequence()) != ACT_VM_PRIMARYATTACK)
+	if ( GetSpinRate() > 0.1 && GetSequenceActivity( GetSequence() ) != ACT_VM_PRIMARYATTACK )
 	{
-		SetActivity(ACT_VM_PRIMARYATTACK, 0);
-	}
-	m_flPlaybackRate = GetSpinRate();
-	*/
-	//Mad Orange. Simple barrel spin rotation multiplayer fix. As for complex m_flPlaybackRate change does not seem to work without "updating" sequence\activity.
-	//So need to investigate what many sequence related functions do and make this "update" in a right way.
-	if (GetSpinRate() > 0.1 && GetSequenceActivity(GetSequence()) != ACT_VM_PRIMARYATTACK)
-	{
-		m_flPlaybackRate = 1;
-		SetActivity(ACT_VM_PRIMARYATTACK, 0);
+		SetActivity( ACT_VM_PRIMARYATTACK, 0 );
 		m_bShouldUpdateActivityClient = true;
 	}
 
-	if (GetSpinRate() < 0.1 && m_bShouldUpdateActivityClient)
+	if ( GetSpinRate() < 0.1 && m_bShouldUpdateActivityClient )
 	{
-		SetActivity(ACT_VM_IDLE, 0);
-		m_flPlaybackRate = 0;
+		SetActivity( ACT_VM_IDLE, 0 );
 		m_bShouldUpdateActivityClient = false;
 	}
 
@@ -637,4 +642,39 @@ int CASW_Weapon_Minigun::DisplayClip1()
 int CASW_Weapon_Minigun::DisplayMaxClip1()
 {
 	return GetMaxClip1() * 2;
+}
+
+int CASW_Weapon_Minigun::ScriptClip1()
+{
+	return DisplayClip1();
+}
+
+int CASW_Weapon_Minigun::ScriptGetMaxClip1()
+{
+	return DisplayMaxClip1();
+}
+
+int CASW_Weapon_Minigun::ScriptGetDefaultClip1()
+{
+	return GetDefaultClip1() * 2;
+}
+
+int CASW_Weapon_Minigun::ScriptGetMaxAmmo1()
+{
+	return BaseClass::ScriptGetMaxAmmo1() * 2;
+}
+
+#ifdef GAME_DLL
+void CASW_Weapon_Minigun::ScriptSetClip1( int iAmmo )
+{
+	BaseClass::ScriptSetClip1( ( iAmmo + 1 ) / 2 );
+	m_bHalfShot = ( iAmmo & 1 ) != 0;
+}
+#endif
+
+void CASW_Weapon_Minigun::FinishReload()
+{
+	BaseClass::FinishReload();
+
+	m_bHalfShot = false;
 }

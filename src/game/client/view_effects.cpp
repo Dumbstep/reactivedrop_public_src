@@ -16,6 +16,8 @@
 #include "saverestoretypes.h"
 #include "c_rumble.h"
 #include "prediction.h"
+#include "c_asw_player.h"
+#include "c_asw_inhabitable_npc.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -218,8 +220,11 @@ void __MsgFunc_Shake( bf_read &msg )
 	shake.amplitude = msg.ReadFloat();
 	shake.frequency = msg.ReadFloat();
 	shake.duration	= msg.ReadFloat();
+	int entindex = msg.ReadShort();
 
-	GetCViewEffects().Shake( shake );
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	if ( pPlayer && pPlayer->GetViewNPC() && pPlayer->GetViewNPC()->entindex() == entindex )
+		GetCViewEffects().Shake( shake );
 }
 
 
@@ -242,8 +247,11 @@ void __MsgFunc_ShakeDir( bf_read &msg )
 	shake.frequency = msg.ReadFloat();
 	shake.duration	= msg.ReadFloat();
 	msg.ReadBitVec3Normal( shake.direction );
+	int entindex = msg.ReadShort();
 
-	GetCViewEffects().Shake( shake );
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	if ( pPlayer && pPlayer->GetViewNPC() && pPlayer->GetViewNPC()->entindex() == entindex )
+		GetCViewEffects().Shake( shake );
 }
 
 
@@ -684,6 +692,11 @@ screenshake_t *CViewEffects::FindLongestShake()
 	return pLongestShake;
 }
 
+ConVar rd_camera_shake( "rd_camera_shake", "2", FCVAR_ARCHIVE, "Enable camera shakes (2=all, 1=only forced, 0=none)" );
+CON_COMMAND_F( asw_camera_shake, "legacy camera shake setting", FCVAR_HIDDEN )
+{
+	rd_camera_shake.SetValue( V_atoi( args[1] ) ? 2 : 1 );
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: Message hook to parse ScreenShake messages
@@ -696,8 +709,21 @@ void CViewEffects::Shake( const ScreenShake_t &data )
 {
 	if ( prediction && prediction->InPrediction() && !prediction->IsFirstTimePredicted() )
 		return;
+	
+	ShakeCommand_t command = data.command;
+	
+	if ( rd_camera_shake.GetInt() <= 1 && ( command == SHAKE_START || command == SHAKE_START_RUMBLEONLY || command == SHAKE_START_NORUMBLE ) )
+		return;
 
-	if ( ( data.command == SHAKE_START || data.command == SHAKE_START_RUMBLEONLY ) && ( m_ShakeList.Count() < MAX_SHAKES ) )
+	if ( command == SHAKE_FORCE_START || command == SHAKE_FORCE_START_RUMBLEONLY || command == SHAKE_FORCE_START_NORUMBLE )
+	{
+		if ( rd_camera_shake.GetBool() == 0 )
+			return;
+		
+		command = static_cast<ShakeCommand_t>( command - 1 );	// fallback to non-force command
+	}
+
+	if ( ( command == SHAKE_START || command == SHAKE_START_RUMBLEONLY ) && ( m_ShakeList.Count() < MAX_SHAKES ) )
 	{
 		screenshake_t * RESTRICT pNewShake = new screenshake_t; // ugh, should just make these a static array
 			
@@ -712,17 +738,17 @@ void CViewEffects::Shake( const ScreenShake_t &data )
 			pNewShake->endtime = prediction->GetSavedTime() + data.duration;
 		}
 
-		pNewShake->command = data.command;
+		pNewShake->command = command;
 		pNewShake->direction = data.direction;
 		pNewShake->nShakeType = data.direction.IsZeroFast() ? screenshake_t::kSHAKE_BASIC : screenshake_t::kSHAKE_DIRECTIONAL;
 
 		m_ShakeList.AddToTail( pNewShake );
 	}
-	else if ( data.command == SHAKE_STOP)
+	else if ( command == SHAKE_STOP)
 	{
 		ClearAllShakes();
 	}
-	else if ( data.command == SHAKE_AMPLITUDE )
+	else if ( command == SHAKE_AMPLITUDE )
 	{
 		// Look for the most likely shake to modify.
 		screenshake_t * RESTRICT pShake = FindLongestShake();
@@ -731,7 +757,7 @@ void CViewEffects::Shake( const ScreenShake_t &data )
 			pShake->amplitude = data.amplitude;
 		}
 	}
-	else if ( data.command == SHAKE_FREQUENCY )
+	else if ( command == SHAKE_FREQUENCY )
 	{
 		// Look for the most likely shake to modify.
 		screenshake_t * RESTRICT pShake = FindLongestShake();

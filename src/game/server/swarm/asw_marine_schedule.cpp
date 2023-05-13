@@ -99,7 +99,11 @@ ConVar rd_stuck_bot_teleport_max_range( "rd_stuck_bot_teleport_max_range", "400"
 ConVar rd_stuck_bot_teleport_required_failures( "rd_stuck_bot_teleport_required_failures", "16", FCVAR_CHEAT, "Teleport stuck bots only after they've failed this many move attempts in the same number of seconds", true, 1, true, 64 );
 ConVar rd_stuck_bot_teleport_to_marine( "rd_stuck_bot_teleport_to_marine", "0", FCVAR_CHEAT, "Teleport stuck bots directly to a marine instead of to the nearest node" );
 ConVar rd_marine_heal_range_max( "rd_marine_heal_range_max", "1536", FCVAR_CHEAT, "Maximum distance the AI medic will run to heal", true, 1, false, 0 );
-ConVar rd_bot_melee( "rd_bot_melee", "1", FCVAR_NONE, "should bots melee if they are out of ammo" );
+ConVar rd_bot_melee_object( "rd_bot_melee_object", "1", FCVAR_NONE, "should bots melee attack crates that are in their way" );
+ConVar rd_bot_melee_noammo( "rd_bot_melee_noammo", "1", FCVAR_NONE, "should bots melee if they are out of ammo" );
+ConVar rd_bot_melee_mobbed( "rd_bot_melee_mobbed", "1", FCVAR_NONE, "should bots melee if they are mobbed by enemies" );
+ConVar rd_bot_melee_losblocked( "rd_bot_melee_losblocked", "1", FCVAR_NONE, "should bots melee if there is a friend between them and their enemy" );
+ConVar rd_bot_melee_combo( "rd_bot_melee_combo", "1", FCVAR_NONE, "can bots do melee combo attacks" );
 
 extern ConVar ai_lead_time;
 extern CMoveData *g_pMoveData;
@@ -147,7 +151,11 @@ bool CASW_Marine::FInViewCone( const Vector &vecSpot )
 
 	// BenLubar(deathmatch-improvements): see 360 in deathmatch mode
 	if ( ASWDeathmatchMode() )
+	{
+		// remember last angle
+		m_fHoldingYaw = GetLocalAngles()[YAW];
 		return true;
+	}
 
 	if ( GetASWOrders() == ASW_ORDER_HOLD_POSITION )
 	{
@@ -318,9 +326,12 @@ int CASW_Marine::SelectSchedule()
 	{
 		return SCHED_ASW_RAPPEL;
 	}
-	
+
 	if (m_bPreventMovement)
 		return SCHED_ASW_HOLD_POSITION;
+
+	if ( ASWGameRules() && ASWGameRules()->GetGameState() >= ASW_GS_DEBRIEF )
+		return SCHED_IDLE_STAND;
 
 	// if we acquire a new enemy, create our aim error offset
 	if (HasCondition(COND_NEW_ENEMY))
@@ -332,7 +343,9 @@ int CASW_Marine::SelectSchedule()
 	// we prevent melee schedule if out of ammo because 
 	// AI marines run away and die there swarmed by aliens 
 	// on high difficulties 
-	if ( HasCondition( COND_PATH_BLOCKED_BY_PHYSICS_PROP ) || ( rd_bot_melee.GetBool() && ( HasCondition( COND_COMPLETELY_OUT_OF_AMMO ) || HasCondition( COND_MOBBED_BY_ENEMIES ) ) ) )
+	if ( ( rd_bot_melee_object.GetBool() && HasCondition( COND_PATH_BLOCKED_BY_PHYSICS_PROP ) ) ||
+		( rd_bot_melee_noammo.GetBool() && HasCondition( COND_COMPLETELY_OUT_OF_AMMO ) ) ||
+		( rd_bot_melee_mobbed.GetBool() && HasCondition( COND_MOBBED_BY_ENEMIES ) ) )
 	{
 		int iMeleeSchedule = SelectMeleeSchedule();
 		if( iMeleeSchedule != -1 )
@@ -485,6 +498,9 @@ void CASW_Marine::TaskFail( AI_TaskFailureCode_t code )
 		if ( m_flFailedPathingTime[NELEMS( m_flFailedPathingTime ) - rd_stuck_bot_teleport_required_failures.GetInt()] > gpGlobals->curtime - rd_stuck_bot_teleport_required_failures.GetInt() )
 		{
 			CASW_Marine *pLeader = GetSquadLeader();
+			unsigned squaddie = GetSquadFormation() ? GetSquadFormation()->Find( this ) : CASW_SquadFormation::INVALID_SQUADDIE;
+
+			Vector vecPrevOrigin = GetAbsOrigin();
 
 			if ( !pLeader || !pLeader->IsInhabited() )
 			{
@@ -494,6 +510,63 @@ void CASW_Marine::TaskFail( AI_TaskFailureCode_t code )
 			{
 				Teleport( &pLeader->GetAbsOrigin(), &pLeader->GetAbsAngles(), &pLeader->GetAbsVelocity() );
 			}
+			else if ( squaddie != CASW_SquadFormation::INVALID_SQUADDIE )
+			{
+				Vector vecIdealPos = GetSquadFormation()->GetIdealPosition( squaddie );
+				QAngle angIdeal( 0, GetSquadFormation()->GetYaw( squaddie ), 0 );
+				bool bTeleported = false;
+
+				// check the spot is clear
+				trace_t tr;
+				UTIL_TraceHull( vecIdealPos,
+					vecIdealPos + Vector( 0, 0, 1 ),
+					CollisionProp()->OBBMins(),
+					CollisionProp()->OBBMaxs(),
+					MASK_PLAYERSOLID,
+					this,
+					COLLISION_GROUP_PLAYER_MOVEMENT,
+					&tr );
+				if ( tr.fraction == 1.0 )
+				{
+					// make sure we have line of sight
+					UTIL_TraceLine( pLeader->GetAbsOrigin() + Vector( 0, 0, 40 ),
+						vecIdealPos + Vector( 0, 0, 40 ),
+						MASK_PLAYERSOLID,
+						this,
+						COLLISION_GROUP_PLAYER_MOVEMENT,
+						&tr );
+					if ( tr.fraction == 1.0 )
+					{
+						// make sure we have a floor of some kind
+						UTIL_TraceHull( vecIdealPos,
+							vecIdealPos - Vector( 0, 0, 64 ),
+							CollisionProp()->OBBMins(),
+							CollisionProp()->OBBMaxs(),
+							MASK_PLAYERSOLID,
+							this,
+							COLLISION_GROUP_PLAYER_MOVEMENT,
+							&tr );
+						if ( tr.fraction != 1.0 )
+						{
+							Teleport( &vecIdealPos, &angIdeal, &vec3_origin );
+							DevMsg( this, "Teleported stuck marine to %s (squad)\n", pLeader->GetDebugName() );
+							bTeleported = true;
+						}
+					}
+				}
+
+				if ( !bTeleported )
+				{
+					if ( TeleportToFreeNode( pLeader, rd_stuck_bot_teleport_max_range.GetFloat() ) )
+					{
+						DevMsg( this, "Teleported stuck marine to %s (node)\n", pLeader->GetDebugName() );
+					}
+					else
+					{
+						DevMsg( this, "Could not teleport stuck marine.\n" );
+					}
+				}
+			}
 			else if ( TeleportToFreeNode( pLeader, rd_stuck_bot_teleport_max_range.GetFloat() ) )
 			{
 				DevMsg( this, "Teleported stuck marine to %s\n", pLeader->GetDebugName() );
@@ -502,6 +575,8 @@ void CASW_Marine::TaskFail( AI_TaskFailureCode_t code )
 			{
 				DevMsg( this, "Could not teleport stuck marine.\n" );
 			}
+
+			PhysicsTouchTriggers( &vecPrevOrigin );
 
 			for ( int i = 0; i < NELEMS( m_flFailedPathingTime ); i++ )
 			{
@@ -670,6 +745,14 @@ void CASW_Marine::OrderHackArea( CASW_Use_Area *pArea )
 			MessageEnd();
 		}
 	}
+}
+
+void CASW_Marine::ScriptOrderHackArea( HSCRIPT area )
+{
+	if ( IsInhabited() )
+		return;
+
+	OrderHackArea( dynamic_cast< CASW_Use_Area * >( ToEnt( area ) ) );
 }
 
 int CASW_Marine::SelectTakeAmmoSchedule()
@@ -1087,6 +1170,19 @@ void CASW_Marine::SetASWOrders(ASW_Orders NewOrders, float fHoldingYaw, const Ve
 	//Msg("Marine receives asw orders: %d\n", NewOrders);
 }
 
+void CASW_Marine::ScriptOrderFollowSquadLeader()
+{
+	SetASWOrders( ASW_ORDER_FOLLOW );
+}
+void CASW_Marine::ScriptOrderHoldPosition( float flYaw )
+{
+	SetASWOrders( ASW_ORDER_HOLD_POSITION, flYaw );
+}
+void CASW_Marine::ScriptOrderMoveTo( float flYaw, Vector vecOrderPos )
+{
+	SetASWOrders( ASW_ORDER_MOVE_TO, flYaw, &vecOrderPos );
+}
+
 void CASW_Marine::OrdersFromPlayer(CASW_Player *pPlayer, ASW_Orders NewOrders, CBaseEntity *pMarine, bool bChatter, float fHoldingYaw, Vector *pVecOrderPos)
 {
 	MDLCACHE_CRITICAL_SECTION();
@@ -1156,7 +1252,7 @@ static void DebugWaypoint( AI_Waypoint_t * pWay, int r, int g, int b, float flDu
 }
 
 /// because AI_Waypoint_t::flPathDistGoal is broken
-static float GetWaypointDistToEnd( const Vector &vStartPos, AI_Waypoint_t *way ) 
+float GetWaypointDistToEnd( const Vector &vStartPos, AI_Waypoint_t *way )
 {
 	if ( !way ) return FLT_MAX;
 	float ret = way->GetPos().DistTo(vStartPos);
@@ -1370,17 +1466,18 @@ static bool AdjustOffhandItemDestination( CASW_Marine *pMarine, CASW_Weapon *pWe
 void CASW_Marine::OrderUseOffhandItem( int iInventorySlot, const Vector &vecDest )
 {
 	// check we have an item in that slot
-	CASW_Weapon* pWeapon = GetASWWeapon( iInventorySlot );
+	CASW_Weapon *pWeapon = GetASWWeapon( iInventorySlot );
 	if ( !pWeapon )
 		return;
-	const CASW_WeaponInfo* pWpnInfo = pWeapon->GetWeaponInfo();
-	if ( !pWpnInfo || !pWpnInfo->m_bOffhandActivate )
+	const CASW_WeaponInfo *pWpnInfo = pWeapon->GetWeaponInfo();
+	const CASW_EquipItem *pItem = pWeapon->GetEquipItem();
+	if ( !pWpnInfo || !pItem || !pWpnInfo->m_bOffhandActivate )
 		return;
 
 	// m_vecOffhandItemSpot = vecDest;
-	if ( !AdjustOffhandItemDestination( this, pWeapon, vecDest, &m_vecOffhandItemSpot) )
+	if ( !AdjustOffhandItemDestination( this, pWeapon, vecDest, &m_vecOffhandItemSpot ) )
 		return;
-	else if ( asw_debug_order_weld.GetBool() ) 
+	else if ( asw_debug_order_weld.GetBool() )
 	{
 		NDebugOverlay::Cross( m_vecOffhandItemSpot, 12.0f, 255, 0, 0, true, 3 );
 	}
@@ -1388,10 +1485,10 @@ void CASW_Marine::OrderUseOffhandItem( int iInventorySlot, const Vector &vecDest
 	if ( pWpnInfo->m_nOffhandOrderType == ASW_OFFHAND_USE_IMMEDIATELY )
 	{
 		pWeapon->OffhandActivate();
-		if ( pWpnInfo->m_bExtra )
+		if ( pItem->m_bIsExtra )
 		{
 			// Fire event when a marine uses an offhand item
-			IGameEvent * event = gameeventmanager->CreateEvent( "weapon_offhand_activate" );
+			IGameEvent *event = gameeventmanager->CreateEvent( "weapon_offhand_activate" );
 			if ( event )
 			{
 				CASW_Player *pPlayer = NULL;
@@ -1414,12 +1511,12 @@ void CASW_Marine::OrderUseOffhandItem( int iInventorySlot, const Vector &vecDest
 		// Tell the player's client that he's been hurt.
 		CSingleUserRecipientFilter user( pPlayer );
 		UserMessageBegin( user, "ASWOrderUseItemFX" );
-		WRITE_SHORT( entindex() );
-		WRITE_SHORT( ASW_USE_ORDER_WITH_ITEM );
-		WRITE_SHORT( iInventorySlot );
-		WRITE_FLOAT( m_vecOffhandItemSpot.x );
-		WRITE_FLOAT( m_vecOffhandItemSpot.y );
-		WRITE_FLOAT( m_vecOffhandItemSpot.z );
+			WRITE_SHORT( entindex() );
+			WRITE_SHORT( ASW_USE_ORDER_WITH_ITEM );
+			WRITE_SHORT( iInventorySlot );
+			WRITE_FLOAT( m_vecOffhandItemSpot.x );
+			WRITE_FLOAT( m_vecOffhandItemSpot.y );
+			WRITE_FLOAT( m_vecOffhandItemSpot.z );
 		MessageEnd();
 	}
 
@@ -1451,7 +1548,8 @@ int CASW_Marine::SelectOffhandItemSchedule()
 		return -1;
 
 	const CASW_WeaponInfo *pInfo = m_hOffhandItemToUse->GetWeaponInfo();
-	if ( !pInfo )
+	const CASW_EquipItem *pItem = m_hOffhandItemToUse->GetEquipItem();
+	if ( !pInfo || !pItem )
 		return -1;
 
 	SetPoseParameter( "move_x", 1.0f );
@@ -1463,7 +1561,7 @@ int CASW_Marine::SelectOffhandItemSchedule()
 		if ( ( m_vecOffhandItemSpot - GetAbsOrigin() ).Length2D() < ASW_DEPLOY_RANGE )
 		{
 			m_hOffhandItemToUse->OffhandActivate();
-			if ( pInfo->m_bExtra )
+			if ( pItem->m_bIsExtra )
 			{
 				// Fire event when a marine uses an offhand item
 				IGameEvent * event = gameeventmanager->CreateEvent( "weapon_offhand_activate" );
@@ -1501,7 +1599,7 @@ int CASW_Marine::SelectOffhandItemSchedule()
 		if ( CanThrowOffhand( m_hOffhandItemToUse, GetOffhandThrowSource(), m_vecOffhandItemSpot, asw_debug_throw.GetInt() == 3 ) )
 		{
 			m_hOffhandItemToUse->OffhandActivate();
-			if ( pInfo->m_bExtra )
+			if ( pItem->m_bIsExtra )
 			{
 				// Fire event when a marine uses an offhand item
 				IGameEvent * event = gameeventmanager->CreateEvent( "weapon_offhand_activate" );
@@ -1553,14 +1651,14 @@ void CASW_Marine::FinishedUsingOffhandItem( bool bItemThrown, bool bFailed )
 
 		CSingleUserRecipientFilter user( pPlayer );
 		UserMessageBegin( user, "ASWOrderStopItemFX" );
-		WRITE_SHORT( entindex() );
-		WRITE_BOOL( bItemThrown );
-		WRITE_BOOL( bFailed );
+			WRITE_SHORT( entindex() );
+			WRITE_BOOL( bItemThrown );
+			WRITE_BOOL( bFailed );
 		MessageEnd();
 	}
 	else
 	{
-		OrdersFromPlayer( NULL, ASW_ORDER_HOLD_POSITION, this, true, GetLocalAngles().y);
+		OrdersFromPlayer( NULL, ASW_ORDER_HOLD_POSITION, this, true, GetLocalAngles().y );
 	}
 }
 
@@ -1762,7 +1860,7 @@ int CASW_Marine::SelectFollowSchedule()
 		return SCHED_ASW_HOLD_POSITION;
 	}
 
-	if ( NeedToFollowMove() && ( !rd_bot_melee.GetBool() || !HasCondition( COND_MOBBED_BY_ENEMIES ) ) )
+	if ( NeedToFollowMove() && ( !rd_bot_melee_mobbed.GetBool() || !HasCondition( COND_MOBBED_BY_ENEMIES ) ) )
 	{
 		return SCHED_ASW_FOLLOW_MOVE;
 	}
@@ -1776,12 +1874,11 @@ int CASW_Marine::SelectFollowSchedule()
 			return SCHED_RANGE_ATTACK1;
 	}	
 
-	if ( ( IsOutOfAmmo() || ( rd_bot_melee.GetBool() && HasCondition( COND_WEAPON_BLOCKED_BY_FRIEND ) ) ) && GetEnemy() )
+	if ( GetEnemy() && ( ( rd_bot_melee_noammo.GetBool() && IsOutOfAmmo() ) || ( rd_bot_melee_losblocked.GetBool() && HasCondition( COND_WEAPON_BLOCKED_BY_FRIEND ) ) ) )
 	{
 		int iMeleeSchedule = SelectMeleeSchedule();
 		if( iMeleeSchedule != -1 )
 			return iMeleeSchedule;
-		return SCHED_ASW_FOLLOW_MOVE; // reactivedrop: make bots follow leader when out of ammo
 	}
 
 	if ( NeedToFollowMove() )
@@ -2240,7 +2337,7 @@ void CASW_Marine::RunTask( const Task_t *pTask )
 	CheckForAIWeaponSwitch();
 
 	// check for firing on the move, if our enemy is in range, with LOS and we're facing him
-	if (GetASWOrders() == ASW_ORDER_MOVE_TO || GetASWOrders() == ASW_ORDER_FOLLOW)
+	if (GetASWOrders() == ASW_ORDER_MOVE_TO || GetASWOrders() == ASW_ORDER_FOLLOW || ASWDeathmatchMode())
 	{
 		bool bMelee = GetCurSchedule()->GetId() == GetGlobalScheduleId( SCHED_MELEE_ATTACK_PROP1 );
 
@@ -2323,6 +2420,12 @@ void CASW_Marine::RunTask( const Task_t *pTask )
 
 				NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + facingDir * 200, 0, 0, 255, true, 0.1f );
 				NDebugOverlay::Line( GetAbsOrigin(), GetAbsOrigin() + los * 200, 255, 0, 0, true, 0.1f );
+			}
+
+			if ( ASWDeathmatchMode() && pTask->iTask == TASK_WAIT_FOR_MOVEMENT )
+			{
+				// rotate to face our target while pathing in deathmatch
+				UpdateFacing();
 			}
 		}
 	}
@@ -2700,7 +2803,7 @@ void CASW_Marine::RunTask( const Task_t *pTask )
 			SetMoveType( oldMoveType );
 
 			// combo if we have a nearby enemy.
-			m_bMeleeKeyReleased = rd_bot_melee.GetBool() && GetEnemy() && GetEnemy()->IsAlive() && GetEnemyLKP().DistToSqr( GetAbsOrigin() ) <= Square( 40 );
+			m_bMeleeKeyReleased = rd_bot_melee_combo.GetBool() && GetEnemy() && GetEnemy()->IsAlive() && GetEnemyLKP().DistToSqr( GetAbsOrigin() ) <= Square( 40 );
 		}
 		break;
 
@@ -3410,6 +3513,11 @@ void CASW_Marine::RecalculateAIYawOffset()
 	else if ( RandomFloat() < asw_marine_toggle_crouch_chance.GetFloat() )
 	{
 		m_bAICrouch = !m_bAICrouch;
+	}
+	// If we don't have a gun, don't crouch because it looks bad.
+	if ( !GetActiveASWWeapon() )
+	{
+		m_bAICrouch = false;
 	}
 	m_flNextYawOffsetTime = gpGlobals->curtime + RandomFloat( asw_marine_yaw_interval_min.GetFloat(), asw_marine_yaw_interval_max.GetFloat() );
 }

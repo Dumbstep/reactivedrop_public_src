@@ -52,6 +52,7 @@ BEGIN_DATADESC( CASW_Weapon_Jump_Jet )
 END_DATADESC()
 
 extern ConVar asw_blink_debug;
+extern ConVar rm_destroy_empty_weapon;
 
 #else
 
@@ -59,7 +60,7 @@ extern ConVar asw_blink_debug;
 #endif /* not client */
 
 extern ConVar asw_blink_range;
-ConVar asw_jump_jet_time( "asw_jump_jet_time", "0.8", FCVAR_REPLICATED );
+ConVar asw_jump_jet_time( "asw_jump_jet_time", "0.8", FCVAR_CHEAT | FCVAR_REPLICATED );
 
 CASW_Weapon_Jump_Jet::CASW_Weapon_Jump_Jet()
 {
@@ -109,7 +110,26 @@ void CASW_Weapon_Jump_Jet::PrimaryAttack( void )
 	}
 }
 
-#ifdef CLIENT_DLL
+#ifndef CLIENT_DLL
+void CASW_Weapon_Jump_Jet::MarineDropped( CASW_Marine *pMarine )
+{
+	BaseClass::MarineDropped( pMarine );
+
+	if ( rm_destroy_empty_weapon.GetBool() && m_iClip1 <= 0 )
+	{
+		// if we get dropped during the jump, we still need to destroy on empty
+		Kill();
+	}
+}
+#else
+void CASW_Weapon_Jump_Jet::ClientThink()
+{
+	// skip blink ClientThink
+	BaseClass::BaseClass::ClientThink();
+
+	CASW_Marine *pMarine = GetMarine();
+	SetBodygroup( 0, !pMarine || pMarine->m_iJumpJetting != JJ_JUMP_JETS ? 0 : 1 );
+}
 #endif
 
 void CASW_Weapon_Jump_Jet::DoJumpJet()
@@ -132,7 +152,5 @@ void CASW_Weapon_Jump_Jet::DoJumpJet()
 
 	m_iClip1 -= 1;
 
-#ifndef CLIENT_DLL
-	DestroyIfEmpty( true );
-#endif
+	// weapon will be destroyed when the melee attack ends or when dropped if it is empty
 }

@@ -6,8 +6,10 @@
 #include "c_asw_game_resource.h"
 #include "c_asw_marine.h"
 #include "c_asw_player.h"
+#include "c_user_message_register.h"
 #endif
 #include "rd_missions_shared.h"
+#include "rd_cause_of_death.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -251,17 +253,13 @@ class CAchievement_ ## DifficultyName ## _Campaign_ ## CampaignName : public CAS
 	{ \
 		SetFlags( ACH_SAVE_GLOBAL | ACH_HAS_COMPONENTS ); \
 		SetStoreProgressInSteam( true ); \
+		m_iNumComponents = NELEMS( g_szAchievementMapNames ## CampaignName ); \
 		SetGoal( NELEMS( g_szAchievementMapNames ## CampaignName ) ); \
 	} \
 \
 	virtual void ListenForEvents( void ) \
 	{ \
 		ListenForGameEvent( "mission_success" ); \
-	} \
-\
-	virtual int GetNumComponents() \
-	{ \
-		return NELEMS( g_szAchievementMapNames ## CampaignName ); \
 	} \
 \
 	virtual const char *GetComponentDisplayString( int iComponent ) \
@@ -322,9 +320,11 @@ static const char *g_szAchievementMapNamesAllCoop[] =
 	"rd-tft1desertoutpost",
 	"rd-tft2abandonedmaintenance",
 	"rd-tft3spaceport",
+#ifdef RD__CAMPAIGNS_DEADCITY
 	"rd-dc1_omega_city",
 	"rd-dc2_breaking_an_entry",
 	"rd-dc3_search_and_rescue",
+#endif
 	"rd-til1midnightport",
 	"rd-til2roadtodawn",
 	"rd-til3arcticinfiltration",
@@ -339,12 +339,14 @@ static const char *g_szAchievementMapNamesAllCoop[] =
 	"rd-lan3_maintenance",
 	"rd-lan4_vent",
 	"rd-lan5_complex",
+#ifdef RD__CAMPAIGNS_REDUCTION
 	"rd-reduction1",
 	"rd-reduction2",
 	"rd-reduction3",
 	"rd-reduction4",
 	"rd-reduction5",
 	"rd-reduction6",
+#endif
 	"rd-par1unexpected_encounter",
 	"rd-par2hostile_places",
 	"rd-par3close_contact",
@@ -356,7 +358,6 @@ static const char *g_szAchievementMapNamesAllCoop[] =
 	"rd-bio1operationx5",
 	"rd-bio2invisiblethreat",
 	"rd-bio3biogenlabs",
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 	"rd-acc1_infodep",
 	"rd-acc2_powerhood",
 	"rd-acc3_rescenter",
@@ -364,7 +365,7 @@ static const char *g_szAchievementMapNamesAllCoop[] =
 	"rd-acc5_j5connector",
 	"rd-acc6_labruins",
 	"rd-acc_complex",
-#endif
+	"rd-ht-marine_academy",
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 	"rd-ada_sector_a9",
 	"rd-ada_nexus_subnode",
@@ -425,12 +426,14 @@ static const char *g_szAchievementMapNamesTFT[] =
 	"rd-tft3spaceport",
 };
 
+#ifdef RD__CAMPAIGNS_DEADCITY
 static const char *g_szAchievementMapNamesDC[] =
 {
 	"rd-dc1_omega_city",
 	"rd-dc2_breaking_an_entry",
 	"rd-dc3_search_and_rescue",
 };
+#endif
 
 static const char *g_szAchievementMapNamesTIL[] =
 {
@@ -454,6 +457,7 @@ static const char *g_szAchievementMapNamesLana[] =
 	"rd-lan5_complex",
 };
 
+#ifdef RD__CAMPAIGNS_REDUCTION
 static const char *g_szAchievementMapNamesReduction[] =
 {
 	"rd-reduction1",
@@ -463,6 +467,7 @@ static const char *g_szAchievementMapNamesReduction[] =
 	"rd-reduction5",
 	"rd-reduction6",
 };
+#endif
 
 static const char *g_szAchievementMapNamesPAR[] =
 {
@@ -487,7 +492,6 @@ static const char *g_szAchievementMapNamesBIO[] =
 	"rd-bio3biogenlabs",
 };
 
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 static const char *g_szAchievementMapNamesACC[] =
 {
 	"rd-acc1_infodep",
@@ -497,7 +501,6 @@ static const char *g_szAchievementMapNamesACC[] =
 	"rd-acc5_j5connector",
 	"rd-acc6_labruins",
 };
-#endif
 
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 static const char *g_szAchievementMapNamesADA[] =
@@ -521,9 +524,7 @@ DIFFICULTY_CAMPAIGN_ACHIEVEMENTS(180, RD_, _CAMPAIGN_LAN, Lana);
 DIFFICULTY_CAMPAIGN_ACHIEVEMENTS(185, RD_, _CAMPAIGN_PAR, PAR);
 DIFFICULTY_CAMPAIGN_ACHIEVEMENTS(190, RD_, _CAMPAIGN_NH, NH);
 DIFFICULTY_CAMPAIGN_ACHIEVEMENTS(195, RD_, _CAMPAIGN_BIO, BIO);
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 DIFFICULTY_CAMPAIGN_ACHIEVEMENTS(200, RD_, _CAMPAIGN_ACC, ACC);
-#endif
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 DIFFICULTY_CAMPAIGN_ACHIEVEMENTS(205, RD_, _CAMPAIGN_ADA, ADA);
 #endif
@@ -631,24 +632,33 @@ DECLARE_RD_SPEEDRUN_ACHIEVEMENT( BIO_OPERATION_X5, 1273 );
 DECLARE_RD_SPEEDRUN_ACHIEVEMENT( BIO_INVISIBLE_THREAT, 1274 );
 DECLARE_RD_SPEEDRUN_ACHIEVEMENT( BIO_BIOGEN_LABS, 1275 );
 
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_INFODEP, 1276 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_POWERHOOD, 1277 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_RESCENTER, 1278 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_CONFACILITY, 1279 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_J5CONNECTOR, 1280 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_LABRUINS, 1281 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( BONUS_SPC, 1276 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( BONUS_RAPTURE, 1277 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( BONUS_BUNKER, 1278 );
+#ifdef RD_BONUS_MISSION_ACHIEVEMENTS
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( UNSPLIT_JACOBS_1_2, 1279 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( UNSPLIT_PARANOIA_2_3, 1280 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( UNSPLIT_PARANOIA_4_5, 1281 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( UNSPLIT_AREA9800_2_3, 1282 );
 #endif
 
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_INFODEP, 1283 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_POWERHOOD, 1284 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_RESCENTER, 1285 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_CONFACILITY, 1286 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_J5CONNECTOR, 1287 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_LABRUINS, 1288 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ACC_COMPLEX, 1289 );
+
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_SECTOR_A9, 1282 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_NEXUS_SUBNODE, 1283 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_NEON_CARNAGE, 1284 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_FUEL_JUNCTION, 1285 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_DARK_PATH, 1286 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_FORBIDDEN_OUTPOST, 1287 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_NEW_BEGINNING, 1288 );
-DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_ANOMALY, 1289 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_SECTOR_A9, 1290 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_NEXUS_SUBNODE, 1291 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_NEON_CARNAGE, 1292 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_FUEL_JUNCTION, 1293 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_DARK_PATH, 1294 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_FORBIDDEN_OUTPOST, 1295 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_NEW_BEGINNING, 1296 );
+DECLARE_RD_SPEEDRUN_ACHIEVEMENT( ADA_ANOMALY, 1297 );
 #endif
 
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_ASW_GROUP_HEAL, "ASW_GROUP_HEAL", 5, 2300 );
@@ -782,9 +792,7 @@ DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_CAMPAIG
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_PAR, "RD_CAMPAIGN_NO_DEATHS_PAR", 5, 1009 );
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_NH, "RD_CAMPAIGN_NO_DEATHS_NH", 5, 1010 );
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_BIO, "RD_CAMPAIGN_NO_DEATHS_BIO", 5, 1011 );
-#ifdef RD_6A_CAMPAIGNS_ACCIDENT32
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_ACC, "RD_CAMPAIGN_NO_DEATHS_ACC", 5, 1012 );
-#endif
 #ifdef RD_6A_CAMPAIGNS_ADANAXIS
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_CAMPAIGN_NO_DEATHS_ADA, "RD_CAMPAIGN_NO_DEATHS_ADA", 5, 1013 );
 #endif
@@ -1120,6 +1128,55 @@ class CAchievement_Hardcore : public CASW_Achievement
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Hardcore, ACHIEVEMENT_ASW_HARDCORE, "ASW_HARDCORE", 5, 3185 );
 
 DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_NH_BONUS_OBJECTIVE, "RD_NH_BONUS_OBJECTIVE", 5, 3186 );
+DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_MA_SCORE_POINTS, "RD_MA_SCORE_POINTS", 5, 3187 );
+DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_MA_REACH_VOLCANO_ALIVE, "RD_MA_REACH_VOLCANO_ALIVE", 5, 3188 );
+DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_MA_VISIT_EACH_ZONE, "RD_MA_VISIT_EACH_ZONE", 5, 3189 );
+DECLARE_ACHIEVEMENT_ORDER( CAchievement_Server_Triggered, ACHIEVEMENT_RD_ACC_MUONGEM_KILL, "RD_ACC_MUONGEM_KILL", 5, 3190 );
+
+class CAchievement_Die_In_Many_Ways : public CASW_Achievement
+{
+	void Init()
+	{
+		SetFlags( ACH_SAVE_GLOBAL );
+		SetGoal( 25 );
+		SetStoreProgressInSteam( true );
+	}
+
+	void CheckDeathTypeCount()
+	{
+		ISteamUserStats *pSteamUserStats = SteamUserStats();
+		if ( !pSteamUserStats )
+			return;
+
+		int32_t nCount = 0;
+		int nDeathTypes = 0;
+		for ( int i = 0; i < DEATHCAUSE_COUNT && !IsAchieved(); i++ )
+		{
+			if ( pSteamUserStats->GetStat( g_szDeathCauseStatName[i], &nCount ) && nCount )
+			{
+				nDeathTypes++;
+				if ( nDeathTypes > GetCount() )
+				{
+					IncrementCount();
+				}
+			}
+		}
+	}
+
+	friend void CheckDeathTypeCount();
+};
+DECLARE_ACHIEVEMENT_ORDER( CAchievement_Die_In_Many_Ways, ACHIEVEMENT_RD_DIE_IN_MANY_WAYS, "RD_DIE_IN_MANY_WAYS", 5, 5000 );
+
+void CheckDeathTypeCount()
+{
+	CASW_Achievement_Manager *pMgr = ASWAchievementManager();
+	if ( !pMgr )
+		return;
+
+	CBaseAchievement *pAchievement = pMgr->GetAchievementByID( ACHIEVEMENT_RD_DIE_IN_MANY_WAYS, GET_ACTIVE_SPLITSCREEN_SLOT() );
+	if ( pAchievement )
+		assert_cast< CAchievement_Die_In_Many_Ways * >( pAchievement )->CheckDeathTypeCount();
+}
 
 CON_COMMAND_F( rd_achievement_order, "", FCVAR_HIDDEN )
 {

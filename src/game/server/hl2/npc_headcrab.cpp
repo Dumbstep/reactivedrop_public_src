@@ -17,8 +17,6 @@
 #include "ai_moveprobe.h"
 #include "ai_memory.h"
 #include "bitstring.h"
-// reactivedrop: commented 
-//#include "hl2_shareddefs.h"
 #include "npcevent.h"
 #include "soundent.h"
 #include "npc_headcrab.h"
@@ -31,8 +29,6 @@
 #include "world.h"
 #include "npc_bullseye.h"
 #include "physics_npc_solver.h"
-// reactivedrop: commented 
-//#include "hl2_gamerules.h"
 #include "decals.h"
 
 #include "asw_shareddefs.h"
@@ -71,6 +67,7 @@ const int HEADCRAB_MAX_JUMP_DIST = 256;
 #define HEADCRAB_BURN_SOUND_FREQUENCY 10
 
 ConVar g_debug_headcrab( "g_debug_headcrab", "0", FCVAR_CHEAT );
+ConVar rd_headcrab_waterproof( "rd_headcrab_waterproof", "0", FCVAR_CHEAT, "Headcrabs don't drown in water." );
 extern ConVar asw_debug_alien_damage;
 
 //------------------------------------
@@ -168,7 +165,6 @@ END_DATADESC()
 void CBaseHeadcrab::Spawn( void )
 {
 	SetHullType( HULL_TINY );
-	SetHealthByDifficultyLevel();
 
 	SetViewOffset( Vector( 6, 0, 11 ) ); // Position of the eyes relative to NPC's origin.
 
@@ -205,28 +201,20 @@ void CBaseHeadcrab::Spawn( void )
 }
 
 
-void CBaseHeadcrab::SetHealthByDifficultyLevel( void )
+int CBaseHeadcrab::GetBaseHealth()
 {
 	if ( FClassnameIs( this, "npc_headcrab" ) )
 	{
-		SetHealth( ASWGameRules()->ModifyAlienHealthBySkillLevel( sk_headcrab_health.GetInt() ) + m_iHealthBonus );
-		if ( asw_debug_alien_damage.GetBool() )
-			Msg( "Setting headcrab's initial health to %d\n", GetHealth() );
+		return sk_headcrab_health.GetInt();
 	}
 	else if ( FClassnameIs( this, "npc_headcrab_fast" ) )
 	{
-		SetHealth( ASWGameRules()->ModifyAlienHealthBySkillLevel( sk_headcrab_fast_health.GetInt() ) + m_iHealthBonus );
-		if ( asw_debug_alien_damage.GetBool() )
-			Msg( "Setting fast headcrab's initial health to %d\n", GetHealth() );
+		return sk_headcrab_fast_health.GetInt();
 	}
 	else
 	{
-		SetHealth( ASWGameRules()->ModifyAlienHealthBySkillLevel( sk_headcrab_poison_health.GetInt() ) + m_iHealthBonus );
-		if ( asw_debug_alien_damage.GetBool() )
-			Msg( "Setting poison headcrab's initial health to %d\n", GetHealth() );
+		return sk_headcrab_poison_health.GetInt();
 	}
-
-	SetMaxHealth( GetHealth() );
 }
 
 
@@ -754,7 +742,7 @@ void CBaseHeadcrab::RunTask( const Task_t *pTask )
 
 		case TASK_HEADCRAB_CEILING_WAIT:
 			{	
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 				if ( DarknessLightSourceWithinRadius( this, DARKNESS_LIGHTSOURCE_SIZE ) )
 				{
 					DropFromCeiling();
@@ -906,7 +894,7 @@ void CBaseHeadcrab::LeapTouch( CBaseEntity *pOther )
 //-----------------------------------------------------------------------------
 int CBaseHeadcrab::CalcDamageInfo( CTakeDamageInfo *pInfo )
 {
-	pInfo->Set( this, this, sk_headcrab_melee_dmg.GetFloat(), DMG_SLASH );
+	pInfo->Set( this, this, ASWGameRules()->ModifyAlienDamageBySkillLevel( sk_headcrab_melee_dmg.GetFloat() ), DMG_SLASH );
 	CalculateMeleeDamageForce( pInfo, GetAbsVelocity(), GetAbsOrigin() );
 	return pInfo->GetDamage();
 }
@@ -953,7 +941,7 @@ void CBaseHeadcrab::GatherConditions( void )
 
 	BaseClass::GatherConditions();
 
-	if( m_lifeState == LIFE_ALIVE && GetWaterLevel() > 1 )
+	if ( m_lifeState == LIFE_ALIVE && GetWaterLevel() > 1 && !rd_headcrab_waterproof.GetBool() )
 	{
 		// Start Drowning!
 		SetCondition( COND_HEADCRAB_IN_WATER );
@@ -1228,7 +1216,7 @@ void CBaseHeadcrab::JumpFromCanister()
 
 void CBaseHeadcrab::DropFromCeiling( void )
 {
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	if ( HL2GameRules()->IsAlyxInDarknessMode() )
 	{
 		if ( IsHangingFromCeiling() )
@@ -1806,7 +1794,7 @@ int CBaseHeadcrab::SelectSchedule( void )
 	if ( IsHangingFromCeiling() )
 	{
 		bool bIsAlyxInDarknessMode = false;
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 		bIsAlyxInDarknessMode = HL2GameRules()->IsAlyxInDarknessMode();
 #endif // HL2_EPISODIC
 
@@ -1988,7 +1976,7 @@ void CBaseHeadcrab::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, 
 
 	if( !bWasOnFire )
 	{
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 		if ( HL2GameRules()->IsAlyxInDarknessMode() == true )
 		{
 			GetEffectEntity()->AddEffects( EF_DIMLIGHT );
@@ -2614,7 +2602,7 @@ int	CFastHeadcrab::SelectSchedule( void )
 
 	if ( HasCondition(COND_CAN_RANGE_ATTACK1) && IsHangingFromCeiling() == false )
 	{
-		if ( OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, SQUAD_SLOT_ATTACK2 ) )
+		if ( OccupyStrategySlotRange( SQUAD_SLOT_ATTACK1, GetMaxAttackSquadSlot() ) )
 			return SCHED_RANGE_ATTACK1;
 		ClearCondition(COND_CAN_RANGE_ATTACK1);
 	}
@@ -2966,6 +2954,13 @@ void CBlackHeadcrab::TelegraphSound( void )
 	EmitSound( "NPC_BlackHeadcrab.Telegraph" );
 }
 
+void CBlackHeadcrab::Spawn( void )
+{
+	BaseClass::Spawn();
+
+	// collapse both classnames to one to simplify stats
+	SetClassname( "npc_headcrab_poison" );
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -3171,18 +3166,18 @@ void CBlackHeadcrab::TouchDamage( CBaseEntity *pOther )
 				if ( pOther->Classify() == CLASS_ASW_MARINE )
 				{
 					// That didn't finish them. Take them down to one point with poison damage. It'll heal.
-					pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth - 1, DMG_POISON ) );
+					pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth - 1, DMG_POISON | DMG_PREVENT_PHYSICS_FORCE ) );
 				}
 				else
 				{
 					// Just take some amount of slash damage instead
-					pOther->TakeDamage( CTakeDamageInfo( this, this, sk_headcrab_poison_npc_damage.GetFloat(), DMG_SLASH ) );
+					pOther->TakeDamage( CTakeDamageInfo( this, this, ASWGameRules()->ModifyAlienDamageBySkillLevel( sk_headcrab_poison_npc_damage.GetFloat() ), DMG_SLASH ) );
 				}
 			}
 			else
 			{
 				// That didn't finish them. Take them down to one point with poison damage. It'll heal.
-				pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth - 1, DMG_POISON ) );
+				pOther->TakeDamage( CTakeDamageInfo( this, this, pOther->m_iHealth - 1, DMG_POISON | DMG_PREVENT_PHYSICS_FORCE ) );
 			}
 		}
 	}
@@ -3250,7 +3245,7 @@ void CBlackHeadcrab::Panic( float flDuration )
 }
 
 
-#if HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 //-----------------------------------------------------------------------------
 // Purpose: Black headcrabs have 360-degree vision when they are in the ambush
 //			schedule. This is because they ignore sounds when in ambush, and

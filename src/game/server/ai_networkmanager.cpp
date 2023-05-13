@@ -29,7 +29,7 @@
 #include "tier0/memdbgon.h"
 
 // Increment this to force rebuilding of all networks
-#define	 AINET_VERSION_NUMBER	41
+#define	 AINET_VERSION_NUMBER	42
 
 //-----------------------------------------------------------------------------
 
@@ -41,7 +41,11 @@ inline void DebugConnectMsg( int node1, int node2, const char *pszFormat, ... )
 {
 	if ( DebuggingConnect( node1, node2 ) )
 	{
-		DevMsg( CFmtStr( &pszFormat ) );
+		va_list args;
+
+		va_start( args, pszFormat );
+		DevMsg( "%s", CFmtStr( pszFormat, args ).Access() );
+		va_end( args );
 	}
 }
 

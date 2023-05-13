@@ -2,15 +2,20 @@
 #define _ASW_AOEGRENADE_PROJECTILE_H
 #pragma once
 
+#include "rd_inventory_shared.h"
+
 class CSprite;
 class CSpriteTrail;
 
-class CASW_AOEGrenade_Projectile : public CBaseCombatCharacter
+DECLARE_AUTO_LIST( IASW_AOEGrenade_Projectile_List );
+
+class CASW_AOEGrenade_Projectile : public CBaseCombatCharacter, public IASW_AOEGrenade_Projectile_List, public IRD_Has_Projectile_Data
 {
 	DECLARE_CLASS( CASW_AOEGrenade_Projectile, CBaseCombatCharacter );
 
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
+	IMPLEMENT_AUTO_LIST_GET();
 
 	CASW_AOEGrenade_Projectile();
 	virtual ~CASW_AOEGrenade_Projectile();
@@ -74,6 +79,12 @@ public:
 	bool		m_bFading;
 
 	CHandle< EHANDLE >	m_hFiringWeapon;
+
+	CNetworkVarEmbedded( CRD_ProjectileData, m_ProjectileData );
+	const CRD_ProjectileData *GetProjectileData() const override
+	{
+		return &m_ProjectileData;
+	}
 
 	CUtlVector< EHANDLE >	m_hAOETargets;
 

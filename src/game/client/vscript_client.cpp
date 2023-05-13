@@ -30,7 +30,7 @@ extern ScriptClassDesc_t * GetScriptDesc( CBaseEntity * );
 #else // !VMPROFILE
 
 #define VMPROF_START
-#define VMPROF_SHOW
+#define VMPROF_SHOW( funcname, funcdesc )
 
 #endif // VMPROFILE
 
@@ -75,6 +75,7 @@ bool VScriptClientInit()
 	{
 		ScriptLanguage_t scriptLanguage = SL_DEFAULT;
 
+#ifndef INFESTED_DLL
 		char const *pszScriptLanguage;
 		if ( CommandLine()->CheckParm( "-scriptlang", &pszScriptLanguage ) )
 		{
@@ -95,8 +96,8 @@ bool VScriptClientInit()
 				DevWarning("-scriptlang does not recognize a language named '%s'. virtual machine did NOT start.\n", pszScriptLanguage );
 				scriptLanguage = SL_NONE;
 			}
-
 		}
+#endif
 		if( scriptLanguage != SL_NONE )
 		{
 			if ( g_pScriptVM == NULL )
@@ -107,7 +108,8 @@ bool VScriptClientInit()
 				Log_Msg( LOG_VScript, "VSCRIPT: Started VScript virtual machine using script language '%s'\n", g_pScriptVM->GetLanguageName() );
 				ScriptRegisterFunction( g_pScriptVM, GetMapName, "Get the name of the map.");
 				ScriptRegisterFunction( g_pScriptVM, Time, "Get the current server time" );
-				ScriptRegisterFunction( g_pScriptVM, DoIncludeScript, "Execute a script (internal)" );
+				ScriptRegisterFunction( g_pScriptVM, DoUniqueString, SCRIPT_ALIAS( "UniqueString", "Generate a string guaranteed to be unique across the life of the script VM, with an optional root string. Useful for adding data to tables when not sure what keys are already in use in that table." ) );
+				ScriptRegisterFunction( g_pScriptVM, DoIncludeScript, SCRIPT_ALIAS( "IncludeScript", "Execute a script (internal)" ) );
 				
 				if ( GameRules() )
 				{
@@ -126,7 +128,7 @@ bool VScriptClientInit()
 					VScriptRunScript( "mapspawn", false );
 				}
 
-				VMPROF_SHOW( pszScriptLanguage, "virtual machine startup" );
+				VMPROF_SHOW( VScriptClientInit, "virtual machine startup" );
 
 				return true;
 			}

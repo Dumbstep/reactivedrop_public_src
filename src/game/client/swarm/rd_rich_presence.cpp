@@ -87,6 +87,8 @@ static void handleDiscordJoinRequest( const DiscordUser *pRequest )
 
 #endif
 
+bool IsOfficialCampaign();
+
 bool RD_Rich_Presence::Init()
 {
 #ifdef DISCORD_RICH_PRESENCE_ENABLED
@@ -319,18 +321,16 @@ void RD_Rich_Presence::UpdatePresence()
 					case GAMEMODE_GUNGAME:
 						V_strcat( szSteamDisplay, "GG", sizeof( szSteamDisplay ) );
 						V_strncpy( szDetails, "Gun Game", sizeof( szDetails ) );
-						if ( CASW_WeaponInfo *pWeaponInfo = ASWEquipmentList()->GetWeaponDataFor( STRING( ASWEquipmentList()->GetRegular( ASWDeathmatchMode()->GetWeaponIndexByFragsCount( g_PR->GetPlayerScore( pPlayer->entindex() ) ) )->m_EquipClass ) ) )
 						{
-							char szWeaponName[128];
-							if ( wchar_t *pwszTranslatedWeaponName = g_pLocalize->Find( pWeaponInfo->szPrintName ) )
+							int iWeaponIndex = ASWDeathmatchMode()->GetWeaponIndexByFragsCount( g_PR->GetPlayerScore( pPlayer->entindex() ) );
+							if ( CASW_EquipItem *pItem = g_ASWEquipmentList.GetRegular( iWeaponIndex ) )
 							{
-								V_UnicodeToUTF8( pwszTranslatedWeaponName, szWeaponName, sizeof( szWeaponName ) );
+								wchar_t wszWeaponName[128];
+								char szWeaponName[128];
+								TryLocalize( pItem->m_szShortName, wszWeaponName, sizeof( wszWeaponName ) );
+								V_UnicodeToUTF8( wszWeaponName, szWeaponName, sizeof( szWeaponName ) );
+								V_snprintf( szState, sizeof( szState ), "Score: %d (%s)", g_PR->GetPlayerScore( pPlayer->entindex() ), szWeaponName );
 							}
-							else
-							{
-								V_strncpy( szWeaponName, pWeaponInfo->szPrintName, sizeof( szWeaponName ) );
-							}
-							V_snprintf( szState, sizeof( szState ), "Score: %d (%s)", g_PR->GetPlayerScore( pPlayer->entindex() ), szWeaponName );
 						}
 						break;
 					case GAMEMODE_INSTAGIB:
@@ -349,6 +349,17 @@ void RD_Rich_Presence::UpdatePresence()
 				{
 					V_strncpy( szSteamDisplay, "#Campaign_Difficulty_Challenge", sizeof( szSteamDisplay ) );
 				}
+
+				static char szMissionTranslationKey[128];
+				if ( IsOfficialCampaign() )
+				{
+					V_snprintf( szMissionTranslationKey, sizeof( szMissionTranslationKey ), "official_mission_%s", pMission->BaseName );
+				}
+				else
+				{
+					V_strncpy( szMissionTranslationKey, "community_mission", sizeof( szMissionTranslationKey ) );
+				}
+				pSteamFriends->SetRichPresence( "rd_mission_key", szMissionTranslationKey );
 
 				static char szMissionName[128];
 				if ( wchar_t *pwszTranslatedMissionName = g_pLocalize->Find( STRING( pMission->MissionTitle ) ) )
@@ -382,6 +393,17 @@ void RD_Rich_Presence::UpdatePresence()
 					if ( V_strcmp( rd_challenge.GetString(), "0" ) )
 					{
 						const char *pszDisplayName = ReactiveDropChallenges::DisplayName( rd_challenge.GetString() );
+						static char szChallengeTranslationKey[128];
+						if ( ReactiveDropChallenges::IsOfficial( rd_challenge.GetString() ) )
+						{
+							V_snprintf( szChallengeTranslationKey, sizeof( szChallengeTranslationKey ), "official_challenge_%s", rd_challenge.GetString() );
+						}
+						else
+						{
+							V_strncpy( szChallengeTranslationKey, "community_challenge", sizeof( szChallengeTranslationKey ) );
+						}
+						pSteamFriends->SetRichPresence( "rd_challenge_key", szChallengeTranslationKey );
+
 						static char szChallengeName[128];
 						if ( wchar_t *pwszTranslatedChallengeName = g_pLocalize->Find( pszDisplayName ) )
 						{

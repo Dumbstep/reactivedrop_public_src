@@ -15,6 +15,7 @@
 #include "object_motion_blur_effect.h"
 #include "asw_deathmatch_mode.h"
 #include "dlight.h"
+#include "rd_inventory_shared.h"
 #include "glow_outline_effect.h"
 
 class C_ASW_Player;
@@ -40,7 +41,7 @@ class CASW_Melee_Attack;
 /*  We inherit C_ASW_Marine from IASW_Client_Aim_Target to allow autoaiming
 	on marines for deathmatch
 */
-class C_ASW_Marine : public C_ASW_VPhysics_NPC, public IASWPlayerAnimStateHelpers, public IASW_Client_Aim_Target, public IASW_Client_Usable_Entity
+class C_ASW_Marine : public C_ASW_VPhysics_NPC, public IASWPlayerAnimStateHelpers, public IASW_Client_Usable_Entity
 {
 public:
 	DECLARE_CLASS( C_ASW_Marine, C_ASW_VPhysics_NPC );
@@ -52,11 +53,7 @@ public:
 
 	// aim target interface, allows autoaiming onto marines 
 	IMPLEMENT_AUTO_LIST_GET();
-	virtual float GetRadius() { return 23; }
 	virtual bool IsAimTarget();
-	virtual const Vector& GetAimTargetPos(const Vector &vecFiringSrc, bool bWeaponPrefersFlatAiming) { return WorldSpaceCenter(); }
-	virtual const Vector& GetAimTargetRadiusPos(const Vector &vecFiringSrc) { return WorldSpaceCenter(); }
-
 
 	virtual void	ClientThink();
 	void			PostThink();	// called after moving when the marine is being inhabited
@@ -111,7 +108,7 @@ public:
 	virtual void FireBullets( const FireBulletsInfo_t &info );
 	virtual void FireRegularBullets( const FireBulletsInfo_t &info );
 	virtual void FirePenetratingBullets( const FireBulletsInfo_t &info, int iMaxPenetrate, float fPenetrateChance, int iSeedPlus, bool bAllowChange=true, Vector *pPiercingTracerEnd = NULL, bool bSegmentTracer = true );
-	virtual void FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBounce, int iSeedPlus=0 );
+	virtual void FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBounce, int iSeedPlus = 0, bool bAllowHittingAttacker = false );
 	CBaseCombatWeapon* GetLastWeaponSwitchedTo();
 	EHANDLE m_hLastWeaponSwitchedTo;
 	bool m_bLastWeaponBeforeTempWasSecondary;
@@ -121,6 +118,7 @@ public:
 	int GetWeaponPositionForPickup( const char* szWeaponClass, bool bIsTemporary );	// returns which slot in the m_hWeapons array this pickup should go in
 	int GetWeaponIndex( CBaseCombatWeapon *pWeapon ) const;		// returns weapon's position in our myweapons array
 	Vector GetOffhandThrowSource( const Vector *vecStandingPos = NULL );
+	const Vector &GetOffhandThrowDest();
 	virtual bool IsFiring();
 
 	bool ShouldPreventLaserSight() { return m_flPreventLaserSightTime.Get() < 0.0f || m_flPreventLaserSightTime.Get() > gpGlobals->curtime; }
@@ -136,6 +134,7 @@ public:
 	bool IsInhabited();
 	CHandle<C_ASW_Marine_Resource> m_hMarineResource;
 	CASW_Marine_Profile* GetMarineProfile();
+	CNetworkVar( int, m_nMarineProfile );
 
 	// scanner
 	inline float GetBlipStrength() { return m_CurrentBlipStrength; }
@@ -174,7 +173,7 @@ public:
 	virtual void					EstimateAbsVelocity( Vector& vel );	// asw made virtual
 	CNetworkVar(bool, m_bPreventMovement);
 	CNetworkVar( bool, m_bForceWalking );
-	CNetworkVector( m_vecGroundVelocity );
+	CNetworkVar( bool, m_bRolls );
 
 	// orders
 	CNetworkVar(int, m_ASWOrders);
@@ -186,8 +185,17 @@ public:
 	bool CreateLightEffects();	
 	CFlashlightEffect *m_pFlashlight;	// projector flashlight
 	void ReleaseFlashlightBeam();		// release beam flashlight
-	Beam_t	*m_pFlashlightBeam;
-	dlight_t* m_pFlashlightDLight;
+	Beam_t *m_pFlashlightBeam;
+	dlight_t *m_pFlashlightDLight;
+
+	// night vision
+	bool IsVisionActive();
+	float UpdateVisionAlpha();
+	float UpdateFlashAlpha();
+	CNetworkVar( bool, m_bNightVision );
+	float m_flVisionAlpha;
+	float m_flFlashAlpha;
+	bool m_bOldVisionActive;
 
 	// hacking
 	bool m_bHacking;
@@ -199,8 +207,6 @@ public:
 	void CreateWeaponEmitters();
 	void DoMuzzleFlash();
 	void DoImpactEffect( trace_t &tr, int nDamageType );
-	void MakeTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType );
-	void MakeUnattachedTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType );
 
 	float GetDamageBuffEndTime() { return m_flDamageBuffEndTime.Get(); }
 	CNetworkVar( float, m_flDamageBuffEndTime );
@@ -210,6 +216,7 @@ public:
 	bool IsElectrifiedArmorActive() { return GetElectrifiedArmorEndTime() > gpGlobals->curtime; }
 	CNetworkVar( float, m_flElectrifiedArmorEndTime );
 	bool m_bClientElectrifiedArmor;
+	CNetworkVarEmbedded( CRD_ProjectileData, m_ElectrifiedArmorProjectileData );
 	CUtlReference<CNewParticleEffect> m_pElectrifiedArmorEmitter;
 
 	// flamer
@@ -305,15 +312,11 @@ public:
 	float m_flLastMedicCall, m_flLastAmmoCall;
 
 	// driving
-	IASW_Client_Vehicle* GetASWVehicle();
-	IASW_Client_Vehicle* GetClientsideVehicle() { return m_pClientsideVehicle; }
-	bool m_bHasClientsideVehicle;
-	void SetClientsideVehicle(IASW_Client_Vehicle* pVehicle);
-	bool IsDriving() { return m_bDriving; }
+	IASW_Client_Vehicle *GetASWVehicle();
+	bool IsDriving() { return m_bIsInVehicle && m_iVehicleSeat < 0; }
 	bool IsInVehicle() { return m_bIsInVehicle; }
 	CNetworkHandle( CBaseEntity, m_hASWVehicle );
-	IASW_Client_Vehicle* m_pClientsideVehicle;
-	bool m_bDriving;
+	int m_iVehicleSeat;
 	bool m_bIsInVehicle;
 
 	// controlling a turret
@@ -417,6 +420,8 @@ public:
 	CNetworkVar( int, m_iForcedActionRequest );
 	static C_ASW_Marine* GetLocalMarine();
 	static C_ASW_Marine* GetViewMarine();
+
+	Vector m_vecMarineColor;
 
 	// Glows are enabled when the sniper scope is used
 	CGlowObject m_GlowObject;

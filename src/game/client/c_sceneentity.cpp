@@ -770,50 +770,63 @@ public:
 	} 	
 };
 CChoreoStringPool g_ChoreoStringPool;
+IChoreoStringPool *g_pChoreoStringPool = &g_ChoreoStringPool;
 
 CChoreoScene *C_SceneEntity::LoadScene( const char *filename )
 {
-	char loadfile[ 512 ];
+	char loadfile[MAX_PATH];
 	Q_strncpy( loadfile, filename, sizeof( loadfile ) );
 	Q_SetExtension( loadfile, ".vcd", sizeof( loadfile ) );
 	Q_FixSlashes( loadfile );
 
-	char *pBuffer = NULL;
-	size_t bufsize = scenefilecache->GetSceneBufferSize( loadfile );
-	if ( bufsize <= 0 )
-		return NULL;
+	byte *pBuffer = NULL;
+	CChoreoScene *pScene = NULL;
+	bool bLoadedFromScenesImage = true;
 
-	pBuffer = new char[ bufsize ];
-	if ( !scenefilecache->GetSceneData( filename, (byte *)pBuffer, bufsize ) )
+	int fileSize = scenefilecache->GetSceneBufferSize( loadfile );
+	if ( fileSize > 0 )
 	{
-		delete[] pBuffer;
-		return NULL;
-	}
-
-	CChoreoScene *pScene;
-	if ( IsBufferBinaryVCD( pBuffer, bufsize ) )
-	{
-		pScene = new CChoreoScene( this );
-		CUtlBuffer buf( pBuffer, bufsize, CUtlBuffer::READ_ONLY );
-		if ( !pScene->RestoreFromBinaryBuffer( buf, loadfile, &g_ChoreoStringPool ) )
+		pBuffer = new byte[fileSize];
+		if ( !scenefilecache->GetSceneData( filename, pBuffer, fileSize ) )
 		{
-			Warning( "Unable to restore binary scene '%s'\n", loadfile );
-			delete pScene;
-			pScene = NULL;
-		}
-		else
-		{
-			pScene->SetPrintFunc( Scene_Printf );
-			pScene->SetEventCallbackInterface( this );
+			delete[] pBuffer;
+			return NULL;
 		}
 	}
 	else
 	{
-		g_TokenProcessor.SetBuffer( pBuffer );
-		pScene = ChoreoLoadScene( loadfile, this, &g_TokenProcessor, Scene_Printf );
+		bLoadedFromScenesImage = false;
+		fileSize = filesystem->ReadFileEx( loadfile, "GAME", ( void ** )&pBuffer, true, true );
+		if ( fileSize <= 0 )
+		{
+			return NULL;
+		}
 	}
 
-	delete[] pBuffer;
+	pScene = new CChoreoScene( this );
+	CUtlBuffer buf( pBuffer, fileSize, CUtlBuffer::READ_ONLY );
+	if ( !pScene->RestoreFromBinaryBuffer( buf, loadfile, &g_ChoreoStringPool ) )
+	{
+		Warning( "Unable to restore scene '%s'\n", loadfile );
+		delete pScene;
+		pScene = NULL;
+	}
+
+	if ( pScene )
+	{
+		pScene->SetPrintFunc( Scene_Printf );
+		pScene->SetEventCallbackInterface( this );
+	}
+
+	if ( bLoadedFromScenesImage )
+	{
+		delete[] pBuffer;
+	}
+	else
+	{
+		filesystem->FreeOptimalReadBuffer( pBuffer );
+	}
+
 	return pScene;
 }
 

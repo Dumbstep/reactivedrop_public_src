@@ -89,7 +89,7 @@
 #include "datacache/imdlcache.h"
 #include "vstdlib/jobthread.h"
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 #include "npc_alyx_episodic.h"
 #endif
 
@@ -743,7 +743,7 @@ void CAI_BaseNPC::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, bo
 {
 	BaseClass::Ignite( flFlameLifetime, bNPCOnly, flSize, bCalledByLevelDesigner );
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	CBasePlayer *pPlayer = AI_GetSinglePlayer();
 	if ( pPlayer && pPlayer->IRelationType( this ) != D_LI )
 	{
@@ -765,7 +765,7 @@ bool CAI_BaseNPC::PassesDamageFilter( const CTakeDamageInfo &info )
 {
 	if ( ai_block_damage.GetBool() )
 		return false;
-#if PLAYER_VELICLE_CHECKS
+#if PLAYER_VEHICLE_CHECKS
 	// FIXME: hook a friendly damage filter to the npc instead?
 	if ( (CapabilitiesGet() & bits_CAP_FRIENDLY_DMG_IMMUNE) && info.GetAttacker() && info.GetAttacker() != this )
 	{
@@ -11456,6 +11456,11 @@ void CAI_BaseNPC::Freeze( float flFreezeAmount, CBaseEntity *pFreezer, Ray_t *pF
 	{	
 		m_flFrozenThawRate = 0.1f;
 
+		if ( IsFrozen() )
+		{
+			m_bWasEverFrozen = true;
+		}
+
 		if ( ShouldBecomeStatue() )
 		{
 			// Dude is frozen, so lets use a stiff server side statue
@@ -11571,6 +11576,8 @@ CAI_BaseNPC::CAI_BaseNPC(void)
 
 	m_pLockedBestSound = new CSound;
 	m_pLockedBestSound->m_iType = SOUND_NONE;
+
+	m_bWasEverFrozen = false;
 
 	// ----------------------------
 	//  Debugging fields
@@ -12127,7 +12134,11 @@ bool CAI_BaseNPC::CineCleanup()
 			{
 				SetLocalOrigin( origin );
 
+#ifdef INFESTED_DLL
+				int drop = UTIL_DropToFloor( this, GetAITraceMask() );
+#else
 				int drop = UTIL_DropToFloor( this, GetAITraceMask(), UTIL_GetLocalPlayer() );
+#endif
 
 				// Origin in solid?  Set to org at the end of the sequence
 				if ( ( drop < 0 ) || sv_test_scripted_sequences.GetBool() )
@@ -12724,7 +12735,11 @@ void DevMsg( CAI_BaseNPC *pAI, unsigned flags, const char *pszFormat, ... )
 {
 	if ( (flags & AIMF_IGNORE_SELECTED) || (pAI->m_debugOverlays & OVERLAY_NPC_SELECTED_BIT) )
 	{
-		AIMsgGuts( pAI, flags, CFmtStr( &pszFormat ) );
+		va_list args;
+
+		va_start( args, pszFormat );
+		AIMsgGuts( pAI, flags, CFmtStr( &pszFormat, args ) );
+		va_end( args );
 	}
 }
 
@@ -12734,7 +12749,11 @@ void DevMsg( CAI_BaseNPC *pAI, const char *pszFormat, ... )
 {
 	if ( (pAI->m_debugOverlays & OVERLAY_NPC_SELECTED_BIT) )
 	{
-		AIMsgGuts( pAI, 0, CFmtStr( &pszFormat ) );
+		va_list args;
+
+		va_start( args, pszFormat );
+		AIMsgGuts( pAI, 0, CFmtStr( &pszFormat, args ) );
+		va_end( args );
 	}
 }
 
@@ -14184,7 +14203,7 @@ void CAI_BaseNPC::CalculateForcedInteractionPosition( void )
 //-----------------------------------------------------------------------------
 void CAI_BaseNPC::PlayerHasIlluminatedNPC( CBasePlayer *pPlayer, float flDot )
 {
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	if ( IsActiveDynamicInteraction() )
 	{
 		ScriptedNPCInteraction_t *pInteraction = GetRunningDynamicInteraction();

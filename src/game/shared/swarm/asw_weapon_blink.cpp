@@ -135,8 +135,8 @@ bool CASW_Weapon_Blink::SetBlinkDestination()
 
 	const int jumpjet_type = ASWGameRules()->GetJumpJetType();
 	const bool bJumpNoMatterWhat = jumpjet_type == JUMPJET_JUMP_NO_MATTER_WHAT;
-	Vector vecStart = pPlayer->GetCrosshairTracePos() + Vector( 0, 0, 30 );
-	Vector vecEnd = pPlayer->GetCrosshairTracePos() - Vector( 0, 0, 30 );
+	Vector vecStart = pMarine->GetOffhandThrowDest() + Vector( 0, 0, 30 );
+	Vector vecEnd = pMarine->GetOffhandThrowDest() - Vector( 0, 0, 30 );
 	trace_t tr;
 	UTIL_TraceHull( vecStart, vecEnd, pMarine->WorldAlignMins(), pMarine->WorldAlignMaxs(), MASK_PLAYERSOLID_BRUSHONLY, pMarine, COLLISION_GROUP_PLAYER_MOVEMENT, &tr );
 	if ( (tr.startsolid || tr.allsolid) && !bJumpNoMatterWhat )
@@ -431,7 +431,15 @@ void CASW_Weapon_Blink::UpdatePower()
 	}
 }
 
-#ifdef CLIENT_DLL
+#ifndef CLIENT_DLL
+#else
+void CASW_Weapon_Blink::ClientThink()
+{
+	BaseClass::ClientThink();
+
+	CASW_Marine *pMarine = GetMarine();
+	SetBodygroup( 0, !pMarine || pMarine->m_iJumpJetting != JJ_BLINK ? 0 : 1 );
+}
 #endif
 
 int CASW_Weapon_Blink::ASW_SelectWeaponActivity(int idealActivity)

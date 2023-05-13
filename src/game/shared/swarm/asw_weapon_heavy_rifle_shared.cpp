@@ -75,6 +75,11 @@ CASW_Weapon_Heavy_Rifle::~CASW_Weapon_Heavy_Rifle()
 void CASW_Weapon_Heavy_Rifle::Precache()
 {
 	BaseClass::Precache();
+
+	PrecacheScriptSound( "ASW_Weapon_HeavyRifle.ChargeOn" );
+	PrecacheScriptSound( "ASW_Weapon_HeavyRifle.ChargeOff" );
+	PrecacheParticleSystem( "buffgrenade_attach_arc" );
+	PrecacheParticleSystem( "mining_laser_exhaust" );
 }
 
 
@@ -127,7 +132,7 @@ void CASW_Weapon_Heavy_Rifle::SecondaryAttack()
 
 	m_iClip2--;
 	m_bFastFire = true;
-	BaseClass::WeaponSound( EMPTY );
+	EmitSound( "ASW_Weapon_HeavyRifle.ChargeOn" );
 	m_flNextSecondaryAttack = gpGlobals->curtime + 0.5f;
 	SetContextThink( &CASW_Weapon_Heavy_Rifle::StopFastFire, gpGlobals->curtime + rd_heavy_rifle_fastfire_duration.GetFloat(), s_pFastFireThink );
 }
@@ -144,16 +149,16 @@ float CASW_Weapon_Heavy_Rifle::GetFireRate()
 	return flRate;
 }
 
-const Vector& CASW_Weapon_Heavy_Rifle::GetBulletSpread( void )
+const Vector &CASW_Weapon_Heavy_Rifle::GetBulletSpread( void )
 {
-	static Vector vec15degrees = Vector( 0.13053, 0.02618, 0.13053 );	// VECTOR_CONE_15DEGREES with y as VECTOR_CONE_3DEGREES
-	static Vector vec6degrees = Vector( 0.05234, 0.02618, 0.05234 );		// VECTOR_CONE_6DEGREES with y as VECTOR_CONE_3DEGREES
+	const static Vector vec15degrees = Vector( 0.13053, 0.02618, 0.13053 );	// VECTOR_CONE_15DEGREES with y as VECTOR_CONE_3DEGREES
+	const static Vector vec6degrees = Vector( 0.05234, 0.02618, 0.05234 );		// VECTOR_CONE_6DEGREES with y as VECTOR_CONE_3DEGREES
 
 	CASW_Marine *marine = GetMarine();
 
 	if ( marine )
 	{
-		if ( marine->GetAbsVelocity() == Vector( 0, 0, 0 ) && marine->m_bWalking && !m_bFastFire )
+		if ( marine->GetLocalVelocity().IsZero() && marine->m_bWalking && !m_bFastFire )
 			return vec6degrees;
 	}
 	return vec15degrees;
@@ -171,17 +176,26 @@ void CASW_Weapon_Heavy_Rifle::StopFastFire()
 
 	DispatchParticleEffect( "mining_laser_exhaust", PATTACH_POINT_FOLLOW, this, "muzzle" );
 
-	CSoundParameters params;
-	if ( !GetParametersForSound( "FastReload.Miss", params, NULL ) )
-		return;
-
-	EmitSound_t playparams(params);
-	playparams.m_nPitch = params.pitch;
-
-	CBroadcastRecipientFilter filter;
-	if ( IsPredicted() && CBaseEntity::GetPredictionPlayer() )
-	{
-		filter.UsePredictionRules();
-	}
-	EmitSound(filter, entindex(), playparams);
+	EmitSound( "ASW_Weapon_HeavyRifle.ChargeOff" );
 }
+
+#ifdef CLIENT_DLL
+void CASW_Weapon_Heavy_Rifle::ClientThink()
+{
+	BaseClass::ClientThink();
+
+	if ( m_bFastFire != m_hFastFireParticle.IsValid() )
+	{
+		if ( m_bFastFire )
+		{
+			m_hFastFireParticle.Set( ParticleProp()->Create( "buffgrenade_attach_arc", PATTACH_POINT_FOLLOW, "eject1" ) );
+			ParticleProp()->AddControlPoint( m_hFastFireParticle, 1, this, PATTACH_POINT_FOLLOW, "muzzle" );
+		}
+		else
+		{
+			ParticleProp()->StopEmissionAndDestroyImmediately( m_hFastFireParticle.GetObject() );
+			m_hFastFireParticle.Set( NULL );
+		}
+	}
+}
+#endif

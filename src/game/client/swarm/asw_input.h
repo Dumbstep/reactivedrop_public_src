@@ -73,7 +73,8 @@ public:
 	float m_fJoypadYaw;			// left/right on analogue stick
 	float m_fJoypadFacingYaw;	// desired yaw for our marine
 	bool m_bAutoAttacking;
-	
+	bool m_bAutoWalking;
+
 	bool m_bCursorPlacement;	// set to true when the aiming joystick should be used like a mouse for skill placement, rather than robotron-style shooting
 	int m_nRelativeCursorX, m_nRelativeCursorY;
 	float m_flDesiredCursorRadius;
@@ -159,7 +160,6 @@ private:
 	void CalculateCameraShift( C_ASW_Player *pPlayer, float flDeltaX, float flDeltaY, float &flShiftX, float &flShiftY );
 	void SmoothCamera( C_ASW_Player *pPlayer, Vector &vecCameraLocation );
 
-	virtual bool			ASWWriteVehicleMessage( bf_write *buf );	
 	void EngageControllerMode();
 
 	int m_iOrderingMarine;	// entindex of marine we're ordering around

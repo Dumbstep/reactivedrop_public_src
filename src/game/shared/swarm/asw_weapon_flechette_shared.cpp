@@ -24,7 +24,7 @@
 #include "decals.h"
 #include "ammodef.h"
 #include "asw_weapon_ammo_bag_shared.h"
-#include "asw_rocket.h"
+#include "episodic/npc_hunter.h"
 #include "asw_gamerules.h"
 #endif
 #include "asw_marine_skills.h"
@@ -55,7 +55,8 @@ extern ConVar asw_weapon_max_shooting_distance;
 
 #ifndef CLIENT_DLL
 extern ConVar asw_debug_marine_damage;
-
+extern ConVar sk_hunter_dmg_flechette;
+ConVar rd_flechette_speed( "rd_flechette_speed", "2000", FCVAR_CHEAT );
 #endif
 
 CASW_Weapon_Flechette::CASW_Weapon_Flechette()
@@ -71,8 +72,10 @@ CASW_Weapon_Flechette::~CASW_Weapon_Flechette()
 void CASW_Weapon_Flechette::Precache()
 {	
 	BaseClass::Precache();
-	PrecacheScriptSound( "ASWRocket.Explosion" );
-	PrecacheParticleSystem( "small_fire_burst" );
+
+#ifdef GAME_DLL
+	UTIL_PrecacheOther( "hunter_flechette" );
+#endif
 }
 
 void CASW_Weapon_Flechette::PrimaryAttack()
@@ -104,14 +107,15 @@ void CASW_Weapon_Flechette::PrimaryAttack()
 
 		// sets the animation on the weapon model iteself
 		SendWeaponAnim( GetPrimaryAttackActivity() );
+		pMarine->DoAnimationEvent( PLAYERANIMEVENT_FIRE_GUN_PRIMARY );
 
 		Vector vecDir;
-#ifndef CLIENT_DLL
 		Vector vecSrc = pMarine->Weapon_ShootPosition( );
-#endif
 		if ( pPlayer && pMarine->IsInhabited() )
 		{
-			vecDir = pPlayer->GetAutoaimVectorForMarine(pMarine, GetAutoAimAmount(), GetVerticalAdjustOnlyAutoAimAmount());	// 45 degrees = 0.707106781187
+			// Aim directly at crosshair (so we hit the floor if we miss)
+			vecDir = pPlayer->GetCrosshairTracePos() - vecSrc;
+			vecDir.NormalizeInPlace();
 		}
 		else
 		{
@@ -121,7 +125,7 @@ void CASW_Weapon_Flechette::PrimaryAttack()
 			vecDir = pMarine->GetActualShootTrajectory( vecSrc );
 #endif
 		}
-		
+
 		int iShots = 1;
 
 		// Make sure we don't fire more than the amount in the clip
@@ -149,8 +153,6 @@ void CASW_Weapon_Flechette::PrimaryAttack()
 					pMarine->OnWeaponOutOfAmmo(true);
 			}
 #endif
-			
-
 		}
 		else
 		{
@@ -158,20 +160,23 @@ void CASW_Weapon_Flechette::PrimaryAttack()
 			pMarine->RemoveAmmo( iShots, m_iPrimaryAmmoType );
 		}
 
-/*#ifndef CLIENT_DLL
-		if (asw_debug_marine_damage.GetBool())
-			Msg("Weapon dmg = %d\n", info.m_flDamage);
-		info.m_flDamage *= pMarine->GetMarineResource()->OnFired_GetDamageScale();
-#endif*/
-				
 		// increment shooting stats
 #ifndef CLIENT_DLL
 		float fGrenadeDamage = MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_FLECHETTE_DMG);
 
+		CShotManipulator manipulator( vecDir );
+		Vector vecShoot = manipulator.ApplySpread( GetBulletSpread() );
+
 		QAngle vecRocketAngle;
-		VectorAngles(vecDir, vecRocketAngle);
+		VectorAngles(vecShoot, vecRocketAngle);
 		vecRocketAngle[YAW] += random->RandomFloat(-10, 10);
-		CASW_Rocket::Create(fGrenadeDamage, vecSrc, vecRocketAngle, GetMarine());
+		CHunterFlechette *pFlechette = CHunterFlechette::FlechetteCreate( fGrenadeDamage / sk_hunter_dmg_flechette.GetFloat(), vecSrc, vecRocketAngle, GetMarine());
+		if ( pFlechette )
+		{
+			pFlechette->SetupMarineFlechette( this );
+			vecShoot *= rd_flechette_speed.GetFloat();
+			pFlechette->Shoot( vecShoot, true );
+		}
 
 		if (pMarine->GetMarineResource())
 		{

@@ -17,6 +17,7 @@
 #include "voice_status.h"
 #include "asw_deathmatch_mode.h"
 #include "rd_lobby_utils.h"
+#include "rd_inventory_shared.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -585,22 +586,22 @@ int CASW_Briefing::GetMarineSelectedWeapon( int nLobbySlot, int nWeaponSlot )
 	return pMR->m_iWeaponsInSlots[ nWeaponSlot ];
 }
 
-const char* CASW_Briefing::GetMarineWeaponClass( int nLobbySlot, int nWeaponSlot )
+const char *CASW_Briefing::GetMarineWeaponClass( int nLobbySlot, int nWeaponSlot )
 {
 	int nMarineResourceIndex = LobbySlotToMarineResourceIndex( nLobbySlot );
 	C_ASW_Marine_Resource *pMR = ASWGameResource() ? ASWGameResource()->GetMarineResource( nMarineResourceIndex ) : NULL;
-	if ( !pMR || nWeaponSlot < 0 || nWeaponSlot >= ASW_NUM_INVENTORY_SLOTS || !ASWEquipmentList() )
+	if ( !pMR || nWeaponSlot < 0 || nWeaponSlot >= ASW_NUM_INVENTORY_SLOTS )
 	{
 		return "";
 	}
 
-	CASW_EquipItem *pItem = ASWEquipmentList()->GetItemForSlot( nWeaponSlot, pMR->m_iWeaponsInSlots[ nWeaponSlot ] );
+	CASW_EquipItem *pItem = g_ASWEquipmentList.GetItemForSlot( nWeaponSlot, pMR->m_iWeaponsInSlots[nWeaponSlot] );
 	if ( !pItem )
 	{
 		return "";
 	}
-	
-	return STRING( pItem->m_EquipClass );
+
+	return pItem->m_szEquipClass;
 }
 
 int CASW_Briefing::GetCommanderReady( int nLobbySlot )
@@ -986,34 +987,18 @@ bool CASW_Briefing::IsCommanderSpeaking( int nLobbySlot )
 	return bTalking;
 }
 
-int CASW_Briefing::GetMedalUpdateCount( int nLobbySlot )
+const CRD_ItemInstance &CASW_Briefing::GetEquippedMedal( int nLobbySlot, int nMedalIndex )
 {
-	ISteamMatchmaking *pMatchmaking = SteamMatchmaking();
-	CSteamID currentLobby = UTIL_RD_GetCurrentLobbyID();
-	if ( !pMatchmaking || !currentLobby.IsValid() )
+	static const CRD_ItemInstance s_empty;
+
+	Assert( nMedalIndex >= 0 && nMedalIndex < RD_STEAM_INVENTORY_NUM_MEDAL_SLOTS );
+	if ( nMedalIndex < 0 || nMedalIndex >= RD_STEAM_INVENTORY_NUM_MEDAL_SLOTS )
 	{
-		return 0;
+		return s_empty;
 	}
 
-	const char *sz = pMatchmaking->GetLobbyMemberData( currentLobby, GetCommanderSteamID( nLobbySlot ), "rd_equipped_medal:updates" );
-	if ( !sz || !*sz )
-	{
-		return 0;
-	}
+	UpdateLobbySlotMapping();
 
-	return atoi( sz );
-}
-
-const char *CASW_Briefing::GetEncodedMedalData( int nLobbySlot )
-{
-	ISteamMatchmaking *pMatchmaking = SteamMatchmaking();
-	CSteamID currentLobby = UTIL_RD_GetCurrentLobbyID();
-	if ( !pMatchmaking || !currentLobby.IsValid() )
-	{
-		return "";
-	}
-
-	const char *sz = pMatchmaking->GetLobbyMemberData( currentLobby, GetCommanderSteamID( nLobbySlot ), "rd_equipped_medal" );
-
-	return sz ? sz : "";
+	C_ASW_Player *pPlayer = m_LobbySlotMapping[nLobbySlot].m_hPlayer.Get();
+	return pPlayer ? pPlayer->m_EquippedItemDataStatic[RD_STEAM_INVENTORY_EQUIP_SLOT_FIRST_MEDAL + nMedalIndex] : s_empty;
 }

@@ -34,11 +34,11 @@ public:
 		DECLARE_DATADESC();
 
 		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-
-		virtual const char* GetPickupClass() { return "asw_pickup_normal_armor"; }
-	#endif
+		const char *GetEquipSound() override { return "ASW_Weapon.AttachmentEquipLarge"; }
+#endif
 
 	virtual bool IsOffensiveWeapon() { return false; }
+	virtual bool ViewModelIsMarineAttachment() const { return true; }
 
 	// Classification
 	virtual Class_T		Classify( void ) { return (Class_T) CLASS_ASW_NORMAL_ARMOR; }

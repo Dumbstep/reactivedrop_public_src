@@ -134,7 +134,7 @@
 
 #ifdef INFESTED_DLL
 #include "missionchooser/iasw_mission_chooser.h"
-
+#include "iconsistency.h"
 #endif
 
 #include "tier1/UtlDict.h"
@@ -209,7 +209,7 @@ void ProcessCacheUsedMaterials()
 	g_bRequestCacheUsedMaterials = false;
 	if ( materials )
 	{
-        materials->CacheUsedMaterials();
+		materials->CacheUsedMaterials();
 	}
 }
 
@@ -520,7 +520,7 @@ public:
 #endif
 #ifdef INFESTED_DLL
 		AddAppSystem( "missionchooser", ASW_MISSION_CHOOSER_VERSION );
-		AddAppSystem( "consistency", INTERFACEVERSION_ICONSISTENCY_V1 );
+		AddAppSystem( "consistency", INTERFACEVERSION_ICONSISTENCY_V3 );
 #endif
 	}
 
@@ -969,7 +969,8 @@ bool InitGameSystems( CreateInterfaceFn appSystemFactory )
 	EventList_Init();
 	EventList_RegisterSharedEvents();
 
-	modemanager->Init( );
+	modemanager->Init();
+	consistency->ConnectClient( Sys_GetFactoryThis() );
 
 	// Load the ClientScheme just once
 	vgui::scheme()->LoadSchemeFromFileEx( VGui_GetFullscreenRootVPANEL(), "resource/ClientScheme.res", "ClientScheme");
@@ -1164,7 +1165,7 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CGlobalVarsBase *pGloba
 #ifdef INFESTED_DLL
 	if ( (missionchooser = (IASW_Mission_Chooser *)appSystemFactory(ASW_MISSION_CHOOSER_VERSION, NULL)) == NULL )
 		return false;
-	if ( (consistency = (IConsistency *)appSystemFactory(INTERFACEVERSION_ICONSISTENCY_V1, NULL)) == NULL )
+	if ( (consistency = (IConsistency *)appSystemFactory(INTERFACEVERSION_ICONSISTENCY_V3, NULL)) == NULL )
 		return false;
 #endif
 
@@ -2969,10 +2970,10 @@ public:
 		int idx = m_BindingListeners.Find( pchNewBinding );
 		if ( idx != m_BindingListeners.InvalidIndex() )
 		{
-			CUtlVector< IKeyBindingListener * > &list = m_BindingListeners[ idx ].m_List;
-			for ( int i = 0 ; i < list.Count(); ++i )
+			CUtlVector< IKeyBindingListener * > &list2 = m_BindingListeners[ idx ].m_List;
+			for ( int i = 0 ; i < list2.Count(); ++i )
 			{
-				list[ i ]->OnKeyBindingChanged( nSplitScreenSlot, buttonCode, pchKeyName, pchNewBinding );
+				list2[ i ]->OnKeyBindingChanged( nSplitScreenSlot, buttonCode, pchKeyName, pchNewBinding );
 			}
 		}
 	}

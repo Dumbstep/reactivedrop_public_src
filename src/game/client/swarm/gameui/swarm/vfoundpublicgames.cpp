@@ -20,8 +20,7 @@
 
 #include "nb_header_footer.h"
 
-#include "missionchooser/iasw_mission_chooser.h"
-#include "missionchooser/iasw_mission_chooser_source.h"
+#include "rd_missions_shared.h"
 #include "asw_util_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -31,14 +30,14 @@ using namespace vgui;
 using namespace BaseModUI;
 
 //=============================================================================
-static ConVar ui_public_lobby_filter_difficulty2( "ui_public_lobby_filter_difficulty2", "normal", FCVAR_ARCHIVE, "Filter type for difficulty on the public lobby display" );
-static ConVar ui_public_lobby_filter_onslaught( "ui_public_lobby_filter_onslaught", "0", FCVAR_ARCHIVE, "Filter type for Onslaught mode on the public lobby display");
-static ConVar ui_public_lobby_filter_distance( "ui_public_lobby_filter_distance", "", FCVAR_ARCHIVE, "Filter type for distance on the public lobby display" );
-static ConVar ui_public_lobby_filter_challenge( "ui_public_lobby_filter_challenge", "none", FCVAR_ARCHIVE, "Filter type for challenge on the public lobby display" );
-static ConVar ui_public_lobby_filter_deathmatch( "ui_public_lobby_filter_deathmatch", "none", FCVAR_ARCHIVE, "Filter type for deathmatch on the public lobby display" );
-ConVar ui_public_lobby_filter_campaign( "ui_public_lobby_filter_campaign", "official", FCVAR_ARCHIVE, "Filter type for campaigns on the public lobby display" );
+static ConVar ui_public_lobby_filter_difficulty2( "ui_public_lobby_filter_difficulty2", "", FCVAR_ARCHIVE, "Filter type for difficulty on the public lobby display" );
+static ConVar ui_public_lobby_filter_onslaught( "ui_public_lobby_filter_onslaught", "", FCVAR_ARCHIVE, "Filter type for Onslaught mode on the public lobby display");
+static ConVar ui_public_lobby_filter_distance( "ui_public_lobby_filter_distance", "worldwide", FCVAR_ARCHIVE, "Filter type for distance on the public lobby display" );
+static ConVar ui_public_lobby_filter_challenge( "ui_public_lobby_filter_challenge", "", FCVAR_ARCHIVE, "Filter type for challenge on the public lobby display" );
+static ConVar ui_public_lobby_filter_deathmatch( "ui_public_lobby_filter_deathmatch", "", FCVAR_ARCHIVE, "Filter type for deathmatch on the public lobby display" );
+ConVar ui_public_lobby_filter_campaign( "ui_public_lobby_filter_campaign", "", FCVAR_ARCHIVE, "Filter type for campaigns on the public lobby display" );
 ConVar ui_public_lobby_filter_status( "ui_public_lobby_filter_status", "", FCVAR_ARCHIVE, "Filter type for game status on the public lobby display" );
-ConVar ui_public_lobby_filter_servers( "ui_public_lobby_filter_servers", "1", FCVAR_ARCHIVE, "Filter dedicated servers from the public lobby display" );
+ConVar ui_public_lobby_filter_dedicated_servers( "ui_public_lobby_filter_dedicated_servers", "0", FCVAR_NONE, "Filter dedicated servers from the public lobby display" );
 extern ConVar rd_lobby_ping_low;
 extern ConVar rd_lobby_ping_high;
 
@@ -247,15 +246,12 @@ bool FoundPublicGames::ShouldShowPublicGame( KeyValues *pGameDetails )
 	DevMsg( "FoundPublicGames::ShouldShowPublicGame\n" );
 	KeyValuesDumpAsDevMsg( pGameDetails );
 
-	IASW_Mission_Chooser_Source *pSource = missionchooser ? missionchooser->LocalMissionSource() : NULL;
-	if ( !pSource )
-		return false;
-
 	const char *szMode = pGameDetails->GetString( "game/mode", "campaign" );
 	if ( !Q_stricmp( szMode, "campaign" ) )
 	{
 		char const *szCampaign = pGameDetails->GetString( "game/campaign", NULL );
-		bool bCampaignInstalled = pSource->CampaignExists( szCampaign );
+		const RD_Campaign_t *pCampaign = ReactiveDropMissions::GetCampaign( szCampaign );
+		bool bCampaignInstalled = pCampaign && pCampaign->Installed;
 
 		if ( !bCampaignInstalled &&
 			( !Q_stricmp( ui_public_lobby_filter_campaign.GetString(), "installedaddon" ) ||
@@ -265,7 +261,8 @@ bool FoundPublicGames::ShouldShowPublicGame( KeyValues *pGameDetails )
 	else if ( !Q_stricmp( szMode, "single_mission" ) )
 	{
 		char const *szMission = pGameDetails->GetString( "game/mission", NULL );
-		bool bMissionInstalled = pSource->MissionExists( szMission, false );
+		const RD_Mission_t *pMission = ReactiveDropMissions::GetMission( szMission );
+		bool bMissionInstalled = pMission && pMission->Installed;
 
 		if ( !bMissionInstalled &&
 			( !Q_stricmp( ui_public_lobby_filter_campaign.GetString(), "installedaddon" ) ||
@@ -274,16 +271,10 @@ bool FoundPublicGames::ShouldShowPublicGame( KeyValues *pGameDetails )
 	}
 
 	char const* szServer = pGameDetails->GetString( "options/server", "listen" );
-	if ( !Q_stricmp( szServer, "dedicated" ) && ui_public_lobby_filter_servers.GetBool() )
+	if ( !Q_stricmp( szServer, "dedicated" ) && ui_public_lobby_filter_dedicated_servers.GetBool() )
 	{
 		return false;
 	}
-
-	// TODO:
-	//char const *szWebsite = pGameDetails->GetString( "game/missioninfo/website", "" );
-	// if no mission and no website, skip it
-	//if ( !pInstalledMission && !*szWebsite )
-		//return false;
 
 	return true;
 }
@@ -642,16 +633,14 @@ void FoundPublicGames::Activate()
 	if ( Panel *pLabelX = FindChildByName( "LblPressX" ) )
 		pLabelX->SetVisible( CanCreateGame() );
 
-	// players below level 30 are considered new
-	bool bShowHardcoreDifficulties = UTIL_ASW_CommanderLevelAtLeast( NULL, 30 ); // used to hide Insane, Brutal and any challenges
+	m_bShowHardcoreDifficulties = UTIL_ASW_CommanderLevelAtLeast( NULL, 15 );
 
 	if ( m_drpDifficulty )
 	{
 		m_drpDifficulty->SetCurrentSelection( CFmtStr( "filter_difficulty_%s", ui_public_lobby_filter_difficulty2.GetString() ) );
 
-		m_drpDifficulty->SetFlyoutItemEnabled( "BtnAny", bShowHardcoreDifficulties );
-		m_drpDifficulty->SetFlyoutItemEnabled( "BtnExpert", bShowHardcoreDifficulties );
-		m_drpDifficulty->SetFlyoutItemEnabled( "BtnImba", bShowHardcoreDifficulties );
+		m_drpDifficulty->SetFlyoutItemEnabled( "BtnExpert", m_bShowHardcoreDifficulties );
+		m_drpDifficulty->SetFlyoutItemEnabled( "BtnImba", m_bShowHardcoreDifficulties );
 	}
 
 	if ( m_drpOnslaught )
@@ -677,9 +666,6 @@ void FoundPublicGames::Activate()
 	if ( m_drpChallenge )
 	{
 		m_drpChallenge->SetCurrentSelection( CFmtStr( "filter_challenge_%s", ui_public_lobby_filter_challenge.GetString() ) );
-
-		m_drpChallenge->SetFlyoutItemEnabled( "BtnAny", bShowHardcoreDifficulties );
-		m_drpChallenge->SetFlyoutItemEnabled( "BtnRequired", bShowHardcoreDifficulties );
 	}
 
 	if ( m_drpDeathmatch )

@@ -51,6 +51,14 @@
 // - npc_poisonzombie
 // - npc_fastzombie
 // - npc_fastzombie_torso
+// - npc_headcrab
+// - npc_headcrab_fast
+// - npc_headcrab_poison
+// - npc_zombine
+// - npc_combine_s
+// - npc_combine_shotgun
+// - npc_combine_elite
+// - npc_hunter
 //
 // The following KeyValues are also accepted in the NPC block:
 //
@@ -59,9 +67,12 @@
 // - SizeScale (must be above 0, default 1.0)
 // - Flammable (0 or 1, default 1)
 // - Freezable (0 or 1, default 1)
+// - FreezeResistance (any value, default 0.0), Examples: 0.8 means unfreezes 5 times as fast, -1.0 means unfreezes 2 times as slow
 // - Teslable (0 or 1, default 1)
 // - Flinches (0 or 1, default 1)
+// - Reflector (0 or 1, default 0)
 // - VScript (name of a file in scripts/vscripts, run with the global "self" variable set to the alien entity)
+// - ModelOverride (name of a model to give the alien instead of its default)
 // - SpawnChance (>0 to 1, default 1, chance that this NPC spawns at all)
 //
 // The following KeyValues affect whether an NPC block is allowed to spawn and may be specified any number

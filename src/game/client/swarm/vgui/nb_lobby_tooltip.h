@@ -34,7 +34,7 @@ public:
 	void ShowMarineTooltip( int nLobbySlot );
 	void ShowWeaponTooltip( int nLobbySlot, int nInventorySlot );
 	void ShowMarinePromotionTooltip( int nLobbySlot );
-	void ShowMarineMedalTooltip( int nLobbySlot, SteamInventoryResult_t hResult );
+	void ShowMarineMedalTooltip( int nLobbySlot, int nMedalIndex );
 	
 	// == MANAGED_MEMBER_POINTERS_START: Do not edit by hand ==
 	vgui::Panel	*m_pBackground;
@@ -56,21 +56,23 @@ public:
 	vgui::Panel	*m_pTitleBGLine;
 	CASW_Model_Panel	*m_pItemModelPanel;
 	// == MANAGED_MEMBER_POINTERS_END ==
+	vgui::Panel *m_pIconBackground;
 	vgui::ImagePanel *m_pPromotionIcon;
 	vgui::Label *m_pPromotionLabel;
 	vgui::RichText *m_pItemDescription;
+	Color m_DefaultTitleColor;
 
 	bool m_bPromotionTooltip;
 	bool m_bMarineTooltip;
+	int m_iMedalTooltip;
 	int m_nLobbySlot;
 	int m_nInventorySlot;
 	bool m_bValidTooltip;
-	SteamInventoryResult_t m_hInventoryResult;
 
 	int m_nLastWeaponHash;
 	int m_nLastInventorySlot;
-	SteamItemInstanceID_t m_nLastItemInstance;
 	float m_flInventoryDetailsAfter;
+	SteamItemDef_t m_iLastMedal;
 };
 
 #endif // _INCLUDED_NB_LOBBY_TOOLTIP_H

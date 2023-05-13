@@ -68,11 +68,21 @@ CASW_Weapon_Grenade_Launcher::~CASW_Weapon_Grenade_Launcher()
 
 }
 
+void CASW_Weapon_Grenade_Launcher::Precache()
+{
+	BaseClass::Precache();
+
+	PrecacheScriptSound( "ASW_GrenadeLauncher.ReloadA" );
+	PrecacheScriptSound( "ASW_GrenadeLauncher.ReloadB" );
+	PrecacheScriptSound( "ASW_GrenadeLauncher.ReloadC" );
+}
+
 #ifdef GAME_DLL
 ConVar asw_grenade_launcher_speed( "asw_grenade_launcher_speed", "2.4f", FCVAR_CHEAT, "Scale speed of grenade launcher grenades" );
 ConVar rd_grenade_launcher_explode_on_contact( "rd_grenade_launcher_explode_on_contact", "1", FCVAR_CHEAT, "If set to 0 grenade will not explode on contact with rigid world" );
 ConVar rda_grenade_launcher_grenade_ricochet("rda_grenade_launcher_grenade_ricochet", "0", FCVAR_CHEAT, "If set to 1 GL grenades ricochet after world collision");
 #endif
+ConVar rd_grenade_launcher_direct_hit_damage_mult( "rd_grenade_launcher_direct_hit_damage_mult", "2", FCVAR_CHEAT | FCVAR_REPLICATED, "Damage multiplier for direct hits with grenade launcher grenades." );
 ConVar rd_grenade_launcher_num_clusters( "rd_grenade_launcher_num_clusters", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Number of clusters to spawn on grenade explosion", true, 0, true, 15 );
 ConVar rd_grenade_launcher_grenade_preview( "rd_grenade_launcher_grenade_preview", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Draw a predictive arc for a grenade launcher" );
 ConVar asw_grenade_launcher_gravity( "asw_grenade_launcher_gravity", "2.4f", FCVAR_CHEAT | FCVAR_REPLICATED, "Gravity of grenade launcher grenades" );
@@ -120,6 +130,8 @@ void CASW_Weapon_Grenade_Launcher::PrimaryAttack( void )
 	if ( pGrenade )
 	{
 		pGrenade->SetGravity( asw_grenade_launcher_gravity.GetFloat() );
+
+		pGrenade->SetDirectHitDamageMultiplier( rd_grenade_launcher_direct_hit_damage_mult.GetFloat() );
 
 		if ( rda_grenade_launcher_grenade_ricochet.GetBool() )
 			pGrenade->SetAdvancedRicochet(true);
@@ -190,3 +202,14 @@ void CASW_Weapon_Grenade_Launcher::Preview()
 	}
 #endif
 }
+
+#ifdef CLIENT_DLL
+const char *CASW_Weapon_Grenade_Launcher::GetPartialReloadSound( int iPart )
+{
+	if ( iPart == 1 )
+		return "ASW_GrenadeLauncher.ReloadB";
+	if ( iPart == 2 )
+		return "ASW_GrenadeLauncher.ReloadC";
+	return "ASW_GrenadeLauncher.ReloadA";
+}
+#endif

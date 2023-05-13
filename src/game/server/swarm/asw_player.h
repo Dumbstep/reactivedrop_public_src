@@ -13,7 +13,7 @@
 #include "asw_game_resource.h"
 #include "asw_info_message_shared.h"
 #include "basemultiplayerplayer.h"
-#include "steam/steam_api.h"
+#include "rd_inventory_shared.h"
 
 class CASW_Inhabitable_NPC;
 class CASW_Marine;
@@ -50,6 +50,8 @@ public:
 	void PushawayThink();
 	virtual void AvoidPhysicsProps( CUserCmd *pCmd );
 	virtual bool ClientCommand( const CCommand &args );
+	virtual void UpdateTonemapController( void ) override;
+	virtual void UpdateFXVolume( void ) override;
 
 	void EmitPrivateSound( const char *soundName, bool bFromNPC = false );
 
@@ -66,6 +68,7 @@ public:
 	const Vector& GetCrosshairTracePos();
 	void SetCrosshairTracePos( const Vector &vecPos ) { m_vecCrosshairTracePos = vecPos; }
 	virtual void SetupVisibility( CBaseEntity *pViewEntity, unsigned char *pvs, int pvssize );
+	void SetupVisibilityForNPC( CBaseEntity *pViewEntity, unsigned char *pvs, int pvssize, CASW_Inhabitable_NPC *pNPC );
 
 	virtual void  HandleSpeedChanges( void );
 	virtual bool CanBeSeenBy( CAI_BaseNPC *pNPC ) { return false; } // Players are never seen by NPCs
@@ -94,7 +97,6 @@ public:
 	float m_fLastControlledMarineTime;
 	CNetworkVar( float, m_fMarineDeathTime );	// same as above but optimized for networking
 	bool IsSpectatorOnly();	// for players who can *only* spectate, i.e. not able to control characters
-	CNetworkVar( bool, m_bWantsSpectatorOnly );
 
 	void BecomeNonSolid();
 	void OnNPCCommanded( CASW_Inhabitable_NPC *pNPC );
@@ -112,6 +114,8 @@ public:
 	bool HasLiveMarines();
 	virtual bool IsAlive( void );
 	HSCRIPT ScriptGetMarine();
+	void ScriptSetNPC( HSCRIPT hNPC );
+	void ScriptSetSpectatingNPC( HSCRIPT hNPC );
 
 	CNetworkHandle( CASW_Marine, m_hOrderingMarine );
 
@@ -174,6 +178,7 @@ public:
 	void ShowInfoMessage(CASW_Info_Message* pMessage);
 	void HideInfoMessage();
 	CNetworkHandle (CASW_Info_Message, m_pCurrentInfoMessage);
+	void ScriptShowMenu( int iValidOptionsBits, int iTimeout, const char *szDisplayString );
 
 	virtual void SetAnimation( PLAYER_ANIM playerAnim );
 
@@ -270,6 +275,19 @@ public:
 	float m_flPendingSteamStatsStart;
 	bool m_bSentPromotedMessage;
 
+	// static inventory (medals, suits)
+	CNetworkVarEmbedded( CRD_ItemInstances_Static, m_EquippedItemDataStatic );
+	// dynamic inventory (weapons, equipment)
+	CNetworkVarEmbedded( CRD_ItemInstances_Dynamic, m_EquippedItemDataDynamic );
+	float m_flNextItemCounterCommit;
+	// receiving inventory data
+	SteamInventoryResult_t m_EquippedItemsResult[2];
+	CUtlMemory<char> m_EquippedItemsReceiving[2];
+	int m_iEquippedItemsReceivingOffset[2];
+	int m_iEquippedItemsParity[2];
+	void HandleEquippedItemsNotification( KeyValues *pKeyValues, bool bDynamic );
+	void HandleEquippedItemsCachedNotification( KeyValues *pKeyValues, bool bDynamic );
+
 	static CBaseEntity *spawn_point;
 	bool m_bWelcomed;
 	float m_fLastFragTime; 
@@ -279,13 +297,12 @@ public:
 	CCallResult< CASW_Player, UserStatsReceived_t > m_CallbackUserStatsReceived;
 	void Steam_OnUserStatsReceived( UserStatsReceived_t *pUserStatsReceived, bool bError );
 #endif
-	// BenLubar(spectator-mouse)
-	CNetworkVar( short, m_iScreenWidth );
-	CNetworkVar( short, m_iScreenHeight );
-	CNetworkVar( short, m_iMouseX );
-	CNetworkVar( short, m_iMouseY );
+	CNetworkVar( unsigned, m_iScreenWidthHeight );
+	CNetworkVar( unsigned, m_iMouseXY );
 
 	bool m_bLeaderboardReady;
+
+	int m_iWantsAutoRecord;
 
 private:
 

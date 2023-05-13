@@ -51,6 +51,10 @@
 #include "sendprop_priorities.h"
 #include "asw_deathmatch_mode.h"
 #include "asw_trace_filter.h"
+#include "env_tonemap_controller.h"
+#include "fogvolume.h"
+#include "missionchooser/iasw_mission_chooser.h"
+#include "missionchooser/iasw_mission_chooser_source.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -62,16 +66,19 @@
 
 ConVar asw_client_chatter_enabled("asw_client_chatter_enabled", "1", FCVAR_NONE, "If zero cl_chatter is played only for the player who issued the command"); 
 ConVar asw_blend_test_scale("asw_blend_test_scale", "0.1f", FCVAR_CHEAT);
-ConVar asw_debug_pvs("asw_debug_pvs", "0", FCVAR_CHEAT);
+ConVar asw_debug_pvs( "asw_debug_pvs", "0", FCVAR_CHEAT );
 extern ConVar asw_rts_controls;
 extern ConVar asw_DebugAutoAim;
 extern ConVar asw_debug_marine_damage;
 extern ConVar rd_respawn_time;
+extern ConVar asw_default_campaign;
 
 ConVar rm_welcome_message("rm_welcome_message", "", FCVAR_NONE, "This message is displayed to a player after they join the game");
 ConVar rm_welcome_message_delay("rm_welcome_message_delay", "10", FCVAR_NONE, "The number of seconds the welcome message is delayed.", true, 0, true, 30);
 ConVar rd_kick_inactive_players( "rd_kick_inactive_players", "0", FCVAR_NONE, "If positive, kick players who are inactive for this many seconds." );
 ConVar rd_kick_inactive_players_warning( "rd_kick_inactive_players_warning", "0.8", FCVAR_NONE, "Warn players that they will be kicked after this fraction of the inactive time.", true, 0, true, 1 );
+ConVar rd_force_all_marines_in_pvs( "rd_force_all_marines_in_pvs", "3", FCVAR_NONE, "Send information about objects near all marines to all players. Helps record more complete demos, but increases memory and bandwidth usage. 2=only for spectators, 3=only for players with rd_auto_record_lobbies enabled" );
+ConVar rd_throttle_inventory_counter_updates( "rd_throttle_inventory_counter_updates", "60", FCVAR_NONE, "Only update inventory item counters once every this many seconds to save bandwidth. Staggered per player." );
 
 static const char* s_pWelcomeMessageContext = "WelcomeMessageDelayedContext";
 
@@ -197,49 +204,41 @@ PRECACHE_REGISTER(player);
 
 IMPLEMENT_SERVERCLASS_ST( CASW_Player, DT_ASW_Player )
 	SendPropExclude( "DT_BaseAnimating", "m_flPoseParameter" ),
-	SendPropExclude( "DT_BaseAnimating", "m_flPlaybackRate" ),	
+	SendPropExclude( "DT_BaseAnimating", "m_flPlaybackRate" ),
 	SendPropExclude( "DT_BaseAnimating", "m_nSequence" ),
 	SendPropExclude( "DT_BaseEntity", "m_angRotation" ),
 	SendPropExclude( "DT_BaseAnimatingOverlay", "overlay_vars" ),
-	
-	// cs_playeranimstate and clientside animation takes care of these on the client
-	SendPropExclude( "DT_ServerAnimationData" , "m_flCycle" ),	
-	SendPropExclude( "DT_AnimTimeMustBeFirst" , "m_flAnimTime" ),
 
-	//SendPropInt		(SENDINFO(m_iHealth), 10 ),
-	SendPropAngle( SENDINFO_VECTORELEM(m_angEyeAngles, 0), 10, 0, SendProxy_AngleToFloat, SENDPROP_PLAYER_EYE_ANGLES_PRIORITY ),
-	SendPropAngle( SENDINFO_VECTORELEM(m_angEyeAngles, 1), 10, 0, SendProxy_AngleToFloat, SENDPROP_PLAYER_EYE_ANGLES_PRIORITY ),
-	SendPropAngle( SENDINFO_VECTORELEM(m_angEyeAngles, 2), 10, 0, SendProxy_AngleToFloat, SENDPROP_PLAYER_EYE_ANGLES_PRIORITY ),
+	// cs_playeranimstate and clientside animation takes care of these on the client
+	SendPropExclude( "DT_ServerAnimationData", "m_flCycle" ),
+	SendPropExclude( "DT_AnimTimeMustBeFirst", "m_flAnimTime" ),
+
+	SendPropQAngles( SENDINFO( m_angEyeAngles ), 10, SPROP_CHANGES_OFTEN, SendProxy_QAngles, SENDPROP_PLAYER_EYE_ANGLES_PRIORITY ),
 	SendPropEHandle( SENDINFO( m_hInhabiting ) ),
 	SendPropEHandle( SENDINFO( m_hSpectating ) ),
-	SendPropFloat(   SENDINFO( m_fMarineDeathTime) ),
+	SendPropFloat( SENDINFO( m_fMarineDeathTime ) ),
 	SendPropEHandle( SENDINFO( m_hOrderingMarine ) ),
-	SendPropEHandle( SENDINFO ( m_pCurrentInfoMessage ) ),
+	SendPropEHandle( SENDINFO( m_pCurrentInfoMessage ) ),
 
-	SendPropInt(SENDINFO(m_iLeaderVoteIndex) ),
-	SendPropInt(SENDINFO(m_iKickVoteIndex) ),
+	SendPropInt( SENDINFO( m_iLeaderVoteIndex ) ),
+	SendPropInt( SENDINFO( m_iKickVoteIndex ) ),
 	SendPropFloat( SENDINFO( m_fMapGenerationProgress ) ),
 
 	SendPropTime( SENDINFO( m_flUseKeyDownTime ) ),
-	SendPropEHandle( SENDINFO ( m_hUseKeyDownEnt ) ),
-	SendPropFloat	(SENDINFO( m_flMovementAxisYaw)),
-	SendPropInt		(SENDINFO(m_nChangingMR)),
-	SendPropInt		(SENDINFO(m_nChangingSlot)),
-	SendPropInt	(SENDINFO( m_iMapVoted ) ),
-	SendPropInt		(SENDINFO( m_iNetworkedXP ) ),
-	SendPropInt		(SENDINFO( m_iNetworkedPromotion ) ),
-
-	// BenLubar(spectator-mouse)
-	SendPropInt( SENDINFO( m_iScreenWidth ) ),
-	SendPropInt( SENDINFO( m_iScreenHeight ) ),
-	SendPropInt( SENDINFO( m_iMouseX ), -1, SPROP_CHANGES_OFTEN ),
-	SendPropInt( SENDINFO( m_iMouseY ), -1, SPROP_CHANGES_OFTEN ),
-	//
-
+	SendPropEHandle( SENDINFO( m_hUseKeyDownEnt ) ),
+	SendPropFloat( SENDINFO( m_flMovementAxisYaw ) ),
+	SendPropInt( SENDINFO( m_nChangingMR ) ),
+	SendPropInt( SENDINFO( m_nChangingSlot ) ),
+	SendPropInt( SENDINFO( m_iMapVoted ) ),
+	SendPropInt( SENDINFO( m_iNetworkedXP ) ),
+	SendPropInt( SENDINFO( m_iNetworkedPromotion ) ),
+	SendPropInt( SENDINFO( m_iScreenWidthHeight ) ),
+	SendPropInt( SENDINFO( m_iMouseXY ), -1, SPROP_CHANGES_OFTEN ),
 	SendPropBool( SENDINFO( m_bSentJoinedMessage ) ),
 	SendPropQAngles( SENDINFO( m_angMarineAutoAimFromClient ), 10, SPROP_CHANGES_OFTEN ),
-	SendPropBool( SENDINFO( m_bWantsSpectatorOnly ) ),
 	SendPropFloat( SENDINFO( m_flInactiveKickWarning ) ),
+	SendPropDataTable( SENDINFO_DT( m_EquippedItemDataStatic ), &REFERENCE_SEND_TABLE( DT_RD_ItemInstances_Static ) ),
+	SendPropDataTable( SENDINFO_DT( m_EquippedItemDataDynamic ), &REFERENCE_SEND_TABLE( DT_RD_ItemInstances_Dynamic ) ),
 END_SEND_TABLE()
 
 BEGIN_DATADESC( CASW_Player )
@@ -249,7 +248,6 @@ BEGIN_DATADESC( CASW_Player )
 	DEFINE_FIELD( m_hSpectating, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_vecStoredPosition, FIELD_VECTOR ),
 	DEFINE_FIELD( m_pCurrentInfoMessage, FIELD_EHANDLE ),
-	//DEFINE_FIELD( m_bLastAttackButton, FIELD_BOOLEAN ),		// keep this at no click after restore
 	DEFINE_FIELD( m_iUseEntities, FIELD_INTEGER ),
 	DEFINE_AUTO_ARRAY( m_hUseEntities, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_fBlendAmount, FIELD_FLOAT ),
@@ -265,16 +263,9 @@ BEGIN_DATADESC( CASW_Player )
 	DEFINE_FIELD( m_iMapVoted, FIELD_INTEGER ),
 	DEFINE_FIELD( m_fLastControlledMarineTime, FIELD_TIME ),
 	DEFINE_FIELD( m_vecCrosshairTracePos, FIELD_VECTOR ),
-
-	// BenLubar(spectator-mouse)
-	DEFINE_FIELD( m_iScreenWidth, FIELD_SHORT ),
-	DEFINE_FIELD( m_iScreenHeight, FIELD_SHORT ),
-	DEFINE_FIELD( m_iMouseX, FIELD_SHORT ),
-	DEFINE_FIELD( m_iMouseY, FIELD_SHORT ),
-	//
-
+	DEFINE_ARRAY( m_iScreenWidthHeight, FIELD_SHORT, 2 ),
+	DEFINE_ARRAY( m_iMouseXY, FIELD_SHORT, 2 ),
 	DEFINE_FIELD( m_angMarineAutoAimFromClient, FIELD_VECTOR ),
-	DEFINE_FIELD( m_bWantsSpectatorOnly, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_flLastActiveTime, FIELD_TIME ),
 	DEFINE_FIELD( m_flInactiveKickWarning, FIELD_TIME ),
 END_DATADESC()
@@ -283,11 +274,28 @@ BEGIN_ENT_SCRIPTDESC( CASW_Player, CBasePlayer, "The player entity." )
 	DEFINE_SCRIPTFUNC( ResurrectMarine, "Resurrect the marine" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetNPC, "GetNPC", "Returns entity the player is inhabiting" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSpectatingNPC, "GetSpectatingNPC", "Returns entity the player is spectating" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetNPC, "SetNPC", "Force the player to inhabit an NPC" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetSpectatingNPC, "SetSpectatingNPC", "Force the player to spectate an NPC" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetViewNPC, "GetViewNPC", "Returns entity the player is spectating, else will return inhabiting entity" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetMarine, "GetMarine", "Returns the marine the player is commanding" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptFindPickerEntity, "FindPickerEntity", "Finds the nearest entity in front of the player" )
 	DEFINE_SCRIPTFUNC( GetCrosshairTracePos, "Returns the world location directly beneath the player's crosshair" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptShowMenu, "ShowMenu", "Show a menu with up to 10 options." )
 END_SCRIPTDESC()
+
+static const float s_flPlayerItemUpdateOffset[ABSOLUTE_PLAYER_LIMIT]
+{
+	0.0f, 0.5f, 0.25f, 0.75f, 0.125f, 0.625f, 0.375f, 0.875f, 0.0625f, 0.5625f,
+	0.3125f, 0.8125f, 0.1875f, 0.6875f, 0.4375f, 0.9375f, 0.03125f, 0.53125f,
+	0.28125f, 0.78125f, 0.15625f, 0.65625f, 0.40625f, 0.90625f, 0.09375f,
+	0.59375f, 0.34375f, 0.84375f, 0.21875f, 0.71875f, 0.46875f, 0.96875f,
+	0.015625f, 0.515625f, 0.265625f, 0.765625f, 0.140625f, 0.640625f,
+	0.390625f, 0.890625f, 0.078125f, 0.578125f, 0.328125f, 0.828125f,
+	0.203125f, 0.703125f, 0.453125f, 0.953125f, 0.046875f, 0.546875f,
+	0.296875f, 0.796875f, 0.171875f, 0.671875f, 0.421875f, 0.921875f,
+	0.109375f, 0.609375f, 0.359375f, 0.859375f, 0.234375f, 0.734375f,
+	0.484375f, 0.984375f,
+};
 
 // -------------------------------------------------------------------------------- //
 
@@ -402,26 +410,39 @@ CASW_Player::CASW_Player()
 	m_fLastFragTime = FLT_MIN;
 	m_iKillingSpree = 0;
 
-	// BenLubar(spectator-mouse)
-	m_iScreenWidth = 0;
-	m_iScreenHeight = 0;
-	m_iMouseX = 0;
-	m_iMouseY = 0;
-	// 
+	m_iScreenWidthHeight = 0;
+	m_iMouseXY = 0;
 
 	m_bLeaderboardReady = false;
-	m_bWantsSpectatorOnly = false;
+	m_bSentJoinedMessage = false;
 
 	m_flLastActiveTime = 0.0f;
 	m_flInactiveKickWarning = 0.0f;
+
+	for ( int i = 0; i < 2; i++ )
+	{
+		m_EquippedItemsResult[i] = k_SteamInventoryResultInvalid;
+		m_EquippedItemsReceiving[i].Purge();
+		m_iEquippedItemsReceivingOffset[i] = 0;
+		m_iEquippedItemsParity[i] = 0;
+	}
+	m_flNextItemCounterCommit = -1;
+
+	m_iWantsAutoRecord = 0;
 }
 
 
 CASW_Player::~CASW_Player()
 {
 	m_PlayerAnimState->Release();
-	if (ASWGameRules())
-		ASWGameRules()->SetMaxMarines(this);
+	if ( ASWGameRules() )
+		ASWGameRules()->SetMaxMarines( this );
+
+	// free inventory handle
+	for ( int i = 0; i < 2; i++ )
+	{
+		ReactiveDropInventory::DecodeItemData( m_EquippedItemsResult[i], "" );
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -459,7 +480,7 @@ void CASW_Player::PostThink()
 	// Store the eye angles pitch so the client can compute its animation state correctly.
 	m_angEyeAngles = EyeAngles();
 
-    m_PlayerAnimState->Update( m_angEyeAngles[YAW], m_angEyeAngles[PITCH] );
+	m_PlayerAnimState->Update( m_angEyeAngles[YAW], m_angEyeAngles[PITCH] );
 
 	// find nearby usable items
 	FindUseEntities();
@@ -589,6 +610,35 @@ void CASW_Player::PostThink()
 		ASW_DrawAwakeAI();
 		m_fLastAICountTime = gpGlobals->curtime;
 	}
+
+	bool bShouldCommitCounters = true;
+	if ( rd_throttle_inventory_counter_updates.GetFloat() > 0 )
+	{
+		bShouldCommitCounters = m_flNextItemCounterCommit <= gpGlobals->curtime;
+		if ( bShouldCommitCounters )
+		{
+			float flNext = gpGlobals->curtime;
+			flNext /= rd_throttle_inventory_counter_updates.GetFloat();
+			flNext += 1 - s_flPlayerItemUpdateOffset[entindex() - 1];
+			flNext = roundf( flNext );
+			flNext += s_flPlayerItemUpdateOffset[entindex() - 1];
+			flNext *= rd_throttle_inventory_counter_updates.GetFloat();
+			Assert( flNext > gpGlobals->curtime && flNext <= gpGlobals->curtime + rd_throttle_inventory_counter_updates.GetFloat() );
+			m_flNextItemCounterCommit = flNext;
+		}
+	}
+
+	if ( bShouldCommitCounters )
+	{
+		for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_STATIC; i++ )
+		{
+			m_EquippedItemDataStatic[i].CommitCounters();
+		}
+		for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC; i++ )
+		{
+			m_EquippedItemDataDynamic[i].CommitCounters();
+		}
+	}
 }
 
 CBaseEntity* CASW_Player::GetUseEntity(int i) 
@@ -612,8 +662,9 @@ void CASW_Player::Precache()
 	PrecacheScriptSound( "asw_song.stims" );
 	//PrecacheScriptSound( "Holdout.GetReadySlide" );
 	//PrecacheScriptSound( "Holdout.GetReadySlam" );
-	PrecacheScriptSound( "asw_song.statsSuccess" );
-	PrecacheScriptSound( "asw_song.statsFail" );
+	PrecacheScriptSound( "asw_song.StatsSuccess" );
+	PrecacheScriptSound( "asw_song.StatsSuccessCampaign" );
+	PrecacheScriptSound( "asw_song.StatsFail" );
 
 	if (MarineProfileList())
 	{
@@ -869,18 +920,6 @@ bool CASW_Player::ClientCommand( const CCommand &args )
 					ASWGameRules()->SkillsUndo(this, iProfileIndex);
 				return true;
 			}
-			else if ( FStrEq( pcmd, "cl_skill_up") )
-			{
-				if (ASWGameRules())
-					ASWGameRules()->RequestSkillUp(this);
-				return true;
-			}
-			else if ( FStrEq( pcmd, "cl_skill_down") )
-			{
-				if (ASWGameRules())
-					ASWGameRules()->RequestSkillDown(this);
-				return true;
-			}
 			else if ( FStrEq( pcmd, "cl_hardcore_ff") )
 			{
 				if ( args.ArgC() < 2 )
@@ -951,39 +990,6 @@ bool CASW_Player::ClientCommand( const CCommand &args )
 					ASWGameRules()->GetCampaignSave()->SaveGameToFile();
 				}
 				*/
-				return true;
-			}
-			else if ( FStrEq( pcmd, "cl_carnage") )
-			{
-				if ( args.ArgC() < 2 )
-				{
-					Warning("Player sent a bad cl_carnage command\n");
-					return false;
-				}		
-				if (ASWGameRules() && ASWGameResource() && ASWGameResource()->m_Leader.Get() == this)
-					ASWGameRules()->SetCarnageMode(atoi(args[1]) == 1);
-				return true;
-			}
-			else if ( FStrEq( pcmd, "cl_uber") )
-			{
-				if ( args.ArgC() < 2 )
-				{
-					Warning("Player sent a bad cl_uber command\n");
-					return false;
-				}		
-				if (ASWGameRules() && ASWGameResource() && ASWGameResource()->m_Leader.Get() == this)
-					ASWGameRules()->SetUberMode(atoi(args[1]) == 1);
-				return true;
-			}
-			else if ( FStrEq( pcmd, "cl_hardcore") )
-			{
-				if ( args.ArgC() < 2 )
-				{
-					Warning("Player sent a bad cl_hardcore command\n");
-					return false;
-				}		
-				if (ASWGameRules() && ASWGameResource() && ASWGameResource()->m_Leader.Get() == this)
-					ASWGameRules()->SetHardcoreMode(atoi(args[1]) == 1);
 				return true;
 			}
 			else if ( FStrEq( pcmd, "cl_needtech") )
@@ -1295,6 +1301,26 @@ bool CASW_Player::ClientCommand( const CCommand &args )
 				}
 				return true;
 			}
+			else if ( FStrEq( pcmd, "rd_set_challenge" ) && ASWDeathmatchMode() )
+			{
+				if ( args.ArgC() < 2 )
+				{
+					Warning( "Player sent a bad rd_set_challenge command\n" );
+					return false;
+				}
+
+				if ( ASWGameResource() && ASWGameResource()->GetLeader() == this )
+				{
+					const char *szChallengeName = args[1];
+
+					if ( ASWGameRules() )
+					{
+						ASWGameRules()->EnableChallenge( szChallengeName );
+						ASWGameRules()->ApplyChallenge();
+					}
+				}
+				return true;
+			}
 
 			break;
 		}
@@ -1413,11 +1439,6 @@ bool CASW_Player::ClientCommand( const CCommand &args )
 					ASWGameRules()->LoadoutSelect(this, iRosterIndex, 2, extra);
 			}
 		}
-
-//         if ( ASWDeathmatchMode() )
-//         {
-//             ASWDeathmatchMode()->SpawnMarine( this );
-//         }
 
 		return true;
 	}
@@ -1588,7 +1609,7 @@ bool CASW_Player::ClientCommand( const CCommand &args )
 		// make sure we're leader
 		if (ASWGameResource() && ASWGameResource()->m_iLeaderIndex == entindex())
 		{
-			if (ASWGameRules() && ASWGameRules()->GetCampaignSave())
+			if ( ASWGameRules() && ASWGameRules()->GetCampaignSave() )
 			{
 				ASWGameRules()->RequestCampaignMove( ASWGameResource()->m_iNextCampaignMission.Get() );
 				//ASWGameRules()->GetCampaignSave()->ForceNextMissionLaunch();
@@ -1828,13 +1849,124 @@ bool CASW_Player::ClientCommand( const CCommand &args )
 	return BaseClass::ClientCommand( args );
 }
 
+void CASW_Player::UpdateTonemapController()
+{
+	CASW_Inhabitable_NPC *pNPC = GetViewNPC();
+	if ( pNPC )
+	{
+		if ( CBaseEntity *pController = pNPC->m_hTonemapController )
+		{
+			m_hTonemapController = pController;
+			return;
+		}
+
+		FOR_EACH_VEC_BACK( pNPC->m_hTriggerTonemapList, i )
+		{
+			CTonemapTrigger *pTrigger = pNPC->m_hTriggerTonemapList[i];
+			CBaseEntity *pController = pTrigger ? pTrigger->GetTonemapController() : NULL;
+			if ( pController )
+			{
+				m_hTonemapController = pController;
+				return;
+			}
+
+			// missing trigger or controller; remove to save loop iterations on future frames
+			pNPC->m_hTriggerTonemapList.Remove( i );
+		}
+	}
+
+	BaseClass::UpdateTonemapController();
+}
+
+void CASW_Player::UpdateFXVolume()
+{
+	CFogController *pFogController = NULL;
+	CPostProcessController *pPostProcessController = NULL;
+	CColorCorrection *pColorCorrectionEnt = NULL;
+
+	Vector eyePos;
+	CASW_Inhabitable_NPC *pViewNPC = GetViewNPC();
+	if ( pViewNPC )
+	{
+		eyePos = pViewNPC->EyePosition();
+	}
+	else if ( CBaseEntity *pViewEntity = GetViewEntity() )
+	{
+		eyePos = pViewEntity->GetAbsOrigin();
+	}
+	else
+	{
+		eyePos = EyePosition();
+	}
+
+	CFogVolume *pFogVolume = CFogVolume::FindFogVolumeForPosition( eyePos );
+	if ( pFogVolume )
+	{
+		pFogController = pFogVolume->GetFogController();
+		pPostProcessController = pFogVolume->GetPostProcessController();
+		pColorCorrectionEnt = pFogVolume->GetColorCorrectionController();
+
+		if ( !pFogController )
+		{
+			pFogController = FogSystem()->GetMasterFogController();
+		}
+
+		if ( !pPostProcessController )
+		{
+			pPostProcessController = PostProcessSystem()->GetMasterPostProcessController();
+		}
+
+		if ( !pColorCorrectionEnt )
+		{
+			pColorCorrectionEnt = ColorCorrectionSystem()->GetMasterColorCorrection();
+		}
+	}
+	else if ( TheFogVolumes.Count() > 0 )
+	{
+		pFogController = FogSystem()->GetMasterFogController();
+		pPostProcessController = PostProcessSystem()->GetMasterPostProcessController();
+		pColorCorrectionEnt = ColorCorrectionSystem()->GetMasterColorCorrection();
+	}
+
+	if ( pViewNPC )
+	{
+		if ( CFogController *pNPCFogController = pViewNPC->m_hFogController )
+		{
+			pFogController = pNPCFogController;
+		}
+		if ( CPostProcessController *pNPCPostProcessController = pViewNPC->m_hPostProcessController )
+		{
+			pPostProcessController = pNPCPostProcessController;
+		}
+		if ( CColorCorrection *pNPCColorCorrection = pViewNPC->m_hColorCorrection )
+		{
+			pColorCorrectionEnt = pNPCColorCorrection;
+		}
+	}
+
+	if ( pFogController && m_PlayerFog.m_hCtrl.Get() != pFogController )
+	{
+		m_PlayerFog.m_hCtrl.Set( pFogController );
+	}
+
+	if ( pPostProcessController )
+	{
+		m_hPostProcessCtrl.Set( pPostProcessController );
+	}
+
+	if ( pColorCorrectionEnt )
+	{
+		m_hColorCorrectionCtrl.Set( pColorCorrectionEnt );
+	}
+}
+
 void CASW_Player::BecomeNonSolid()
 {
 	m_afPhysicsFlags |= PFLAG_OBSERVER;
 
 	SetGroundEntity( (CBaseEntity *)NULL );
 
-    AddSolidFlags( FSOLID_NOT_SOLID );
+	AddSolidFlags( FSOLID_NOT_SOLID );
 	RemoveFlag( FL_AIMTARGET ); // don't attract autoaim
 	AddFlag( FL_DONTTOUCH );	// stop it touching anything
 	AddFlag( FL_NOTARGET );	// stop NPCs noticing it
@@ -1930,6 +2062,12 @@ void CASW_Player::SetNPC( CASW_Inhabitable_NPC *pNPC )
 				event->SetInt( "count", nNumMarines );
 				gameeventmanager->FireEvent( event );
 			}
+		}
+
+		if ( GetASWControls() != ASWC_TOPDOWN )
+		{
+			// make sure we're facing the right way when we start controlling a character in first/third person
+			SnapEyeAngles( pNPC->GetLocalAngles() );
 		}
 
 		m_hInhabiting = pNPC;
@@ -2160,6 +2298,17 @@ void CASW_Player::SwitchMarine( CASW_Marine_Resource *pMR, bool set_squad_leader
 {
 	CASW_Marine *pOldMarine = CASW_Marine::AsMarine( GetNPC() );
 	CASW_Marine *pNewMarine = pMR->GetMarineEntity();
+
+	if ( pNewMarine->GetCommander() != this )
+	{
+		if ( pNewMarine->IsInhabited() && pNewMarine->GetCommander() )
+		{
+			pNewMarine->GetCommander()->LeaveMarines();
+		}
+
+		pMR->SetCommander( this );
+		pNewMarine->SetCommander( this );
+	}
 
 	SwitchInhabiting( pNewMarine );
 
@@ -2506,9 +2655,6 @@ QAngle CASW_Player::MarineAutoaimDeflection( Vector &vecSrc, float flDist, float
 	trace_t		tr;
 	Vector		v_forward, v_right, v_up;
 
-	if (ASWGameRules() && ASWGameRules()->IsHardcoreMode())
-		return vec3_angle;
-
 	//if ( ShouldAutoaim() == false )
 	//{
 		//m_fOnTarget = false;
@@ -2823,8 +2969,15 @@ void OrderNearbyMarines(CASW_Player *pPlayer, ASW_Orders NewOrders, bool bAcknow
 
 		// BenLubar: if player gave follow command, bots will follow not 
 		// using hints 
-		if ( NewOrders == ASW_ORDER_FOLLOW && bAcknowledge && pMyMarine->GetSquadFormation() && pMyMarine->GetSquadFormation()->Leader() == pMyMarine )
+		if ( NewOrders == ASW_ORDER_FOLLOW && bAcknowledge && pMyMarine->GetSquadFormation() )
+		{
+			if ( pMyMarine->GetSquadFormation()->Leader() != pMyMarine )
+			{
+				pMyMarine->GetSquadFormation()->ChangeLeader( pMyMarine, true );
+			}
+
 			pMyMarine->GetSquadFormation()->FollowCommandUsed();
+		}
 
 		// go through all marines and tell them to follow our marine
 		CASW_Game_Resource *pGameResource = ASWGameResource();
@@ -2920,6 +3073,36 @@ void CASW_Player::HideInfoMessage()
 	m_pCurrentInfoMessage = NULL;
 }
 
+void CASW_Player::ScriptShowMenu( int iValidOptionsBits, int iTimeout, const char *szDisplayString )
+{
+	CSingleUserRecipientFilter filter( this );
+	filter.MakeReliable();
+
+	int len = V_strlen( szDisplayString );
+	char szChunk[241];
+
+	while ( len >= sizeof( szChunk ) )
+	{
+		V_strncpy( szChunk, szDisplayString, sizeof( szChunk ) );
+		szDisplayString += sizeof( szChunk ) - 1;
+		len -= sizeof( szChunk ) - 1;
+
+		UserMessageBegin( filter, "ShowMenu" );
+			WRITE_SHORT( iValidOptionsBits );
+			WRITE_CHAR( iTimeout );
+			WRITE_BYTE( 1 );
+			WRITE_STRING( szChunk );
+		MessageEnd();
+	}
+
+	UserMessageBegin( filter, "ShowMenu" );
+		WRITE_SHORT( iValidOptionsBits );
+		WRITE_CHAR( iTimeout );
+		WRITE_BYTE( 0 );
+		WRITE_STRING( szDisplayString );
+	MessageEnd();
+}
+
 void CASW_Player::MoveMarineToPredictedPosition()
 {
 	CASW_Inhabitable_NPC *pNPC = GetNPC();
@@ -2991,112 +3174,125 @@ void CASW_Player::ActivateUseIcon( int iUseEntityIndex, int nHoldType )
 
 void CASW_Player::SetupVisibility( CBaseEntity *pViewEntity, unsigned char *pvs, int pvssize )
 {
-	if (asw_debug_pvs.GetBool())
+	if ( asw_debug_pvs.GetBool() )
 	{
-		Msg("Player:%d SetupVis\n", entindex());
+		Msg( "Player:%d SetupVis\n", entindex() );
 	}
-	if (m_bUsedFreeCam)
+
+	if ( m_bUsedFreeCam )
 	{
-		if (asw_debug_pvs.GetBool())
+		if ( asw_debug_pvs.GetBool() )
 		{
-			Msg("  freecam %s\n", VecToString(m_vecFreeCamOrigin));
+			Msg( "  freecam %s\n", VecToString( m_vecFreeCamOrigin ) );
 		}
-		engine->AddOriginToPVS(m_vecFreeCamOrigin);
+		engine->AddOriginToPVS( m_vecFreeCamOrigin );
 	}
+
 	CAlienSwarm *pGameRules = ASWGameRules();
 	if ( pGameRules && pGameRules->GetGameState() < ASW_GS_INGAME && pGameRules->m_hBriefingCamera )
 	{
 		engine->AddOriginToPVS( pGameRules->m_hBriefingCamera->GetAbsOrigin() );
 	}
-	CASW_Inhabitable_NPC *pNPC = GetSpectatingNPC();
-	bool bSpectating = true;
-	if (!pNPC)
-	{
-		pNPC = GetNPC();
-		bSpectating = false;
-	}
+
+	CASW_Inhabitable_NPC *pNPC = GetViewNPC();
 	if ( pNPC )
 	{
-		CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
-		// asw - add the marine as our PVS position (since we're using radius based, this will do the job)
-		if ( pMarine && pMarine->IsInVehicle() )
-		{
-	#ifdef CLIENT_DLL
-			if (pMarine->GetClientsideVehicle() && pMarine->GetClientsideVehicle()->GetEntity())
-				engine->AddOriginToPVS(pMarine->GetClientsideVehicle()->GetEntity()->GetAbsOrigin());
-	#else
-			if (pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->GetEntity())
-				engine->AddOriginToPVS(pMarine->GetASWVehicle()->GetEntity()->GetAbsOrigin());
-	#endif
-		}
-		else
-		{
-			//if (asw_debug_pvs.GetBool()) Msg(" Marine %f,%f,%f\n", pMarine->GetAbsOrigin().x, pMarine->GetAbsOrigin().y, pMarine->GetAbsOrigin().z);
-			if ( asw_debug_pvs.GetBool() )
-			{
-				const Vector pos = pNPC->GetAbsOrigin();
-				Msg( "  Marine %f,%f,%f\n", pos.x, pos.y, pos.z );
-			}
-			engine->AddOriginToPVS( pNPC->GetAbsOrigin() );
-		}
-
-		// Check for mapper cameras
-		CPointCamera *pMapperCamera = GetPointCameraList();
-		bool bMapperCam = false;
-		for ( int cameraNum = 0; pMapperCamera != NULL; pMapperCamera = pMapperCamera->m_pNext )
-		{
-			if ( pMapperCamera->IsActive() && !ASW_IsSecurityCam( pMapperCamera ) )
-			{
-				engine->AddOriginToPVS( pMapperCamera->GetAbsOrigin() );
-				bMapperCam = true;
-				break;
-			}
-
-			++cameraNum;
-		}
-
-		CBaseEntity *pUsing = pNPC->m_hUsingEntity.Get();
-		if ( pUsing )
-		{
-			if ( pUsing->Classify() == CLASS_ASW_COMPUTER_AREA )
-			{
-				CASW_Computer_Area *pComputer = assert_cast< CASW_Computer_Area * >( pUsing );
-				CASW_PointCamera *pComputerCam = pComputer->GetActiveCam();
-
-				// check if any mapper set cameras are active, we shouldn't be on if they are
-				if ( pComputer->m_hSecurityCam1 && ( !bMapperCam || pComputer->m_hSecurityCam1 != pMapperCamera ) && pComputer->m_hSecurityCam1.Get() != pComputerCam )
-				{
-					pComputer->m_hSecurityCam1->SetActive( false );
-				}
-
-				if ( pComputer->m_hSecurityCam2 && ( !bMapperCam || pComputer->m_hSecurityCam2 != pMapperCamera ) && pComputer->m_hSecurityCam2.Get() != pComputerCam )
-				{
-					pComputer->m_hSecurityCam2->SetActive( false );
-				}
-
-				if ( pComputer->m_hSecurityCam3 && ( !bMapperCam || pComputer->m_hSecurityCam3 != pMapperCamera ) && pComputer->m_hSecurityCam3.Get() != pComputerCam )
-				{
-					pComputer->m_hSecurityCam3->SetActive( false );
-				}
-
-				if ( pComputerCam && ( !bMapperCam || pComputerCam != pMapperCamera ) )
-				{
-					// if we're here, a computer camera is active
-					engine->AddOriginToPVS( pComputerCam->GetAbsOrigin() );
-					pComputerCam->SetActive( true );
-				}
-			}
-		}
-
-		if ( pMarine && pMarine->IsControllingTurret() )
-		{
-			engine->AddOriginToPVS( pMarine->GetRemoteTurret()->GetAbsOrigin() );
-		}
+		SetupVisibilityForNPC( pViewEntity, pvs, pvssize, pNPC );
 	}
 	else
 	{
 		//if (asw_debug_pvs.GetBool()) Msg(" Base\n");
 		BaseClass::SetupVisibility( pViewEntity, pvs, pvssize );
+	}
+
+	CASW_Game_Resource *pGameResource = ASWGameResource();
+	if ( rd_force_all_marines_in_pvs.GetBool() && pGameResource )
+	{
+		if ( ( rd_force_all_marines_in_pvs.GetInt() != 2 || !GetNPC() ) &&
+			( rd_force_all_marines_in_pvs.GetInt() != 3 || m_iWantsAutoRecord != 0 ) )
+		{
+			for ( int i = 0; i < ASW_MAX_MARINE_RESOURCES; i++ )
+			{
+				CASW_Marine_Resource *pMR = pGameResource->GetMarineResource( i );
+				if ( pMR && pMR->GetMarineEntity() )
+				{
+					SetupVisibilityForNPC( pViewEntity, pvs, pvssize, pMR->GetMarineEntity() );
+				}
+			}
+		}
+	}
+}
+
+void CASW_Player::SetupVisibilityForNPC( CBaseEntity *pViewEntity, unsigned char *pvs, int pvssize, CASW_Inhabitable_NPC *pNPC )
+{
+	CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
+	// asw - add the marine as our PVS position (since we're using radius based, this will do the job)
+	if ( pMarine && pMarine->IsInVehicle() )
+	{
+		if ( pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->GetEntity() )
+			engine->AddOriginToPVS( pMarine->GetASWVehicle()->GetEntity()->GetAbsOrigin() );
+	}
+	else
+	{
+		if ( asw_debug_pvs.GetBool() )
+		{
+			const Vector pos = pNPC->GetAbsOrigin();
+			Msg( "  Marine %f,%f,%f\n", pos.x, pos.y, pos.z );
+		}
+		engine->AddOriginToPVS( pNPC->GetAbsOrigin() );
+	}
+
+	// Check for mapper cameras
+	CPointCamera *pMapperCamera = GetPointCameraList();
+	bool bMapperCam = false;
+	for ( int cameraNum = 0; pMapperCamera != NULL; pMapperCamera = pMapperCamera->m_pNext )
+	{
+		if ( pMapperCamera->IsActive() && !ASW_IsSecurityCam( pMapperCamera ) )
+		{
+			engine->AddOriginToPVS( pMapperCamera->GetAbsOrigin() );
+			bMapperCam = true;
+			break;
+		}
+
+		++cameraNum;
+	}
+
+	CBaseEntity *pUsing = pNPC->m_hUsingEntity.Get();
+	if ( pUsing )
+	{
+		if ( pUsing->Classify() == CLASS_ASW_COMPUTER_AREA )
+		{
+			CASW_Computer_Area *pComputer = assert_cast< CASW_Computer_Area * >( pUsing );
+			CASW_PointCamera *pComputerCam = pComputer->GetActiveCam();
+
+			// check if any mapper set cameras are active, we shouldn't be on if they are
+			if ( pComputer->m_hSecurityCam1 && ( !bMapperCam || pComputer->m_hSecurityCam1 != pMapperCamera ) && pComputer->m_hSecurityCam1.Get() != pComputerCam )
+			{
+				pComputer->m_hSecurityCam1->SetActive( false );
+			}
+
+			if ( pComputer->m_hSecurityCam2 && ( !bMapperCam || pComputer->m_hSecurityCam2 != pMapperCamera ) && pComputer->m_hSecurityCam2.Get() != pComputerCam )
+			{
+				pComputer->m_hSecurityCam2->SetActive( false );
+			}
+
+			if ( pComputer->m_hSecurityCam3 && ( !bMapperCam || pComputer->m_hSecurityCam3 != pMapperCamera ) && pComputer->m_hSecurityCam3.Get() != pComputerCam )
+			{
+				pComputer->m_hSecurityCam3->SetActive( false );
+			}
+
+			if ( pComputerCam && ( !bMapperCam || pComputerCam != pMapperCamera ) )
+			{
+				// if we're here, a computer camera is active
+				engine->AddOriginToPVS( pComputerCam->GetAbsOrigin() );
+				pComputerCam->SetActive( true );
+			}
+		}
+	}
+
+	if ( pMarine && pMarine->IsControllingTurret() )
+	{
+		engine->AddOriginToPVS( pMarine->GetRemoteTurret()->GetAbsOrigin() );
 	}
 }
 
@@ -3259,4 +3455,256 @@ HSCRIPT CASW_Player::ScriptGetMarine()
 	}
 
 	return NULL;
+}
+
+void CASW_Player::ScriptSetNPC( HSCRIPT hNPC )
+{
+	CBaseEntity *pEnt = ToEnt( hNPC );
+	if ( !pEnt )
+	{
+		LeaveMarines();
+		return;
+	}
+
+	if ( !pEnt->IsInhabitableNPC() )
+	{
+		Warning( "Player #%d:%s cannot inhabit %s #%d:%s (vscript error)\n", entindex(), GetASWNetworkID(), pEnt->GetClassname(), pEnt->entindex(), pEnt->GetDebugName() );
+		return;
+	}
+
+	if ( CASW_Marine *pMarine = CASW_Marine::AsMarine( pEnt ) )
+	{
+		CASW_Marine_Resource *pMR = pMarine->GetMarineResource();
+		if ( pMR )
+		{
+			SwitchMarine( pMR );
+			return;
+		}
+	}
+
+	SwitchInhabiting( assert_cast< CASW_Inhabitable_NPC * >( pEnt ) );
+}
+
+void CASW_Player::ScriptSetSpectatingNPC( HSCRIPT hNPC )
+{
+	CBaseEntity *pEnt = ToEnt( hNPC );
+	if ( !pEnt )
+	{
+		SetSpectatingNPC( NULL );
+		return;
+	}
+
+	if ( !pEnt->IsInhabitableNPC() )
+	{
+		Warning( "Player #%d:%s cannot spectate %s #%d:%s (vscript error)\n", entindex(), GetASWNetworkID(), pEnt->GetClassname(), pEnt->entindex(), pEnt->GetDebugName() );
+		return;
+	}
+
+	LeaveMarines();
+	SetSpectatingNPC( assert_cast< CASW_Inhabitable_NPC * >( pEnt ) );
+}
+
+void CASW_Player::HandleEquippedItemsNotification( KeyValues *pKeyValues, bool bDynamic )
+{
+	int iOffset = pKeyValues->GetInt( "i", -1 );
+	int iTotal = pKeyValues->GetInt( "t", -1 );
+	int iParity = pKeyValues->GetInt( "e", -1 );
+	const char *szData = pKeyValues->GetString( "m", NULL );
+	int iLength = szData ? V_strlen( szData ) : 0;
+	if ( iOffset < 0 || iTotal < 8 + 2 * RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_STATIC || iTotal > RD_EQUIPPED_ITEMS_NOTIFICATION_WORST_CASE_SIZE || iParity <= 0 || !szData || !*szData || ( iLength & 1 ) )
+	{
+		Warning( "Ignoring equipped items notification (%s) from player %s (invalid data)\n", bDynamic ? "dynamic" : "static", GetASWNetworkID() );
+		return;
+	}
+
+	if ( iOffset == 0 && ASWGameRules() && ASWGameRules()->GetGameState() == ASW_GS_INGAME )
+	{
+		// allow receiving data after mission start if the transfer as at least started beforehand
+		DevWarning( "Ignoring equipped items notification (%s) from player %s as the mission is in-progress.\n", bDynamic ? "dynamic" : "static", GetASWNetworkID() );
+		return;
+	}
+
+	iOffset *= 2;
+	iTotal *= 2;
+
+	if ( iOffset != 0 && ( iParity != m_iEquippedItemsParity[bDynamic] || iOffset != m_iEquippedItemsReceivingOffset[bDynamic] || iTotal + 1 != m_EquippedItemsReceiving[bDynamic].Count() ) || iLength + iOffset > iTotal || iLength != MIN( iTotal - iOffset, RD_EQUIPPED_ITEMS_NOTIFICATION_PAYLOAD_SIZE_PER_PACKET * 2 ) )
+	{
+		Assert( iParity == m_iEquippedItemsParity[bDynamic] );
+		Assert( iOffset == m_iEquippedItemsReceivingOffset[bDynamic] );
+		Assert( iTotal + 1 == m_EquippedItemsReceiving[bDynamic].Count() );
+		Assert( iLength + iOffset <= iTotal );
+		Assert( iLength == MIN( iTotal - iOffset, RD_EQUIPPED_ITEMS_NOTIFICATION_PAYLOAD_SIZE_PER_PACKET * 2 ) );
+		Warning( "Ignoring equipped items notification (%s) from player %s (out of order or bad parity)\n", bDynamic ? "dynamic" : "static", GetASWNetworkID() );
+		return;
+	}
+
+	if ( iOffset == 0 )
+	{
+		ReactiveDropInventory::DecodeItemData( m_EquippedItemsResult[bDynamic], "" );
+		if ( !bDynamic )
+		{
+			for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_STATIC; i++ )
+			{
+				m_EquippedItemDataStatic[i].Reset();
+			}
+		}
+		m_EquippedItemsReceiving[bDynamic].Init( 0, iTotal + 1 );
+		m_iEquippedItemsReceivingOffset[bDynamic] = 0;
+		m_iEquippedItemsParity[bDynamic] = iParity;
+		Assert( m_EquippedItemsReceiving[bDynamic].Count() == iTotal + 1 );
+	}
+
+	V_memcpy( m_EquippedItemsReceiving[bDynamic].Base() + m_iEquippedItemsReceivingOffset[bDynamic], szData, iLength );
+	m_iEquippedItemsReceivingOffset[bDynamic] += iLength;
+	Assert( m_iEquippedItemsReceivingOffset[bDynamic] <= iTotal );
+	if ( m_iEquippedItemsReceivingOffset[bDynamic] == iTotal )
+	{
+		m_EquippedItemsReceiving[bDynamic].Base()[iTotal] = '\0';
+		CUtlMemory<byte> RawBuffer{ 0, iTotal / 2 };
+		V_hextobinary( m_EquippedItemsReceiving[bDynamic].Base(), iTotal, RawBuffer.Base(), RawBuffer.Count() );
+		CRC32_t iChecksumExpected = CRC32_ProcessSingleBuffer( RawBuffer.Base() + 4, RawBuffer.Count() - 4 );
+		if ( iChecksumExpected != *reinterpret_cast< const CRC32_t * >( RawBuffer.Base() ) )
+		{
+			Warning( "Ignoring equipped items notification (%s) from player %s (bad checksum)\n", bDynamic ? "dynamic" : "static", GetASWNetworkID() );
+		}
+		else
+		{
+			ReactiveDropInventory::DecodeItemData( m_EquippedItemsResult[bDynamic], m_EquippedItemsReceiving[bDynamic].Base() + 8 + ( bDynamic ? RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC : RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_STATIC ) * 2 );
+		}
+	}
+	else
+	{
+		CSingleUserRecipientFilter filter{ this };
+		filter.MakeReliable();
+		UserMessageBegin( filter, "RDEquippedItemsACK" );
+			WRITE_LONG( iParity );
+		MessageEnd();
+	}
+}
+
+void CASW_Player::HandleEquippedItemsCachedNotification( KeyValues *pKeyValues, bool bDynamic )
+{
+	// This only works in singleplayer, and we need access to our own Steam ID.
+	if ( engine->IsDedicatedServer() || gpGlobals->maxClients != 1 || !SteamUser() )
+		return;
+
+	CFmtStr szCacheFileName{ "cfg/clienti_%llu.dat", SteamUser()->GetSteamID().ConvertToUint64() };
+	CUtlBuffer buf;
+
+	if ( !g_pFullFileSystem->ReadFile( szCacheFileName, "MOD", buf ) )
+		return;
+
+	KeyValues::AutoDelete pCache{ "IC" };
+
+	if ( !pCache->ReadAsBinary( buf ) )
+		return;
+
+	if ( bDynamic )
+	{
+		CUtlVector<SteamItemInstanceID_t> seen;
+		seen.EnsureCapacity( RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC );
+
+		for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC; i++ )
+		{
+			SteamItemInstanceID_t id = pKeyValues->GetUint64( CFmtStr( "item%d", i ), k_SteamItemInstanceIDInvalid );
+			Assert( id != 0 );
+
+			if ( id == k_SteamItemInstanceIDInvalid )
+			{
+				if ( !m_EquippedItemDataDynamic[i].IsSet() )
+					continue;
+
+				id = m_EquippedItemDataDynamic[i].m_iItemInstanceID;
+			}
+
+			Assert( !seen.IsValidIndex( seen.Find( id ) ) );
+			if ( seen.IsValidIndex( seen.Find( id ) ) )
+			{
+				Warning( "Offline dynamic items notification contains duplicate item ID %llu in slot %d\n", id, i );
+				return;
+			}
+		}
+
+		for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC; i++ )
+		{
+			if ( KeyValues *pSlot = pKeyValues->FindKey( CFmtStr( "item%d", i ) ) )
+			{
+				SteamItemInstanceID_t id = pSlot->GetUint64();
+
+				FOR_EACH_SUBKEY( pCache, pItem )
+				{
+					if ( pItem->GetUint64( "i" ) != id )
+					{
+						continue;
+					}
+
+
+					ReactiveDropInventory::ItemInstance_t instance{ pItem };
+					const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( instance.ItemDefID );
+					Assert( pDef && pDef->ItemSlotMatchesAnyDynamic() );
+					if ( !pDef || !pDef->ItemSlotMatchesAnyDynamic() )
+					{
+						Warning( "Offline dynamic items notification contains %llu %d '%s' which fits in '%s', not a dynamic slot\n", instance.ItemID, instance.ItemDefID, pDef ? pDef->Name.Get() : "<NO DEF>", pDef ? pDef->ItemSlot.Get() : "<NO DEF>" );
+						m_EquippedItemDataDynamic[i].Reset();
+						continue;
+					}
+
+					m_EquippedItemDataDynamic[i].SetFromInstance( ReactiveDropInventory::ItemInstance_t{ pItem } );
+
+					break;
+				}
+			}
+		}
+	}
+	else
+	{
+		CUtlVector<SteamItemInstanceID_t> seen;
+		seen.EnsureCapacity( RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC );
+
+		for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_STATIC; i++ )
+		{
+			SteamItemInstanceID_t id = pKeyValues->GetUint64( ReactiveDropInventory::g_InventorySlotNames[i], k_SteamItemInstanceIDInvalid );
+			Assert( id != 0 );
+
+			if ( id == k_SteamItemInstanceIDInvalid )
+				continue;
+
+			Assert( !seen.IsValidIndex( seen.Find( id ) ) );
+			if ( seen.IsValidIndex( seen.Find( id ) ) )
+			{
+				Warning( "Offline static items notification contains duplicate item ID %llu in slot '%s'\n", id, ReactiveDropInventory::g_InventorySlotNames[i] );
+				return;
+			}
+		}
+
+		for ( int i = 0; i < RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_STATIC; i++ )
+		{
+			if ( KeyValues *pSlot = pKeyValues->FindKey( ReactiveDropInventory::g_InventorySlotNames[i] ) )
+			{
+				SteamItemInstanceID_t id = pSlot->GetUint64();
+				m_EquippedItemDataStatic[i].Reset();
+
+				FOR_EACH_SUBKEY( pCache, pItem )
+				{
+					if ( pItem->GetUint64( "i" ) != id )
+					{
+						continue;
+					}
+
+					ReactiveDropInventory::ItemInstance_t instance{ pItem };
+					const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( instance.ItemDefID );
+					Assert( pDef && pDef->ItemSlotMatches( ReactiveDropInventory::g_InventorySlotNames[i] ) );
+					if ( !pDef || !pDef->ItemSlotMatches( ReactiveDropInventory::g_InventorySlotNames[i] ) )
+					{
+						Warning( "Offline static items notification contains %llu %d '%s' which fits in '%s', not '%s'\n", instance.ItemID, instance.ItemDefID, pDef ? pDef->Name.Get() : "<NO DEF>", pDef ? pDef->ItemSlot.Get() : "<NO DEF>", ReactiveDropInventory::g_InventorySlotNames[i] );
+						continue;
+					}
+
+					m_EquippedItemDataStatic[i].SetFromInstance( instance );
+
+					break;
+				}
+			}
+		}
+	}
 }

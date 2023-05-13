@@ -34,8 +34,6 @@ public:
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
 
-		virtual const char* GetPickupClass() { return "asw_pickup_vindicator"; }
-
 		virtual float GetMadFiringBias() { return 1.0f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
 	#else
 		virtual bool HasSecondaryExplosive( void ) const { return true; }
@@ -46,6 +44,7 @@ public:
 		virtual float GetLaserPointerRange( void ) { return 360; }
 		virtual void OnMuzzleFlashed();
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/vindicator_empty_clip.mdl"; }
 
 	virtual bool ShouldMarineMoveSlow();
 

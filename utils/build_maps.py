@@ -30,6 +30,9 @@ VMFs = [
 ##		MapInfo("asi-jac4-residential", "2500", "0"),
 ##		MapInfo("asi-jac6-sewerjunction", "2500", "0"),
 ##		MapInfo("asi-jac7-timorstation", "2500", "0"),
+##		MapInfo("example_map_1", "1500", "1"),
+##		MapInfo("example_map_2", "1500", "1"),
+##		MapInfo("example_map_3", "1500", "1"),
 ##		MapInfo("rd-bio1operationx5", "750", "0"),
 ##		MapInfo("rd-bio2invisiblethreat", "750", "0"),
 ##		MapInfo("rd-bio3biogenlabs", "750", "0"),
@@ -51,16 +54,20 @@ VMFs = [
 ##		MapInfo("rd-bonus_mission5", "750", "1"),
 ##		MapInfo("rd-bonus_mission6", "1500", "1"),
 ##		MapInfo("rd-bonus_mission7", "1500", "0"),
+##		MapInfo("rd-bonus10_sewrev", "2500", "0"),
+##		MapInfo("rd-bonus12_rydrev", "2500", "0"),
+##		MapInfo("rd-bonus14_cargrev", "2500", "0"),
+##		MapInfo("rd-bonus15_landrev", "3000", "0"),
 ##		MapInfo("rd-dc1_omega_city", "1500", "0"),
 ##		MapInfo("rd-dc2_breaking_an_entry", "750", "0"),
 ##		MapInfo("rd-dc3_search_and_rescue", "750", "0"),
-##		MapInfo("rd-lan1_bridge", "2500", "0"),
+##		MapInfo("rd-lan1_bridge", "2000", "0"),
 ##		MapInfo("rd-lan2_sewer", "1500", "0"),
 ##		MapInfo("rd-lan3_maintenance", "750", "0"),
-##		MapInfo("rd-lan4_vent", "1500", "0"),
+##		MapInfo("rd-lan4_vent", "2500", "0"),
 ##		MapInfo("rd-lan5_complex", "750", "0"),
 ##		MapInfo("rd-ocs1storagefacility", "750", "0"),
-##		MapInfo("rd-ocs2landingbay7", "750", "0"),
+##		MapInfo("rd-ocs2landingbay7", "2500", "0"),
 ##		MapInfo("rd-ocs3uscmedusa", "750", "0"),
 ##		MapInfo("rd-ori1niosarefinary", "1500", "0"),
 ##		MapInfo("rd-ori2firstanomaly", "1500", "0"),
@@ -101,6 +108,15 @@ VMFs = [
 ##		MapInfo("rd-acc5_j5connector", "1200", "1", vrad=vrad_notextureshadows),
 ##		MapInfo("rd-acc6_labruins", "1500", "1", vrad=vrad_notextureshadows),
 ##		MapInfo("rd-acc_complex", "1500", "0", vrad=vrad_notextureshadows),
+##		MapInfo("rd-ada_sector_a9", "1152", "1"),
+##		MapInfo("rd-ada_nexus_subnode", "1152", "1"),
+##		MapInfo("rd-ada_neon_carnage", "768", "1"),
+##		MapInfo("rd-ada_fuel_junction", "1512", "1"),
+##		MapInfo("rd-ada_dark_path", "1152", "1"),
+##		MapInfo("rd-ada_forbidden_outpost", "2048", "1"),
+##		MapInfo("rd-ada_new_beginning", "1152", "1"),
+##		MapInfo("rd-ada_anomaly", "1152", "1"),
+##		MapInfo("rd-ht-marine_academy", "5000", "0"),
 ]
 
 game = os.environ["RD_STEAM"]
@@ -154,9 +170,12 @@ for i, mapinfo in enumerate(VMFs):
 # footer of the cfg file
 with open(build_all_maps_cfg, "a") as myfile:
 	myfile.write("sv_cheats 1\ndeveloper 1\nsv_allow_wait_command 1\nasw_instant_restart 0\n")
-	myfile.write("build_map0\n")
+	if len(VMFs) == 0:
+		myfile.write("exit\n")
+	else:
+		myfile.write("build_map0\n")
 
 # run the game and execute the cfg file
 # game will load each map and execute these commands using 
 # aliases and wait command: stringtabledictionary;buildcubemaps;
-call([gameexe, "-novid", "-windowed", "-w", "1280", "-h", "720", "-game", moddir, "+exec build_all_maps"])
+call([gameexe, "-novid", "-windowed", "-w", "1280", "-h", "720", "-skiploadingworkshopaddons", "-game", moddir, "+exec build_all_maps"])

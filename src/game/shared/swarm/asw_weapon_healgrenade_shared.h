@@ -56,7 +56,7 @@ public:
 	void Precache( void );
 
 	static CASW_AOEGrenade_Projectile* Grenade_Projectile_Create( const Vector &position, const QAngle &angles, const Vector &velocity,
-		const AngularImpulse &angVelocity, CBaseEntity *pOwner,
+		const AngularImpulse &angVelocity, CBaseEntity *pOwner, CBaseEntity *pCreator,
 		float flHealPerSecond, float flInfestationCureAmount, float flRadius, float flDuration, float flTotalHealAmount );
 
 	virtual float GetInfestationCureAmount( void );
@@ -111,8 +111,6 @@ public:
 
 		virtual CASW_AOEGrenade_Projectile* CreateProjectile( const Vector &vecSrc, const QAngle &angles, const Vector &vecVel, 
 							const AngularImpulse &rotSpeed, CBaseEntity *pOwner );
-
-		virtual const char* GetPickupClass() { return "asw_pickup_heal_grenade"; }	
 	#else
 	
 	#endif

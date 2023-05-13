@@ -59,6 +59,8 @@ CASW_VGUI_Computer_Download_Docs::CASW_VGUI_Computer_Download_Docs( vgui::Panel 
 	m_pKeyValues = NULL;	
 	m_bSetTextComplete = false;
 	m_bSetAlpha = false;
+	m_fDownloadFinishedTime = 0;
+	m_bAutoClosed = false;
 
 	if (GetControllerFocus())
 	{
@@ -266,6 +268,7 @@ void CASW_VGUI_Computer_Download_Docs::OnThink()
 	if (fFraction >= 1.0f && !m_bSetTextComplete)
 	{
 		m_bSetTextComplete = true;
+		m_fDownloadFinishedTime = gpGlobals->curtime;
 		m_pTitleLabel->SetText("#asw_SynTekDownloadDocsComplete");
 		// fade out the downloading anim
 		vgui::GetAnimationController()->RunAnimationCommand(m_pArrow, "Alpha", 0, 0, 0.1f, vgui::AnimationController::INTERPOLATOR_LINEAR);
@@ -286,6 +289,11 @@ void CASW_VGUI_Computer_Download_Docs::OnThink()
 			fAlpha = (1.0f - fAnimFraction) / 0.25f;
 		}
 		m_pArrow->SetAlpha(m_pProgressBar->GetAlpha() * fAlpha);
+	}
+	else if ( !m_bAutoClosed && m_fDownloadFinishedTime < gpGlobals->curtime - 1.5f )
+	{
+		m_bAutoClosed = true;
+		OnCommand( "Back" );
 	}
 
 	int x, y;

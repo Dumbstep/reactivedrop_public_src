@@ -527,6 +527,7 @@ void CASW_Egg::SpawnEffects(int flags)
 
 int CASW_Egg::OnTakeDamage( const CTakeDamageInfo &info )
 {
+	int iHealthBefore = GetHealth();
 	int result = BaseClass::OnTakeDamage(info);
 
 	if (result > 0)
@@ -540,11 +541,11 @@ int CASW_Egg::OnTakeDamage( const CTakeDamageInfo &info )
 
 		// Notify gamestats of the damage
 		CASW_GameStats.Event_AlienTookDamage(this, info);
+		UTIL_RD_HitConfirm( this, iHealthBefore, info );
 
-		if (info.GetDamageType() & DMG_BURN ||
-			info.GetDamageType() & DMG_BLAST)
+		if ( ( info.GetDamageType() & DMG_BURN ) || ( info.GetDamageType() & DMG_BLAST ) )
 		{
-			ASW_Ignite(30.0f, 0, pAttacker, info.GetWeapon() );
+			ASW_Ignite( 30.0f, 0, pAttacker, info.GetWeapon() );
 		}
 	}
 	return result;

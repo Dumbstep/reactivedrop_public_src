@@ -4,13 +4,14 @@
 #include <vgui/ILocalize.h>
 #include <vgui_controls/ImagePanel.h>
 #include <vgui_controls/RichText.h>
+#include "fmtstr.h"
+#include "filesystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 
-extern ConVar rd_briefing_item_details_color1;
-extern ConVar rd_briefing_item_details_color2;
+ConVar rd_briefing_item_details_displaytype( "rd_briefing_item_details_displaytype", "170 170 170 255" );
 
 CRD_Collection_Tab_Inventory::CRD_Collection_Tab_Inventory( TabbedGridDetails *parent, const char *szLabel, const char *szSlot )
 	: BaseClass( parent, szLabel )
@@ -104,17 +105,19 @@ void CRD_Collection_Tab_Inventory::OnThink()
 	for ( uint32_t i = 0; i < nResults; i++ )
 	{
 		const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( details[i].m_iDefinition );
-		if ( !pDef || pDef->ItemSlot != m_szSlot )
+		if ( !pDef || !pDef->ItemSlotMatches( m_szSlot ) )
 		{
 			continue;
 		}
 
-		m_pGrid->AddEntry( new CRD_Collection_Entry_Inventory( m_pGrid, "CollectionEntryInventory", i, details[i] ) );
+		m_pGrid->AddEntry( new CRD_Collection_Entry_Inventory( m_pGrid, "CollectionEntryInventory", m_hResult, i ) );
 	}
 
 	UpdateErrorMessage( m_pGrid );
 
-	m_pGrid->InvalidateLayout( false, true );
+	bool bVisibleBefore = m_pGrid->IsVisible();
+	m_pGrid->InvalidateLayout( true, true );
+	m_pGrid->SetVisible( bVisibleBefore );
 }
 
 void CRD_Collection_Tab_Inventory::UpdateErrorMessage( TGD_Grid *pGrid )
@@ -130,6 +133,11 @@ void CRD_Collection_Tab_Inventory::UpdateErrorMessage( TGD_Grid *pGrid )
 		else
 		{
 			pGrid->SetMessage( "#rd_collection_inventory_error_generic" );
+		}
+
+		if ( m_bUnavailable )
+		{
+			LoadCachedInventory();
 		}
 	}
 	else
@@ -149,11 +157,49 @@ void CRD_Collection_Tab_Inventory::UpdateErrorMessage( TGD_Grid *pGrid )
 	}
 }
 
+void CRD_Collection_Tab_Inventory::LoadCachedInventory()
+{
+	if ( !m_pGrid || m_pGrid->m_Entries.Count() != 0 )
+		return;
+
+	// no (offline) Steam API means we can't even do this
+	if ( !SteamUser() )
+		return;
+
+	if ( !g_pFullFileSystem )
+		return;
+
+	CFmtStr szCacheFileName{ "cfg/clienti_%llu.dat", SteamUser()->GetSteamID().ConvertToUint64() };
+	CUtlBuffer buf;
+
+	if ( !g_pFullFileSystem->ReadFile( szCacheFileName, "MOD", buf ) )
+		return;
+
+	KeyValues::AutoDelete pCache{ "IC" };
+
+	if ( !pCache->ReadAsBinary( buf ) )
+		return;
+
+	m_pGrid->SetMouseInputEnabled( false );
+
+	int i = 0;
+	FOR_EACH_SUBKEY( pCache, pItem )
+	{
+		const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( pItem->GetInt( "d" ) );
+		if ( !pDef || !pDef->ItemSlotMatches( m_szSlot ) )
+			continue;
+
+		m_pGrid->AddEntry( new CRD_Collection_Entry_Inventory( m_pGrid, "CollectionEntryInventory", pItem, i ) );
+		i++;
+	}
+}
+
 CRD_Collection_Details_Inventory::CRD_Collection_Details_Inventory( CRD_Collection_Tab_Inventory *parent )
 	: BaseClass( parent )
 {
 	m_pTitle = new vgui::RichText( this, "Title" );
 	m_pDescription = new vgui::RichText( this, "Description" );
+	m_pIconBackground = new vgui::Panel( this, "IconBackground" );
 	m_pIcon = new vgui::ImagePanel( this, "Icon" );
 
 	m_pTitle->SetCursor( vgui::dc_arrow );
@@ -188,6 +234,7 @@ void CRD_Collection_Details_Inventory::OnThink()
 
 void CRD_Collection_Details_Inventory::DisplayEntry( TGD_Entry *pEntry )
 {
+	SetPaintBackgroundEnabled( false );
 	m_pIcon->SetVisible( false );
 	m_pTitle->SetText( L"" );
 	m_pDescription->SetText( L"" );
@@ -198,54 +245,37 @@ void CRD_Collection_Details_Inventory::DisplayEntry( TGD_Entry *pEntry )
 		return;
 	}
 
-	const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( pInvEntry->m_Details.m_iDefinition );
+	const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( pInvEntry->m_Details.ItemDefID );
 	Assert( pDef );
 	if ( !pDef )
 	{
 		return;
 	}
 
-	CRD_Collection_Tab_Inventory *pTab = assert_cast< CRD_Collection_Tab_Inventory * >( m_pParent );
+	m_pIconBackground->SetBgColor( pDef->BackgroundColor );
+	m_pIconBackground->SetPaintBackgroundEnabled( true );
+	m_pIconBackground->SetPaintBackgroundType( 2 );
 
 	m_pIcon->SetVisible( true );
-	m_pIcon->SetImage( pDef->Icon );
+	m_pIcon->SetImage( pInvEntry->m_Details.GetIcon() );
 
 	wchar_t wszBuf[2048];
 
 	V_UTF8ToUnicode( pDef->Name, wszBuf, sizeof( wszBuf ) );
-	m_pTitle->InsertColorChange( Color( 255, 255, 255, 255 ) );
+	m_pTitle->InsertColorChange( pDef->NameColor );
 	m_pTitle->InsertString( wszBuf );
 	m_pTitle->InsertString( L"\n" );
 
 	V_UTF8ToUnicode( pDef->DisplayType, wszBuf, sizeof( wszBuf ) );
-	m_pTitle->InsertColorChange( rd_briefing_item_details_color1.GetColor() );
+	m_pTitle->InsertColorChange( rd_briefing_item_details_displaytype.GetColor() );
 	m_pTitle->InsertString( wszBuf );
 
-	ReactiveDropInventory::FormatDescription( wszBuf, sizeof( wszBuf ), pDef->BeforeDescription, pTab->m_hResult, pInvEntry->m_Index );
-	if ( wszBuf[0] )
-	{
-		m_pDescription->InsertColorChange( rd_briefing_item_details_color2.GetColor() );
-		m_pDescription->InsertString( wszBuf );
-		m_pDescription->InsertString( L"\n\n" );
-	}
+	pInvEntry->m_Details.FormatDescription( m_pDescription );
 
-	V_UTF8ToUnicode( pDef->Description, wszBuf, sizeof( wszBuf ) );
-	m_pDescription->InsertColorChange( rd_briefing_item_details_color1.GetColor() );
-	m_pDescription->InsertString( wszBuf );
-
-	if ( !pDef->AfterDescriptionOnlyMultiStack || pInvEntry->m_Details.m_unQuantity > 1 )
-	{
-		ReactiveDropInventory::FormatDescription( wszBuf, sizeof( wszBuf ), pDef->AfterDescription, pTab->m_hResult, pInvEntry->m_Index );
-		if ( wszBuf[0] )
-		{
-			m_pDescription->InsertColorChange( rd_briefing_item_details_color2.GetColor() );
-			m_pDescription->InsertString( L"\n\n" );
-			m_pDescription->InsertString( wszBuf );
-		}
-	}
+	CRD_Collection_Tab_Inventory *pTab = assert_cast< CRD_Collection_Tab_Inventory * >( m_pParent );
 
 	ConVarRef equipID( VarArgs( "rd_equipped_%s", pTab->m_szSlot ) );
-	if ( pInvEntry->m_Details.m_itemId == strtoull( equipID.GetString(), NULL, 10 ) )
+	if ( pInvEntry->m_Details.ItemID == strtoull( equipID.GetString(), NULL, 10 ) )
 	{
 		m_pDescription->InsertColorChange( Color( 255, 255, 255, 255 ) );
 		m_pDescription->InsertString( L"\n\n" );
@@ -255,25 +285,42 @@ void CRD_Collection_Details_Inventory::DisplayEntry( TGD_Entry *pEntry )
 	InvalidateLayout();
 }
 
-CRD_Collection_Entry_Inventory::CRD_Collection_Entry_Inventory( TGD_Grid *parent, const char *panelName, int index, SteamItemDetails_t details )
-	: BaseClass( parent, panelName )
+CRD_Collection_Entry_Inventory::CRD_Collection_Entry_Inventory( TGD_Grid *parent, const char *panelName, SteamInventoryResult_t hResult, int index )
+	: BaseClass( parent, panelName ),
+	m_Details{ hResult, index }
 {
+	m_pIconBackground = new vgui::Panel( this, "IconBackground" );
 	m_pIcon = new vgui::ImagePanel( this, "Icon" );
 	m_pEquippedMarker = new vgui::ImagePanel( this, "EquippedMarker" );
 
 	m_Index = index;
-	m_Details = details;
+}
+
+CRD_Collection_Entry_Inventory::CRD_Collection_Entry_Inventory( TGD_Grid *parent, const char *panelName, KeyValues *pCached, int index )
+	: BaseClass( parent, panelName ),
+	m_Details{ pCached }
+{
+	m_pIconBackground = new vgui::Panel( this, "IconBackground" );
+	m_pIcon = new vgui::ImagePanel( this, "Icon" );
+	m_pEquippedMarker = new vgui::ImagePanel( this, "EquippedMarker" );
+
+	m_Index = index;
 }
 
 void CRD_Collection_Entry_Inventory::ApplySchemeSettings( vgui::IScheme *pScheme )
 {
 	BaseClass::ApplySchemeSettings( pScheme );
 
-	m_pIcon->SetImage( ReactiveDropInventory::GetItemDef( m_Details.m_iDefinition )->Icon );
+	const ReactiveDropInventory::ItemDef_t *pDef = ReactiveDropInventory::GetItemDef( m_Details.ItemDefID );
+
+	m_pIconBackground->SetBgColor( pDef->BackgroundColor );
+	m_pIconBackground->SetPaintBackgroundEnabled( true );
+	m_pIconBackground->SetPaintBackgroundType( 0 );
+	m_pIcon->SetImage( m_Details.GetIcon() );
 
 	ConVarRef equipID( VarArgs( "rd_equipped_%s", GetTab()->m_szSlot ) );
 	Assert( equipID.IsValid() );
-	m_pEquippedMarker->SetVisible( strtoull( equipID.GetString(), NULL, 10 ) == m_Details.m_itemId );
+	m_pEquippedMarker->SetVisible( strtoull( equipID.GetString(), NULL, 10 ) == m_Details.ItemID );
 }
 
 void CRD_Collection_Entry_Inventory::ApplyEntry()
@@ -281,7 +328,7 @@ void CRD_Collection_Entry_Inventory::ApplyEntry()
 	ConVarRef equipID( VarArgs( "rd_equipped_%s", GetTab()->m_szSlot ) );
 	Assert( equipID.IsValid() );
 
-	const char *szValue = VarArgs( "%llu", m_Details.m_itemId );
+	const char *szValue = VarArgs( "%llu", m_Details.ItemID );
 	equipID.SetValue( V_strcmp( equipID.GetString(), szValue ) ? szValue : "0" );
 	engine->ClientCmd( "host_writeconfig\n" );
 

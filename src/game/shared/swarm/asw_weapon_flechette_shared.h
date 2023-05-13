@@ -31,14 +31,10 @@ public:
 	virtual bool ShouldFlareAutoaim() { return true; }
 
 	#ifndef CLIENT_DLL
-
-		virtual const char* GetPickupClass() { return "asw_pickup_flechette"; }
 	#else
 		virtual bool HasSecondaryExplosive( void ) const { return false; }
 	#endif
-	
-	// aiming grenades at the ground
-	virtual bool SupportsGroundShooting() { return false; }
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/flachette_empty_clip.mdl"; }
 
 	// Classification
 	virtual Class_T		Classify( void ) { return (Class_T) CLASS_ASW_FLECHETTE; }

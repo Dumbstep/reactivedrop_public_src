@@ -8,11 +8,13 @@
 #include "iasw_client_usable_entity.h"
 #include "basecombatweapon_shared.h"
 #include "glow_outline_effect.h"
+#include "rd_inventory_shared.h"
 
 class C_ASW_Player;
 class C_ASW_Marine;
 class CASW_WeaponInfo;
 class C_BreakableProp;
+class CASW_EquipItem;
 
 extern ConVar rd_ground_shooting;
 
@@ -22,6 +24,7 @@ class C_ASW_Weapon : public C_BaseCombatWeapon, public IASW_Client_Usable_Entity
 public:
 	DECLARE_CLIENTCLASS();
 	DECLARE_PREDICTABLE();
+	DECLARE_ENT_SCRIPTDESC();
 
 					C_ASW_Weapon();
 	virtual			~C_ASW_Weapon();
@@ -49,12 +52,15 @@ public:
 	virtual int		GetMuzzleAttachment( void );
 	virtual void	SetMuzzleAttachment( int nNewAttachment );
 	virtual float	GetMuzzleFlashScale( void );
-	virtual bool	GetMuzzleFlashRed();	// returns true of the muzzle flash should be a mean red
+	virtual Vector	GetMuzzleFlashTint();
 	virtual void	ProcessMuzzleFlashEvent();
 	virtual int		LookupAttachment( const char *pAttachmentName );
 	virtual const char* GetUTracerType();
 	virtual const char* GetTracerEffectName() { return "tracer_default"; }	// particle effect name
 	virtual const char* GetMuzzleEffectName() { return "muzzle_rifle"; }	// particle effect name
+	virtual const char *GetMagazineGibModelName() const { return NULL; }
+	virtual int GetMagazineGibModelSkin() const { return 0; }
+	virtual void DropMagazineGib();
 	virtual bool Simulate();
 	virtual bool ShouldMarineFlame() { return false; } // if true, the marine emits flames from his flame emitter
 	virtual bool ShouldMarineFireExtinguish() { return false; } // is true, the marine emits fire extinguisher stuff from his emitter
@@ -86,6 +92,7 @@ public:
 	virtual void SecondaryAttack();
 	virtual bool SecondaryAttackUsesPrimaryAmmo() { return false; }
 	virtual bool SecondaryAttackEqualsPrimary() { return false; }
+	virtual bool HasBuckshotSecondaryAttack() { return false; }
 	virtual bool ReloadOrSwitchWeapons( void );
 	virtual const char *GetASWShootSound( int iIndex, int &iPitch );
 	virtual void WeaponSound( WeaponSound_t sound_type, float soundtime = 0.0f );
@@ -107,7 +114,10 @@ public:
 	C_ASW_Player* GetCommander();
 	C_ASW_Marine* GetMarine();
 	virtual bool IsPredicted( void ) const;
+	virtual bool ViewModelIsMarineAttachment() const { return false; }
+	virtual bool ViewModelHidesMarineBodyGroup1() const { return false; }
 	bool Holster( CBaseCombatWeapon *pSwitchingTo );
+	virtual const char *GetEquipSound();
 	virtual void Equip(CBaseCombatCharacter *pOwner);
 	virtual void SetWeaponVisible( bool visible );
 	virtual void ApplyWeaponSwitchTime(float fSwitchDelay);
@@ -119,10 +129,12 @@ public:
 	virtual bool ASWCanBeSelected() { return true; }
 	virtual bool ShouldFlareAutoaim() { return false; }
 	virtual int GetEquipmentListIndex() { return m_iEquipmentListIndex; }
-	const CASW_WeaponInfo* GetWeaponInfo() const;
+	const CASW_EquipItem *GetEquipItem() const;
+	const CASW_WeaponInfo *GetWeaponInfo() const;
 	virtual bool OffhandActivate() { return false; };
 	virtual bool WantsOffhandPostFrame() { return m_bShotDelayed; }
 	virtual bool SendWeaponAnim( int iActivity );
+	virtual bool ShouldPlayFiringAnimations() { return true; }
 	virtual void CalcBoneMerge( CStudioHdr *hdr, int boneMask, CBoneBitList &boneComputed );
 	virtual int ASW_SelectWeaponActivity(int idealActivity);
 	virtual float GetWeaponPvpDamageBase();
@@ -135,9 +147,10 @@ public:
 	virtual bool IsOffensiveWeapon() { return true; }		// is this weapon an offensive gun type weapon (as opposed to a utility item)
 	virtual bool DisplayClipsDoubled() { return false; }    // dual weilded guns should show ammo doubled up to complete the illusion of holding two guns
 	virtual bool CanDoForcedAction( int iForcedAction ) { return true; }		// check if we're allowed to perform a forced action (certain abilities limit this)
+	virtual float GetPassiveMeleeDamageScale() { return 1.0f; }
+	// note: these only work for player, not spectator
 	void PlaySoundDirectlyToOwner( const char *szSoundName );
 	void PlaySoundToOthers( const char *szSoundName );
-	virtual float GetPassiveMeleeDamageScale() { return 1.0f; }
 
 	virtual void OnStoppedFiring();
 	virtual void OnStartedRoll();
@@ -152,7 +165,7 @@ public:
 	virtual float GetThrowGravity() { return 1.0f; }
 	bool m_bShotDelayed;
 	float m_flDelayedFire;
-	bool bOldHidden;
+	bool m_bOldHidden;
 
 	// powerups
 	void MakePoweredUp( bool bPoweredUp ) { m_bPoweredUp = bPoweredUp; } 
@@ -169,6 +182,9 @@ public:
 	// attachments
 	int m_nMuzzleAttachment;
 	int m_nLastMuzzleAttachment;
+	// body groups
+	int m_nMagazineBodyGroup;
+	int m_nLaserBodyGroup;
 
 	// ground shooting (aiming at the ground)
 	virtual bool SupportsGroundShooting() { return rd_ground_shooting.GetBool(); } // was false
@@ -197,6 +213,7 @@ public:
 	// laser pointer
 	virtual bool ShouldShowLaserPointer();
 	virtual bool ShouldAlignWeaponToLaserPointer();
+	virtual const char *GetLaserPointerEffectName() const { return "weapon_laser_sight"; }
 	void SimulateLaserPointer();
 	void CreateLaserPointerEffect( bool bLocalPlayer, int iAttachment );
 	void RemoveLaserPointerEffect();
@@ -218,18 +235,36 @@ public:
 	// mouse pointer points at 
 	virtual bool GroundSecondary();
 
+	virtual const char *GetPrintName() const override;
+	virtual int GetMaxClip1() const override;
+	virtual int GetMaxClip2() const override;
+	virtual int GetDefaultClip1() const override;
+	virtual int GetDefaultClip2() const override;
+
 	virtual int DisplayClip1() { return Clip1(); }
 	virtual int DisplayMaxClip1() { return GetMaxClip1(); }
 	virtual int DisplayClip2() { return Clip2(); }
 	virtual int DisplayMaxClip2() { return GetMaxClip2(); }
+
+	CNetworkHandle( CASW_Player, m_hOriginalOwnerPlayer );
+	CNetworkVar( int, m_iInventoryEquipSlot );
+	bool IsInventoryEquipSlotValid() const;
 
 private:	
 	C_ASW_Weapon( const C_ASW_Weapon & ); // not defined, not accessible
 
 protected:
 	int m_iEquipmentListIndex;
+	CASW_EquipItem *m_pEquipItem;
 
 	CGlowObject m_GlowObject;
+};
+
+class C_RD_Weapon_Accessory : public C_BaseAnimating
+{
+	DECLARE_CLASS( C_RD_Weapon_Accessory, C_BaseAnimating );
+public:
+	int m_iAccessoryIndex;
 };
 
 #endif /* _INCLUDED_C_ASW_WEAPON_H */

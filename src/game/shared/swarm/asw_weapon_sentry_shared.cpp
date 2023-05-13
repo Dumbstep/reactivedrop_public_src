@@ -27,6 +27,13 @@ extern ConVar rd_server_marine_backpacks;
 IMPLEMENT_NETWORKCLASS_ALIASED( ASW_Weapon_Sentry, DT_ASW_Weapon_Sentry )
 
 BEGIN_NETWORK_TABLE( CASW_Weapon_Sentry, DT_ASW_Weapon_Sentry )
+#ifdef CLIENT_DLL
+	RecvPropInt( RECVINFO( m_nSentryAmmo ) ),
+	RecvPropInt( RECVINFO( m_nMaxSentryAmmo ) ),
+#else
+	SendPropInt( SENDINFO( m_nSentryAmmo ) ),
+	SendPropInt( SENDINFO( m_nMaxSentryAmmo ) ),
+#endif
 END_NETWORK_TABLE()
 
 BEGIN_PREDICTION_DATA( CASW_Weapon_Sentry )
@@ -36,12 +43,11 @@ LINK_ENTITY_TO_CLASS( asw_weapon_sentry, CASW_Weapon_Sentry );
 PRECACHE_WEAPON_REGISTER(asw_weapon_sentry);
 
 #ifndef CLIENT_DLL
-
 //---------------------------------------------------------
 // Save/Restore
 //---------------------------------------------------------
 BEGIN_DATADESC( CASW_Weapon_Sentry )
-
+	DEFINE_KEYFIELD( m_nSentryAmmo, FIELD_INTEGER, "SentryAmmo" ),
 END_DATADESC()
 
 BEGIN_ENT_SCRIPTDESC( CASW_Weapon_Sentry, CASW_Weapon, "sentry gun case" )
@@ -60,7 +66,7 @@ CASW_Weapon_Sentry::CASW_Weapon_Sentry()
 
 #ifndef CLIENT_DLL
 	m_iSentryMunitionType = CASW_Sentry_Base::kAUTOGUN;
-	m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
+	m_nMaxSentryAmmo = m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
 #else
 	m_flNextDeployCheckThink = 0;
 	m_bDisplayActive = false;
@@ -325,38 +331,43 @@ void CASW_Weapon_Sentry::DeploySentry()
 		return;
 
 	// MUST call sound before removing a round from the clip of a CMachineGun
-	WeaponSound(SINGLE);
+	WeaponSound( SINGLE );
 
 	// sets the animation on the marine holding this weapon
-	bool bSentryActive = (pMarine->GetActiveASWWeapon() == this);
+	bool bSentryActive = ( pMarine->GetActiveASWWeapon() == this );
 
 #ifndef CLIENT_DLL
-	CASW_Sentry_Base* pBase = (CASW_Sentry_Base *)CreateEntityByName( "asw_sentry_base" );	
-	
-    //Msg("Abs angles %f %f %f", m_angValidSentryFacing.x, m_angValidSentryFacing.y, m_angValidSentryFacing.z);
-    pBase->SetAbsAngles( m_angValidSentryFacing );
-    pBase->m_hDeployer = pMarine;
-    pBase->SetGunType( m_iSentryMunitionType );
+	CASW_Sentry_Base *pBase = ( CASW_Sentry_Base * )CreateEntityByName( "asw_sentry_base" );
+
+	//Msg("Abs angles %f %f %f", m_angValidSentryFacing.x, m_angValidSentryFacing.y, m_angValidSentryFacing.z);
+	pBase->SetAbsAngles( m_angValidSentryFacing );
+	pBase->m_hDeployer = pMarine;
+	pBase->SetGunType( m_iSentryMunitionType );
 	pBase->SetAmmo( m_nSentryAmmo );
+	if ( IsInventoryEquipSlotValid() )
+	{
+		pBase->m_hOriginalOwnerPlayer = m_hOriginalOwnerPlayer;
+		pBase->m_iInventoryEquipSlot = m_iInventoryEquipSlot;
+	}
 
-    UTIL_SetOrigin( pBase, m_vecValidSentrySpot );
-    pBase->SetAbsVelocity( vec3_origin );
-    pBase->Spawn();
-    pBase->PlayDeploySound();
+	UTIL_SetOrigin( pBase, m_vecValidSentrySpot );
+	pBase->SetAbsVelocity( vec3_origin );
+	pBase->Spawn();
+	pBase->PlayDeploySound();
 
-    // reactivedrop: create a bait near the sentry for aliens to attack sentry
+	// reactivedrop: create a bait near the sentry for aliens to attack sentry
 	if ( rd_sentry_is_attacked_by_aliens.GetBool() )
 	{
 		float sentry_angle = m_angValidSentryFacing.y; //degrees 
 		CASW_Bait *pEnt1 = NULL;
 
-		Vector bait_ang = Vector(cos(DEG2RAD(sentry_angle)), sin(DEG2RAD(sentry_angle)), 0);
+		Vector bait_ang = Vector( cos( DEG2RAD( sentry_angle ) ), sin( DEG2RAD( sentry_angle ) ), 0 );
 		const float BAIT_OFFSETX = 40.0f;
 		const float BAIT_OFFSETY = 40.0f;
 		Vector bait_dir = bait_ang.Normalized() * BAIT_OFFSETX;
 		{
-			Vector bait_vec = m_vecValidSentrySpot + bait_dir + Vector(0, 0, 10);
-			pEnt1 = CASW_Bait::Bait_Create( bait_vec, QAngle(90,0,0), vec3_origin, AngularImpulse(0, 0, 0), pBase );
+			Vector bait_vec = m_vecValidSentrySpot + bait_dir + Vector( 0, 0, 10 );
+			pEnt1 = CASW_Bait::Bait_Create( bait_vec, QAngle( 90, 0, 0 ), vec3_origin, AngularImpulse( 0, 0, 0 ), pBase );
 			if ( pEnt1 )
 			{
 				pEnt1->SetDuration( 10000 );
@@ -366,8 +377,8 @@ void CASW_Weapon_Sentry::DeploySentry()
 
 		CASW_Bait *pEnt2 = NULL;
 		{
-			Vector bait_vec = m_vecValidSentrySpot - bait_dir + Vector(0, 0, 10);
-			pEnt2 = CASW_Bait::Bait_Create( bait_vec, QAngle(90,0,0), vec3_origin, AngularImpulse(0, 0, 0), pBase );
+			Vector bait_vec = m_vecValidSentrySpot - bait_dir + Vector( 0, 0, 10 );
+			pEnt2 = CASW_Bait::Bait_Create( bait_vec, QAngle( 90, 0, 0 ), vec3_origin, AngularImpulse( 0, 0, 0 ), pBase );
 			if ( pEnt2 )
 			{
 				pEnt2->SetDuration( 10000 );
@@ -402,7 +413,7 @@ void CASW_Weapon_Sentry::DeploySentry()
 		pBase->SetBait( pEnt1, pEnt2, pEnt3, pEnt4 );
 	}
 
-	IGameEvent * event = gameeventmanager->CreateEvent( "sentry_placed" );
+	IGameEvent *event = gameeventmanager->CreateEvent( "sentry_placed" );
 	if ( event )
 	{
 		CBasePlayer *pPlayer = pMarine->GetCommander();
@@ -419,19 +430,19 @@ void CASW_Weapon_Sentry::DeploySentry()
 	// auto start setting it up
 	pBase->ActivateUseIcon( pMarine, ASW_USE_RELEASE_QUICK );
 
-	pMarine->Weapon_Detach(this);
+	pMarine->Weapon_Detach( this );
 	pMarine->OnWeaponFired( this, 1 );
 	Kill();
 
-	if (rd_server_marine_backpacks.GetBool())
+	if ( rd_server_marine_backpacks.GetBool() )
 	{
 		pMarine->RemoveBackPackModel();
 	}
 #else
 	pMarine->DestroySentryBuildDisplay();
 #endif				
-	if (bSentryActive)
-		pMarine->SwitchToNextBestWeapon(NULL);
+	if ( bSentryActive )
+		pMarine->SwitchToNextBestWeapon( NULL );
 }
 
 void CASW_Weapon_Sentry::Precache()
@@ -456,7 +467,7 @@ CASW_Weapon_Sentry_Flamer::CASW_Weapon_Sentry_Flamer()
 {
 #ifndef CLIENT_DLL
 	m_iSentryMunitionType = CASW_Sentry_Base::kFLAME;
-	m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
+	m_nMaxSentryAmmo = m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
 #endif
 }
 
@@ -477,7 +488,7 @@ CASW_Weapon_Sentry_Cannon::CASW_Weapon_Sentry_Cannon()
 {
 #ifndef CLIENT_DLL
 	m_iSentryMunitionType = CASW_Sentry_Base::kCANNON;
-	m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
+	m_nMaxSentryAmmo = m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
 #endif
 }
 
@@ -507,6 +518,6 @@ CASW_Weapon_Sentry_Freeze::CASW_Weapon_Sentry_Freeze()
 {
 #ifndef CLIENT_DLL
 	m_iSentryMunitionType = CASW_Sentry_Base::kICE;
-	m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
+	m_nMaxSentryAmmo = m_nSentryAmmo = CASW_Sentry_Base::GetBaseAmmoForGunType( (CASW_Sentry_Base::GunType_t) m_iSentryMunitionType );
 #endif
 }

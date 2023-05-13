@@ -22,7 +22,9 @@
 #include "tier0/memdbgon.h"
 
 ConVar asw_simple_hacking( "asw_simple_hacking", "0", FCVAR_CHEAT, "Use simple progress bar computer hacking" );
-ConVar asw_ai_computer_hacking_scale( "asw_ai_computer_hacking_scale", "0.1", FCVAR_CHEAT, "Computer hacking speed scale for AI marines" );
+ConVar asw_ai_computer_hacking_scale( "asw_ai_computer_hacking_scale", "0.2", FCVAR_CHEAT, "Computer hacking speed scale for AI marines" );
+ConVar asw_ai_computer_data_download_scale( "asw_ai_computer_data_download_scale", "1.0", FCVAR_CHEAT, "Computer data download speed scale for AI marines" );
+ConVar asw_auto_override_computer_delay( "asw_auto_override_computer_delay", "10", FCVAR_CHEAT, "Number of seconds after opening a locked computer to automatically use the override command" );
 extern ConVar asw_tech_order_hack_range;
 
 #define ASW_MEDAL_WORTHY_COMPUTER_HACK 20
@@ -88,8 +90,10 @@ BEGIN_DATADESC( CASW_Computer_Area )
 	DEFINE_FIELD( m_bViewingMail, FIELD_BOOLEAN ),
 	DEFINE_FIELD(m_fAutoOverrideTime, FIELD_FLOAT),
 	DEFINE_FIELD(m_fLastButtonUseTime, FIELD_TIME),
+	DEFINE_FIELD( m_iReactorState, FIELD_CHARACTER ),
 	DEFINE_SOUNDPATCH( m_pDownloadingSound ),
 	DEFINE_SOUNDPATCH( m_pComputerInUseSound ),
+	DEFINE_INPUTFUNC( FIELD_BOOLEAN, "OverrideReactorState", InputOverrideReactorState ),
 	DEFINE_OUTPUT( m_OnFastHackFailed, "OnFastHackFailed" ),
 	DEFINE_OUTPUT( m_OnComputerHackStarted, "OnComputerHackStarted" ),
 	DEFINE_OUTPUT( m_OnComputerHackHalfway, "OnComputerHackHalfway" ),	
@@ -145,7 +149,9 @@ IMPLEMENT_SERVERCLASS_ST(CASW_Computer_Area, DT_ASW_Computer_Area)
 	SendPropBool		(SENDINFO(m_bNewsFileLocked)),
 	SendPropBool		(SENDINFO(m_bStocksFileLocked)),
 	SendPropBool		(SENDINFO(m_bWeatherFileLocked)),
-	SendPropBool		(SENDINFO(m_bPlantFileLocked)),	
+	SendPropBool		(SENDINFO(m_bPlantFileLocked)),
+
+	SendPropInt( SENDINFO( m_iReactorState ) ),
 END_SEND_TABLE()
 
 CASW_Computer_Area::CASW_Computer_Area()
@@ -167,6 +173,8 @@ CASW_Computer_Area::CASW_Computer_Area()
 	m_pComputerInUseSound = NULL;
 	m_fLastPositiveSoundTime = 0;
 	m_iAliensKilledBeforeHack = 0;
+
+	m_iReactorState = -1;
 }
 
 //-----------------------------------------------------------------------------
@@ -250,13 +258,18 @@ void CASW_Computer_Area::FindTurretsAndCams()
 void CASW_Computer_Area::Override( CASW_Marine *pMarine )
 {
 	Assert( pMarine );
-	if (m_iHackLevel > 5)						
-		pMarine->GetMarineSpeech()->Chatter(CHATTER_HACK_LONG_STARTED);
+	if ( m_iHackLevel > 5 )
+		pMarine->GetMarineSpeech()->Chatter( CHATTER_HACK_LONG_STARTED );
 	else
-		pMarine->GetMarineSpeech()->Chatter(CHATTER_HACK_STARTED);
+		pMarine->GetMarineSpeech()->Chatter( CHATTER_HACK_STARTED );
 	//  launch the hack puzzle by choosing the special hack option
-	GetCurrentHack()->SelectHackOption(ASW_HACK_OPTION_OVERRIDE);
-	m_OnComputerHackStarted.FireOutput(pMarine, this);
+	GetCurrentHack()->SelectHackOption( ASW_HACK_OPTION_OVERRIDE );
+	m_OnComputerHackStarted.FireOutput( pMarine, this );
+}
+
+void CASW_Computer_Area::InputOverrideReactorState( inputdata_t &inputdata )
+{
+	m_iReactorState = inputdata.value.Bool() ? 1 : 0;
 }
 
 void CASW_Computer_Area::ActivateUseIcon( CASW_Inhabitable_NPC *pNPC, int nHoldType )
@@ -275,6 +288,12 @@ void CASW_Computer_Area::ActivateUseIcon( CASW_Inhabitable_NPC *pNPC, int nHoldT
 				&& GetCurrentHack()->m_iShowOption.Get() != ASW_HACK_OPTION_OVERRIDE)
 		{
 			Override( pMarine );
+			return;
+		}
+
+		if ( pMarine->GetMarineProfile()->CanHack() && GetCurrentHack() && !m_bLoggedIn && !m_bIsLocked )
+		{
+			GetCurrentHack()->SelectHackOption( ASW_HACK_OPTION_OVERRIDE );
 			return;
 		}
 		
@@ -304,7 +323,7 @@ void CASW_Computer_Area::ActivateUseIcon( CASW_Inhabitable_NPC *pNPC, int nHoldT
 				}
 
 				m_OnComputerActivated.FireOutput(pMarine, this);
-				m_fAutoOverrideTime = gpGlobals->curtime + 4.0f;
+				m_fAutoOverrideTime = gpGlobals->curtime + asw_auto_override_computer_delay.GetFloat();
 
 				// if doing complex hacking, launch the interface for it
 				if ( ShouldShowComputer() && pMarine->IsInhabited() )
@@ -384,13 +403,12 @@ void CASW_Computer_Area::NPCUsing(CASW_Inhabitable_NPC *pNPC, float deltatime)
 
 	if ( asw_simple_hacking.GetBool() || !pMarine->IsInhabited() )
 	{
-		if ( m_bIsInUse && GetDownloadProgress() < 1.0f )
+		if ( m_bIsInUse && ( m_bIsLocked || ( m_DownloadObjectiveName.Get()[0] != '\0' && GetDownloadProgress() < 1.0f ) ) )
 		{
 			float flOldHackProgress = m_fDownloadProgress;
-			float fTime = (deltatime * (1.0f/((float)m_iHackLevel)));
+			float fTime = deltatime / ( MAX( m_bIsLocked ? m_iHackLevel : 1, 1 ) / asw_ai_computer_hacking_scale.GetFloat() + MAX( m_DownloadObjectiveName.Get()[0] != '\0' ? m_fDownloadTime : 0, 0 ) / asw_ai_computer_data_download_scale.GetFloat() );
 			// boost fTime by the marine's hack skill
 			fTime *= MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_HACKING, ASW_MARINE_SUBSKILL_HACKING_SPEED_SCALE);
-			fTime *= asw_ai_computer_hacking_scale.GetFloat();
 			m_fDownloadProgress += fTime;
 
 			if ( GetDownloadProgress() > 0.0f && flOldHackProgress == 0.0f )
@@ -700,6 +718,14 @@ void CASW_Computer_Area::UnlockFromHack(CASW_Marine *pMarine)
 					}
 					bFast = true;
 					pMarine->GetMarineSpeech()->QueueChatter(CHATTER_HACK_FINISHED, gpGlobals->curtime + 2.0f, gpGlobals->curtime + 3.0f);
+
+					IGameEvent *pEvent = gameeventmanager->CreateEvent( "fast_hack_success" );
+					if ( pEvent )
+					{
+						pEvent->SetInt( "entindex", entindex() );
+						pEvent->SetInt( "marine", pMarine->entindex() );
+						gameeventmanager->FireEvent( pEvent );
+					}
 				}
 			}
 		}

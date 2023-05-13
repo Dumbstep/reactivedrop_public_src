@@ -10,6 +10,8 @@
 #include "asw_director.h"
 #include "asw_gamestats.h"
 #include "asw_gamerules.h"
+#include "vgui/ILocalize.h"
+#include "particle_parse.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -22,6 +24,8 @@ LINK_ENTITY_TO_CLASS( asw_marine_resource, CASW_Marine_Resource );
 BEGIN_DATADESC( CASW_Marine_Resource )
 	DEFINE_FIELD( m_MarineProfileIndex, FIELD_INTEGER ),
 	DEFINE_FIELD( m_MarineEntity, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_OriginalCommander, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_bHadOriginalCommander, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_Commander, FIELD_EHANDLE),	
 	DEFINE_AUTO_ARRAY( m_iWeaponsInSlots, FIELD_INTEGER ),
 	DEFINE_AUTO_ARRAY( m_iInitialWeaponsInSlots, FIELD_INTEGER ),
@@ -31,7 +35,6 @@ BEGIN_DATADESC( CASW_Marine_Resource )
 	DEFINE_FIELD( m_bInhabited, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_iServerFiring, FIELD_INTEGER ),	
 	DEFINE_FIELD( m_iCommanderIndex, FIELD_INTEGER ),
-	DEFINE_FIELD( m_MarineProfileIndex, FIELD_INTEGER ),	
 	DEFINE_FIELD( m_iShotsFired, FIELD_INTEGER ),
 	DEFINE_FIELD( m_iPlayerShotsFired, FIELD_INTEGER ),
 	DEFINE_FIELD( m_iPlayerShotsMissed, FIELD_INTEGER ),
@@ -76,7 +79,7 @@ BEGIN_DATADESC( CASW_Marine_Resource )
 	DEFINE_FIELD( m_flFinishedMissionTime, FIELD_FLOAT ),
 END_DATADESC()
 
-void *SendProxy_SendMarineResourceTimelinesDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID )
+static void *SendProxy_SendMarineResourceTimelinesDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID )
 {
 	if ( ASWGameRules() && ASWGameRules()->GetGameState() == ASW_GS_INGAME )
 	{
@@ -86,6 +89,7 @@ void *SendProxy_SendMarineResourceTimelinesDataTable( const SendProp *pProp, con
 
 	return ( void * )pVarData;
 }
+REGISTER_SEND_PROXY_NON_MODIFIED_POINTER( SendProxy_SendMarineResourceTimelinesDataTable );
 
 // Only send active weapon index to local player
 BEGIN_SEND_TABLE_NOBASE( CASW_Marine_Resource, DT_MR_Timelines )
@@ -98,32 +102,35 @@ BEGIN_SEND_TABLE_NOBASE( CASW_Marine_Resource, DT_MR_Timelines )
 	SendPropDataTable( SENDINFO_DT( m_TimelineScore ), &REFERENCE_SEND_TABLE(DT_Timeline) ),
 END_SEND_TABLE();
 
-IMPLEMENT_SERVERCLASS_ST(CASW_Marine_Resource, DT_ASW_Marine_Resource)
+IMPLEMENT_SERVERCLASS_ST( CASW_Marine_Resource, DT_ASW_Marine_Resource )
 	// Timeline data only gets sent at mission end
-	SendPropDataTable( "mr_timelines", 0, &REFERENCE_SEND_TABLE(DT_MR_Timelines), SendProxy_SendMarineResourceTimelinesDataTable ),
-	SendPropInt		(SENDINFO(m_MarineProfileIndex), 10 ),
-	SendPropEHandle (SENDINFO(m_MarineEntity) ),
-	SendPropEHandle (SENDINFO(m_Commander) ),
-	SendPropInt		(SENDINFO(m_iCommanderIndex), 10),
-	SendPropArray( SendPropInt( SENDINFO_ARRAY( m_iWeaponsInSlots ), 30 ), m_iWeaponsInSlots ),
-	SendPropBool	(SENDINFO(m_bInfested) ),
-	SendPropBool	(SENDINFO(m_bInhabited) ),
-	SendPropInt		(SENDINFO(m_iServerFiring), 8 ),
-	//SendPropFloat		(SENDINFO(m_fDamageTaken) ),
-	SendPropInt		(SENDINFO(m_iAliensKilled) ),
-	SendPropBool	(SENDINFO(m_bTakenWoundDamage) ),
-	SendPropBool	(SENDINFO(m_bHealthHalved) ),	
-	SendPropString	(SENDINFO(m_MedalsAwarded)),
-	SendPropEHandle	(SENDINFO(m_hWeldingDoor)),
-	SendPropBool	(SENDINFO(m_bUsingEngineeringAura)),
-	SendPropInt		(SENDINFO(m_iBotFrags)),
-	SendPropInt		(SENDINFO(m_iScore)),
-	SendPropFloat	(SENDINFO(m_flFinishedMissionTime)),
-END_SEND_TABLE()
+	SendPropDataTable( "mr_timelines", 0, &REFERENCE_SEND_TABLE( DT_MR_Timelines ), SendProxy_SendMarineResourceTimelinesDataTable ),
+	SendPropIntWithMinusOneFlag( SENDINFO( m_MarineProfileIndex ), NumBitsForCount( ASW_NUM_MARINE_PROFILES + 1 ) ),
+	SendPropEHandle( SENDINFO( m_MarineEntity ) ),
+	SendPropEHandle( SENDINFO( m_OriginalCommander ) ),
+	SendPropEHandle( SENDINFO( m_Commander ) ),
+	SendPropIntWithMinusOneFlag( SENDINFO( m_iCommanderIndex ), NumBitsForCount( ABSOLUTE_PLAYER_LIMIT + 1 ) ),
+	SendPropArray( SendPropIntWithMinusOneFlag( SENDINFO_ARRAY( m_iWeaponsInSlots ), NumBitsForCount( MAX( ASW_NUM_EQUIP_REGULAR, ASW_NUM_EQUIP_EXTRA ) + 1 ) ), m_iWeaponsInSlots ),
+	SendPropArray( SendPropIntWithMinusOneFlag( SENDINFO_ARRAY( m_iWeaponsInSlotsDynamic ), NumBitsForCount( RD_NUM_STEAM_INVENTORY_EQUIP_SLOTS_DYNAMIC + 1 ) ), m_iWeaponsInSlotsDynamic ),
+	SendPropArray( SendPropIntWithMinusOneFlag( SENDINFO_ARRAY( m_iInitialWeaponsInSlots ), NumBitsForCount( MAX( ASW_NUM_EQUIP_REGULAR, ASW_NUM_EQUIP_EXTRA ) + 1 ) ), m_iInitialWeaponsInSlots ),
+	SendPropBool( SENDINFO( m_bInfested ) ),
+	SendPropBool( SENDINFO( m_bInhabited ) ),
+	SendPropInt( SENDINFO( m_iServerFiring ), 2, SPROP_UNSIGNED ),
+	SendPropInt( SENDINFO( m_iAliensKilled ) ),
+	SendPropBool( SENDINFO( m_bTakenWoundDamage ) ),
+	SendPropBool( SENDINFO( m_bHealthHalved ) ),
+	SendPropString( SENDINFO( m_MedalsAwarded ) ),
+	SendPropEHandle( SENDINFO( m_hWeldingDoor ) ),
+	SendPropBool( SENDINFO( m_bUsingEngineeringAura ) ),
+	SendPropInt( SENDINFO( m_iBotFrags ) ),
+	SendPropIntWithMinusOneFlag( SENDINFO( m_iScore ) ),
+	SendPropFloat( SENDINFO( m_flFinishedMissionTime ) ),
+END_SEND_TABLE();
 
 extern ConVar asw_leadership_radius;
 extern ConVar asw_debug_marine_damage;
 extern ConVar asw_debug_medals;
+ConVar asw_leadership_accuracy_scale( "asw_leadership_accuracy_scale", "2.0", FCVAR_CHEAT, "Damage scale from leadership bonus" );
 ConVar rd_damage_buff_scale( "rd_damage_buff_scale", "2.0", FCVAR_CHEAT, "Damage amplifier's damage factor. 2.0 by default" );
 
 CASW_Marine_Resource::CASW_Marine_Resource()
@@ -131,6 +138,8 @@ CASW_Marine_Resource::CASW_Marine_Resource()
 	m_bAwardedMedals = false;
 	m_MarineProfileIndex = -1;
 	m_bInfested = false;
+	m_bHadOriginalCommander = false;
+	m_OriginalCommander = NULL;
 	SetCommander(NULL);
 	m_bInhabited = false;
 	m_iServerFiring = 0;
@@ -151,6 +160,7 @@ CASW_Marine_Resource::CASW_Marine_Resource()
 	m_iSentryFlamerDeployed = 0;
 	m_iSentryFreezeDeployed = 0;
 	m_iSentryCannonDeployed = 0;
+	m_iSentryRailgunDeployed = 0;
 	m_iMedkitsUsed = 0;
 	m_iFlaresUsed = 0;
 	m_iAdrenalineUsed = 0;
@@ -172,7 +182,26 @@ CASW_Marine_Resource::CASW_Marine_Resource()
 	m_iHealAmpGunHeals = 0;
 	m_iHealAmpGunAmps = 0;
 	m_iMedRifleHeals = 0;
+	m_iCryoCannonFreezeAlien = 0;
+	m_iPlasmaThrowerExtinguishMarine = 0;
+	m_iHackToolWireHacksTech = 0;
+	m_iHackToolWireHacksOther = 0;
+	m_iHackToolComputerHacksTech = 0;
+	m_iHackToolComputerHacksOther = 0;
+	m_iEnergyShieldProjectilesDestroyed = 0;
+	m_iReanimatorRevivesOfficer = 0;
+	m_iReanimatorRevivesSpecialWeapons = 0;
+	m_iReanimatorRevivesMedic = 0;
+	m_iReanimatorRevivesTech = 0;
+	m_iSpeedBoostsUsed = 0;
+	m_iShieldBubblesThrown = 0;
+	m_iShieldBubblePushedEnemy = 0;
+	m_iShieldBubbleDamageAbsorbed = 0;
 	m_iBiomassIgnited = 0;
+	m_iLeadershipProcsAccuracy = 0;
+	m_iLeadershipProcsResist = 0;
+	m_iLeadershipDamageAccuracy = 0;
+	m_iLeadershipDamageResist = 0;
 	m_iScore = -1;
 	m_flFinishedMissionTime = -1;
 
@@ -211,8 +240,12 @@ CASW_Marine_Resource::CASW_Marine_Resource()
 	m_bUsingEngineeringAura = false;
 	m_pIntensity = new CASW_Intensity();
 
-	memset( m_iInitialWeaponsInSlots, -1, sizeof( m_iInitialWeaponsInSlots ) );
-	memset( const_cast<int*>( m_iWeaponsInSlots.Base() ), -1, sizeof( m_iInitialWeaponsInSlots ) );
+	for ( int i = 0; i < ASW_NUM_INVENTORY_SLOTS; i++ )
+	{
+		m_iWeaponsInSlots.GetForModify( i ) = -1;
+		m_iWeaponsInSlotsDynamic.GetForModify( i ) = -1;
+		m_iInitialWeaponsInSlots.GetForModify( i ) = -1;
+	}
 }
 
 
@@ -231,18 +264,32 @@ int CASW_Marine_Resource::ShouldTransmit( const CCheckTransmitInfo *pInfo )
 }
 
 
-void CASW_Marine_Resource::SetCommander(CASW_Player* pCommander)
-{	
+void CASW_Marine_Resource::SetCommander( CASW_Player *pCommander )
+{
+	if ( !m_OriginalCommander && !m_bHadOriginalCommander )
+	{
+		m_OriginalCommander = pCommander;
+		m_bHadOriginalCommander = pCommander != NULL;
+	}
+
 	m_Commander = pCommander;
 	m_iCommanderIndex = pCommander ? pCommander->entindex() : -1;
 }
 
-CASW_Player* CASW_Marine_Resource::GetCommander()
+CASW_Player *CASW_Marine_Resource::GetCommander()
 {
 	return m_Commander;
 }
 
-void CASW_Marine_Resource::GetDisplayName( char *pwchDisplayName, int nMaxBytes )
+void CASW_Marine_Resource::GetDisplayName( char *pchDisplayName, int nMaxBytes )
+{
+	wchar_t wszDisplayName[256];
+	GetDisplayName( wszDisplayName, sizeof( wszDisplayName ) );
+
+	V_UnicodeToUTF8( wszDisplayName, pchDisplayName, nMaxBytes );
+}
+
+void CASW_Marine_Resource::GetDisplayName( wchar_t *pwchDisplayName, int nMaxBytes )
 {
 	bool bPlayerName = false;
 	const char *pchName = NULL;
@@ -254,11 +301,8 @@ void CASW_Marine_Resource::GetDisplayName( char *pwchDisplayName, int nMaxBytes 
 	}
 	else
 	{
-		bool bIsInhabited = IsInhabited();
-
-		CBasePlayer *pPlayer = UTIL_PlayerByIndex( m_iCommanderIndex );
-
-		if ( bIsInhabited && GetCommander() && pPlayer && pPlayer->IsConnected() )
+		CASW_Player *pPlayer = GetCommander();
+		if ( IsInhabited() && pPlayer && pPlayer->IsConnected() && pPlayer->GetNPC() == m_MarineEntity )
 		{
 			// Use the player name
 			pchName = pPlayer->GetPlayerName();
@@ -271,8 +315,24 @@ void CASW_Marine_Resource::GetDisplayName( char *pwchDisplayName, int nMaxBytes 
 		}
 	}
 
-	// Copy the name
-	V_strncpy( pwchDisplayName, pchName, nMaxBytes );
+	const wchar_t *pwchLocalizedMarineName = NULL;
+
+	if ( !bPlayerName )
+	{
+		// Find the localized character name
+		pwchLocalizedMarineName = g_pVGuiLocalize->Find( pchName );
+	}
+
+	if ( pwchLocalizedMarineName )
+	{
+		// Copy the localized name
+		V_wcsncpy( pwchDisplayName, pwchLocalizedMarineName, nMaxBytes );
+	}
+	else
+	{
+		// Copy the name
+		g_pVGuiLocalize->ConvertANSIToUnicode( pchName, pwchDisplayName, nMaxBytes );
+	}
 }
 
 void CASW_Marine_Resource::SetMarineEntity(CASW_Marine* marine)
@@ -309,16 +369,16 @@ CASW_Marine* CASW_Marine_Resource::GetMarineEntity()
 // updates our primary/secondary/extra indices into the equipment list with what we're currently carrying
 void CASW_Marine_Resource::UpdateWeaponIndices()
 {
-	if ( !m_MarineEntity || !ASWEquipmentList() )
+	if ( !m_MarineEntity )
 		return;
 
-	for ( int iWpnSlot = 0; iWpnSlot < ASW_MAX_EQUIP_SLOTS; ++ iWpnSlot )
+	for ( int iWpnSlot = 0; iWpnSlot < ASW_MAX_EQUIP_SLOTS; ++iWpnSlot )
 	{
 		int idx = -1;
-		if ( CBaseCombatWeapon* pWpn = m_MarineEntity->GetWeapon( iWpnSlot ) )
+		if ( CBaseCombatWeapon *pWpn = m_MarineEntity->GetWeapon( iWpnSlot ) )
 		{
 			const char *szClassName = pWpn->GetClassname();
-			idx = ASWEquipmentList()->GetIndexForSlot( iWpnSlot, szClassName );
+			idx = g_ASWEquipmentList.GetIndexForSlot( iWpnSlot, szClassName );
 
 			// updating current weapon into m_iWeaponsInSlots
 			if ( idx != m_iWeaponsInSlots.Get( iWpnSlot ) )
@@ -366,43 +426,44 @@ bool CASW_Marine_Resource::IsFiring()
 }
 
 // a game event has happened that is potentially affected by leadership or other damage scaling
-float CASW_Marine_Resource::OnFired_GetDamageScale()
+void CASW_Marine_Resource::OnFired_ScaleDamage( FireBulletsInfo_t & info )
 {
-	float flDamageScale = 1.0f;
-
 	// damage amp causes double damage always
 	CASW_Marine *pMarine = GetMarineEntity();
 	if ( pMarine && pMarine->GetDamageBuffEndTime() > gpGlobals->curtime )
 	{
-		flDamageScale *= rd_damage_buff_scale.GetFloat();// 2.0f;
+		info.m_flDamage *= rd_damage_buff_scale.GetFloat();
 	}
 
-	//m_iLeadershipCount++;
-
-	// find the shortest leadership interval of our nearby leaders
-	if ( pMarine )	// BenLubar(deathmatch-improvements): fixes a crash when a marine dies on the same tick they fired a bullet
+	if ( pMarine )
 	{
-		float fChance = MarineSkills()->GetHighestSkillValueNearby( pMarine->GetAbsOrigin(),
+		CASW_Marine *pLeader = MarineSkills()->CheckSkillChanceNearby( pMarine, pMarine->GetAbsOrigin(),
 			asw_leadership_radius.GetFloat(),
 			ASW_MARINE_SKILL_LEADERSHIP, ASW_MARINE_SUBSKILL_LEADERSHIP_ACCURACY_CHANCE );
-		float f = random->RandomFloat();
-		static int iLeadershipAccCount = 0;
-		if ( f < fChance )
+		if ( pLeader )
 		{
-			iLeadershipAccCount++;
+			float flNewDamage = info.m_flDamage * asw_leadership_accuracy_scale.GetFloat();
 
-			flDamageScale *= 2.0f;
-		}
+			CASW_Marine_Resource *pLeaderMR = pLeader->GetMarineResource();
+			Assert( pLeaderMR );
+			if ( pLeaderMR )
+			{
+				pLeaderMR->m_iLeadershipProcsAccuracy++;
+				pLeaderMR->m_iLeadershipDamageAccuracy += flNewDamage - info.m_flDamage;
+			}
 
-		if ( asw_debug_marine_damage.GetBool() )
-		{
-			Msg("Doing leadership accuracy test.  Chance is %f random float is %f\n", fChance, f);
-			Msg("  Leadership accuracy applied %d times so far\n", iLeadershipAccCount);
-			Msg( "   OnFired_GetDamageScale returning scale of %f\n", flDamageScale );
+			info.m_flDamage = flNewDamage;
+
+			CBaseEntity *pHelpHelpImBeingSupressed = ( CBaseEntity * )te->GetSuppressHost();
+			te->SetSuppressHost( NULL );
+
+			CBaseEntity *pActiveWeapon = pMarine->GetActiveASWWeapon();
+			DispatchParticleEffectLink( "leadership_proc_accuracy", PATTACH_POINT_FOLLOW, pLeader, pActiveWeapon ? pActiveWeapon : pMarine, pLeader->LookupAttachment( "officer_antenna_end" ) );
+			EmitSound( "ASW_Leadership.Accuracy" );
+
+			te->SetSuppressHost( pHelpHelpImBeingSupressed );
 		}
 	}
-
-	return flDamageScale;
 }
 
 // marine has just used the weapon specified - track stats
@@ -476,28 +537,23 @@ void CASW_Marine_Resource::UsedWeapon(CASW_Weapon *pWeapon, int iShots)
 		}
 	}
 
-	if (!pWeapon || m_iOnlyWeaponEquipIndex == -2)
+	if ( !pWeapon || m_iOnlyWeaponEquipIndex == -2 )
 		return;
 
-	const CASW_WeaponInfo* pWpnInfo = pWeapon->GetWeaponInfo();
+	const CASW_EquipItem *pItem = pWeapon->GetEquipItem();
+	if ( !pItem )
+		return;
+
 	// not used a weapon yet?
 	if (m_iOnlyWeaponEquipIndex == -1)
 	{
-		m_iOnlyWeaponEquipIndex = pWeapon->GetEquipmentListIndex();
-		if (pWpnInfo)
-			m_bOnlyWeaponExtra = pWpnInfo->m_bExtra;
+		m_iOnlyWeaponEquipIndex = pItem->m_iItemIndex;
+		m_bOnlyWeaponExtra = pItem->m_bIsExtra;
 		return;
 	}
 
-	// used a different type of weapon?
-	if (pWpnInfo && pWpnInfo->m_bExtra != m_bOnlyWeaponExtra)
-	{
-		m_iOnlyWeaponEquipIndex = -2;
-		return;
-	}
-
-	// used a different weapon index?
-	if (pWeapon->GetEquipmentListIndex() != m_iOnlyWeaponEquipIndex)
+	// used a different weapon?
+	if ( pItem->m_iItemIndex != m_iOnlyWeaponEquipIndex && pItem->m_bIsExtra != m_bOnlyWeaponExtra)
 	{
 		m_iOnlyWeaponEquipIndex = -2;
 		return;
@@ -622,9 +678,20 @@ bool CASW_Marine_Resource::IsReloading()
 	return pWeapon->IsReloading();
 }
 
+bool CASW_Marine_Resource::CanHack()
+{
+	CASW_Marine_Profile *pProfile = GetProfile();
+	if ( !pProfile )
+		return false;
+
+	return pProfile->CanHack();
+}
+
 void CASW_Marine_Resource::IncrementWeaponStats( Class_T weaponClass, int32 nDamage, int32 nFFDamage, int32 nShotsFired, int32 nShotsHit, int32 nKills )
 {
-	ConVarRef asw_stats_verbose( "asw_stats_verbose" );
+	extern ConVar asw_stats_verbose;
+	if ( !weaponClass )
+		return;
 
 	FOR_EACH_VEC( m_WeaponStats, i )
 	{

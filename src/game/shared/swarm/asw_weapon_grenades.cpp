@@ -156,12 +156,9 @@ void CASW_Weapon_Grenades::PrimaryAttack( void )
 float CASW_Weapon_Grenades::GetBoomDamage( CASW_Marine *pMarine )
 {
 	float flBaseDamage = 0.0f;
-	if ( ASWEquipmentList() )
-	{
-		CASW_WeaponInfo* pWeaponInfo = ASWEquipmentList()->GetWeaponDataFor( "asw_weapon_grenades" );
-		if ( pWeaponInfo )
-			flBaseDamage = pWeaponInfo->m_flBaseDamage;
-	}
+	CASW_WeaponInfo* pWeaponInfo = g_ASWEquipmentList.GetWeaponDataFor( "asw_weapon_grenades" );
+	if ( pWeaponInfo )
+		flBaseDamage = pWeaponInfo->m_flBaseDamage;
 
 	extern ConVar rd_grenades_dmg_base;
 	if ( rd_grenades_dmg_base.GetFloat() )
@@ -193,12 +190,7 @@ void CASW_Weapon_Grenades::DelayedAttack( void )
 
 #ifndef CLIENT_DLL
 	Vector vecSrc = pMarine->GetOffhandThrowSource();
-
-	Vector vecDest = pPlayer->GetCrosshairTracePos();
-	if ( !pMarine->IsInhabited() )
-	{
-		vecDest = pMarine->GetOffhandItemSpot();
-	}
+	Vector vecDest = pMarine->GetOffhandThrowDest();
 	Vector newVel = UTIL_LaunchVector( vecSrc, vecDest, GetThrowGravity() ) * 28.0f;
 
 	float fGrenadeRadius = GetBoomRadius( pMarine );

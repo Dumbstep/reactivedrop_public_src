@@ -172,7 +172,7 @@ void CRD_Hud_Boss_Bar_Container::OnBarDataChanged()
 			continue;
 		}
 
-		bAnyVisible = bAnyVisible || pBar->m_bEnabled;
+		bAnyVisible = bAnyVisible || ( pBar->m_bEnabled && !pBar->IsTooFarAway() );
 	}
 
 	if ( m_BarEntities.Count() == 0 )
@@ -297,7 +297,7 @@ void CRD_Hud_Boss_Bar_Container::Paint()
 		C_RD_Boss_Bar *pBar = m_BarEntities[i];
 		const Layout_t & layout = m_BarLayout[i];
 
-		if ( !pBar || !pBar->m_bEnabled )
+		if ( !pBar || !pBar->m_bEnabled || pBar->IsTooFarAway() )
 		{
 			continue;
 		}
@@ -369,7 +369,7 @@ void CRD_Hud_Boss_Bar_Container::Paint()
 		case BOSS_BAR_NUMERIC_VALUE:
 		{
 			wchar_t wszNumericValue[12];
-			int iNumberCharCount = V_snwprintf( wszNumericValue, sizeof( wszNumericValue ), L"%d", int( MAX( pBar->m_flBarValue, 0 ) ) );
+			int iNumberCharCount = V_snwprintf( wszNumericValue, ARRAYSIZE( wszNumericValue ), L"%d", int( MAX( pBar->m_flBarValue, 0 ) ) );
 
 			int iTextWidth, iTextHeight;
 			g_pMatSystemSurface->GetTextSize( m_hFont, wszNumericValue, iTextWidth, iTextHeight );

@@ -165,11 +165,11 @@
 		"wide"	 "640"
 		"tall"	 "480"
 	}
-	
+
 	HudMenu
 	{
 		"fieldName" "HudMenu"
-		"visible" "0"
+		"visible" "1"
 		"enabled" "1"
 		"wide"	 "640"
 		"tall"	 "480"
@@ -312,12 +312,12 @@
 		"BgColor_override" "0 0 0 192"
 	}
 	
-	ASWHudMoney
+	ASWHudCounters
 	{
-		"fieldName"		"ASWHudMoney"
-		"xpos"	"r100"
+		"fieldName"		"ASWHudCounters"
+		"xpos"	"r150"
 		"ypos"	"300"
-		"wide"	"90"
+		"wide"	"140"
 		"tall"  "20"
 		"visible" "1"
 		"enabled" "1"

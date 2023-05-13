@@ -6,6 +6,7 @@ WeaponData
 	"printname"	"#asw_weapon_healampgun"
 	"viewmodel"			"Models/weapons/healgun/healgun.mdl"
 	"playermodel"			"Models/weapons/healgun/healgun.mdl"
+	"playermodel_skin"		"1"
 	"anim_prefix"			"ar2"
 	"bucket"			"0"
 	"bucket_position"		"1"
@@ -25,7 +26,7 @@ WeaponData
 	// asw properties
 	"reload_time"			"2.2"
 	"fire_rate"				"0.33"
-	"equipicon"				"swarm/EquipIcons/EquipHealGun"
+	"equipicon"				"swarm/EquipIcons/EquipHealAmpGun"
 	"equiplongname"			"#asw_weaponl_healampgun"
 	"RequiresFirstAid"		"1"
 	"ShowCharges"			"1"
@@ -56,7 +57,7 @@ WeaponData
 	SoundData
 	{
 		"empty"			"ASW_Weapon.Empty"
-		"special3"		"ASW_Weapon.Reload3"	//switch weapon
+		"special3"		"ASW_Weapon.Reload2"	//switch weapon
 
 		"single_shot"		"ASW_Medkit.Use"		// sound for locally controlled marine
 		"single_shot_npc"	"ASW_Medkit.Use"		// sound for other marines

@@ -2,7 +2,7 @@
 #define C_ASW_SENTRY_BASE_H
 
 #include "iasw_client_usable_entity.h"
-
+#include "rd_inventory_shared.h"
 #include <vgui/vgui.h>
 
 class C_ASW_Sentry_Base : public C_BaseAnimating, public IASW_Client_Usable_Entity
@@ -31,14 +31,18 @@ public:
 	int GetAmmo() const { return m_iAmmo; }
 	int GetMaxAmmo() const { return m_iMaxAmmo; }
 
-	CNetworkVar(bool, m_bAssembled);
-	CNetworkVar(bool, m_bIsInUse);
-	CNetworkVar(float, m_fAssembleProgress);
-	CNetworkVar(float, m_fAssembleCompleteTime);
-	CNetworkVar(int, m_iAmmo);
-	CNetworkVar(int, m_iMaxAmmo);
-	CNetworkVar(bool, m_bSkillMarineHelping);
-	CNetworkVar(int, m_nGunType);
+	CNetworkVar( bool, m_bAssembled );
+	CNetworkVar( bool, m_bIsInUse );
+	CNetworkVar( float, m_fAssembleProgress );
+	CNetworkVar( float, m_fAssembleCompleteTime );
+	CNetworkVar( int, m_iAmmo );
+	CNetworkVar( int, m_iMaxAmmo );
+	CNetworkVar( bool, m_bSkillMarineHelping );
+	CNetworkVar( int, m_nGunType );
+
+	CNetworkHandle( CASW_Player, m_hOriginalOwnerPlayer );
+	CNetworkVar( int, m_iInventoryEquipSlot );
+	bool IsInventoryEquipSlotValid() const { return !!m_hOriginalOwnerPlayer && m_iInventoryEquipSlot != -1; }
 
 	// class of the weapon that created us
 	const char* GetWeaponClass();

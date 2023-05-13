@@ -48,7 +48,6 @@ public:
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
 
-		virtual const char* GetPickupClass() { return "asw_pickup_railgun"; }
 		virtual bool IsRapidFire() { return false; }
 		virtual float GetMadFiringBias() { return 2.0f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
 				// NOTE: Railgun isn't really meant to do killing sprees, since it fires so slowly
@@ -57,6 +56,7 @@ public:
 		virtual const char* GetTracerEffectName() { return "tracer_railgun"; }	// particle effect name
 		virtual const char* GetMuzzleEffectName() { return "muzzle_railgun"; }	// particle effect name
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/railgun_empty_clip.mdl"; }
 
 	// aiming grenades at the ground
 	virtual bool SupportsGroundShooting() { return rd_ground_shooting.GetBool(); }

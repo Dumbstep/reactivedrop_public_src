@@ -18,7 +18,6 @@
 	#include "iinput.h"
 	#include "asw_input.h"
 	#include "iclientvehicle.h"
-	#include "c_asw_jeep_clientside.h"
 	#include "iasw_client_vehicle.h"
 	#include "c_asw_weapon.h"
 	#include "c_asw_game_resource.h"
@@ -80,6 +79,7 @@
 #include "collisionutils.h"
 #include "particle_parse.h"
 #include "cdll_int.h"
+#include "asw_equipment_list.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -89,18 +89,22 @@ extern IMarineGameMovement *g_pMarineGameMovement;
 extern CMoveData *g_pMoveData;	// This is a global because it is subclassed by each game.
 extern ConVar sv_noclipduringpause;
 extern ConVar rd_revive_duration;
+extern ConVar rd_revive_tombstone_hold_duration;
 
 static void ASWControlsChanged( IConVar *var, const char *pOldValue, float flOldValue );
 
-ConVar asw_allow_detach("asw_allow_detach", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "Allow the camera to detach from the marine.");
-ConVar asw_DebugAutoAim("asw_DebugAutoAim", "0", FCVAR_REPLICATED | FCVAR_CHEAT);
-ConVar asw_marine_nearby_angle("asw_marine_nearby_angle", "-75", FCVAR_REPLICATED | FCVAR_CHEAT);
-ConVar asw_rts_controls("asw_rts_controls", "0", FCVAR_REPLICATED | FCVAR_CHEAT);
-ConVar asw_controls("asw_controls", "1", FCVAR_REPLICATED | FCVAR_CHEAT, "Disable to get normal FPS controls (affects all players on the server)", ASWControlsChanged);
-ConVar asw_hl2_camera("asw_hl2_camera", "0", FCVAR_REPLICATED | FCVAR_DONTRECORD | FCVAR_CHEAT);
+ConVar asw_allow_detach( "asw_allow_detach", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "Allow the camera to detach from the marine." );
+ConVar asw_DebugAutoAim( "asw_DebugAutoAim", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_marine_nearby_angle( "asw_marine_nearby_angle", "-75", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_vehicle_cam_shift_2_enable( "asw_vehicle_cam_shift_2_enable", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_rts_controls( "asw_rts_controls", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_controls( "asw_controls", "1", FCVAR_REPLICATED | FCVAR_CHEAT | FCVAR_DEMO, "Disable to get normal FPS controls (affects all players on the server)", ASWControlsChanged );
+ConVar asw_controls_vehicle( "asw_controls_vehicle", "2", FCVAR_REPLICATED | FCVAR_CHEAT, "Disable to get normal FPS controls (affects all players on the server)", ASWControlsChanged );
+ConVar asw_hl2_camera( "asw_hl2_camera", "0", FCVAR_REPLICATED | FCVAR_DONTRECORD | FCVAR_CHEAT );
 #ifdef CLIENT_DLL
-ConVar asw_controls_spectator_override( "asw_controls_spectator_override", "-1", FCVAR_NONE, "Force a value for asw_controls while spectating.", ASWControlsChanged );
+ConVar asw_controls_spectator_override( "asw_controls_spectator_override", "-1", FCVAR_DONTRECORD, "Force a value for asw_controls while spectating.", ASWControlsChanged );
 #endif
+
 
 static void ASWControlsChanged( IConVar *var, const char *pOldValue, float flOldValue )
 {
@@ -146,11 +150,8 @@ void CASW_Player::DriveNPCMovement( CUserCmd *ucmd, IMoveHelper *moveHelper )
 		MoveHelper()->SetHost( pNPC );
 	}
 
-	// BenLubar(spectator-mouse)
-	m_iScreenWidth = ucmd->screenw;
-	m_iScreenHeight = ucmd->screenh;
-	m_iMouseX = ucmd->mousex;
-	m_iMouseY = ucmd->mousey;
+	m_iScreenWidthHeight = ucmd->screenwh;
+	m_iMouseXY = ucmd->mousexy;
 
 	m_angMarineAutoAimFromClient = ucmd->aimangleoffset;
 
@@ -170,61 +171,19 @@ void CASW_Player::DriveNPCMovement( CUserCmd *ucmd, IMoveHelper *moveHelper )
 	}
 
 	// process vehicle movement
-#ifdef GAME_DLL
-	if ( pMarine && pMarine->IsDriving() && gpGlobals->maxClients == 1 )
+	if ( pMarine && pMarine->IsDriving() )
 	{
+#ifdef GAME_DLL
 		IASW_Vehicle *pVehicle = pMarine->GetASWVehicle();
+#else
+		IASW_Client_Vehicle *pVehicle = pMarine->GetASWVehicle();
+#endif
 		if ( pVehicle )
 		{
 			pVehicle->SetupMove( this, ucmd, moveHelper, g_pMoveData );
 			pVehicle->ProcessMovement( this, g_pMoveData );
 		}
 	}
-
-	// store light level for stats tracking
-	//if ( pMarine )
-	//{
-		//pMarine->m_iLightLevel = ucmd->light_level;
-	//}
-#else
-	if ( pMarine && gpGlobals->maxClients > 1 )
-	{
-		IASW_Client_Vehicle *pVehicle = pMarine->GetClientsideVehicle();
-		if ( pMarine->IsDriving() )
-		{
-			if ( pVehicle )
-			{
-				pVehicle->SetupMove( this, ucmd, moveHelper, g_pMoveData );
-				pVehicle->ProcessMovement( this, g_pMoveData );
-			}
-			else if ( pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->GetEntity() &&
-				pMarine->GetASWVehicle()->ASWGetDriver() == pMarine )
-			{
-				// need to create a clientside vehicle for us to drive			
-				CBaseEntity *pEnt = pMarine->GetASWVehicle()->GetEntity();
-				C_ASW_PropJeep_Clientside *pJeep = C_ASW_PropJeep_Clientside::CreateNew( false );
-				pJeep->SetAbsOrigin( pEnt->GetAbsOrigin() );
-				pJeep->SetAbsAngles( pEnt->GetAbsAngles() );
-				// todo: set poseparameters too?
-				pJeep->Initialize();
-				pMarine->SetClientsideVehicle( pJeep );
-
-				// hide the dummy for this client only
-				pMarine->GetASWVehicle()->GetEntity()->UpdateVisibility();
-			}
-		}
-		else
-		{
-			if ( pMarine->GetClientsideVehicle() )
-			{
-				pMarine->GetClientsideVehicle()->ASWStopEngine();	// destroys it
-				pMarine->SetClientsideVehicle( NULL );
-				// the dummy will show itself in its next clientthink...
-			}
-		}
-	}
-
-#endif
 
 
 #ifdef GAME_DLL	
@@ -297,12 +256,7 @@ bool CASW_Player::IsSpectatorOnly()
 
 	bool bGotPlayerInfo = engine->GetPlayerInfo( entindex(), &playerinfo );
 	Assert( bGotPlayerInfo );
-	if ( bGotPlayerInfo && ( playerinfo.ishltv || playerinfo.isreplay ) )
-	{
-		return true;
-	}
-
-	return m_bWantsSpectatorOnly;
+	return bGotPlayerInfo && ( playerinfo.ishltv || playerinfo.isreplay );
 }
 
 bool CASW_Player::IsAnyBot()
@@ -371,7 +325,7 @@ bool CASW_Player::CanBeLeader()
 		return false;
 	}
 
-	if ( m_bWantsSpectatorOnly )
+	if ( IsSpectatorOnly() )
 	{
 		return false;
 	}
@@ -442,7 +396,7 @@ void CASW_Player::ItemPostFrame()
 	}
 
 	CASW_Weapon *pTempExtra = pNPC ? pNPC->GetASWWeapon( ASW_TEMPORARY_WEAPON_SLOT ) : NULL;
-	if ( pTempExtra && pTempExtra->GetWeaponInfo() && pTempExtra->GetWeaponInfo()->m_bExtra )
+	if ( pTempExtra && pTempExtra->GetEquipItem() && pTempExtra->GetEquipItem()->m_bIsExtra )
 	{
 		pExtra = pTempExtra;
 		if ( pExtra && pExtra != pWeapon && pExtra->WantsOffhandPostFrame() )
@@ -550,21 +504,34 @@ Vector CASW_Player::EyePosition( )
 			return BaseClass::EyePosition();
 		}
 
-		bool bIsThirdPerson = ( ::input->CAM_IsThirdPerson() != 0 );
+		bool bIsThirdPerson = GetASWControls() != ASWC_FIRSTPERSON;
 
 		Vector org = vec3_origin;
 		QAngle ang;
 		CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
-		if ( pMarine && pMarine->IsInVehicle() )
+		if ( pMarine && pMarine->IsInVehicle() && GetASWControls() != ASWC_THIRDPERSONSHOULDER )
 		{
-			ang[PITCH] = asw_vehicle_cam_pitch.GetFloat();
-			ang[YAW] = pMarine->EyeAngles()[YAW] - 90;
+			float flPitch = asw_vehicle_cam_pitch.GetFloat();
+			float flDist = asw_vehicle_cam_dist.GetFloat();
+			float flHeight = asw_vehicle_cam_height.GetFloat();
+
+#ifdef GAME_DLL
+			if ( IASW_Vehicle *pVehicle = pMarine->GetASWVehicle() )
+#else
+			if ( IASW_Client_Vehicle *pVehicle = pMarine->GetASWVehicle() )
+#endif
+			{
+				pVehicle->ASWGetCameraOverrides( NULL, &flPitch, &flDist, &flHeight );
+			}
+
+			ang[PITCH] = flPitch;
+			ang[YAW] = m_flMovementAxisYaw;
 			ang[ROLL] = 0;
 			AngleVectors( ang, &org );
-			//if (input->CAM_IsThirdPerson())
-				//org *= -asw_vehicle_cam_dist.GetFloat();
+			if ( bIsThirdPerson )
+				org *= -flDist;
 			org += m_vecLastMarineOrigin;
-			org.z += asw_vehicle_cam_height.GetFloat();
+			org.z += flHeight;
 		}
 		else if ( pMarine && pMarine->IsControllingTurret() )
 		{
@@ -577,14 +544,17 @@ Vector CASW_Player::EyePosition( )
 			{
 				// Not doing the death cam!
 				Vector vCamOffset;
-				ang[PITCH] = ASWInput()->ASW_GetCameraPitch();
-				ang[YAW] = ASWInput()->ASW_GetCameraYaw();
-				ang[ROLL] = 0;
-
-				AngleVectors( ang, &vCamOffset );
 				if ( bIsThirdPerson )
 				{
-					vCamOffset *= -ASWInput()->ASW_GetCameraDist();
+					ang[PITCH] = ASWInput()->GetPerUser().m_vecCameraOffset[PITCH];
+					ang[YAW] = ASWInput()->GetPerUser().m_vecCameraOffset[YAW];
+					ang[ROLL] = 0;
+					AngleVectors( ang, &vCamOffset );
+					vCamOffset *= -ASWInput()->GetPerUser().m_vecCameraOffset[2];
+				}
+				else
+				{
+					vCamOffset.Init();
 				}
 
 				org = m_vecLastMarineOrigin + vCamOffset;
@@ -701,10 +671,10 @@ void CASW_Player::FindUseEntities()
 	// if we're in a vehicle, only interact with the vehicle (to get out)
 	if ( pMarine && pMarine->IsInVehicle() )
 	{
-		if ( pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->GetEntity() )
+		if ( pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->IsUsable( pMarine ) && pMarine->GetASWVehicle()->GetEntity() )
 		{
-			m_hUseEntities[ 0 ] = pMarine->GetASWVehicle()->GetEntity();
-			m_iUseEntities = 1;			
+			m_hUseEntities[0] = pMarine->GetASWVehicle()->GetEntity();
+			m_iUseEntities = 1;
 		}
 		return;
 	}
@@ -1051,21 +1021,23 @@ const QAngle& CASW_Player::EyeAngles( )
 	{
 		angAdjustedEyes.z = 0;
 
-		// if we're driving, return the angle
-		if ( pMarine->IsInVehicle() )
-		{
-#ifdef CLIENT_DLL
-			if ( pMarine->GetClientsideVehicle() && pMarine->GetClientsideVehicle()->GetEntity() )
-				return pMarine->GetClientsideVehicle()->GetEntity()->GetAbsAngles();
-#endif
-			if ( pMarine->GetASWVehicle() && pMarine->GetASWVehicle()->GetEntity() )
-				return pMarine->GetASWVehicle()->GetEntity()->GetAbsAngles();
-		}
-
 		// if we're spectating a turret, use the turret's eye angles
 		if ( ( pMarine->GetCommander() != this || !pMarine->IsInhabited() ) && pMarine->IsControllingTurret() )
 		{
 			return pMarine->GetRemoteTurret()->EyeAngles();
+		}
+
+#ifdef GAME_DLL
+		IASW_Vehicle *pVehicle = pMarine->GetASWVehicle();
+#else
+		IASW_Client_Vehicle *pVehicle = pMarine->GetASWVehicle();
+#endif
+		if ( !asw_allow_detach.GetBool() && pVehicle && !asw_vehicle_cam_shift_2_enable.GetBool() && GetASWControls() == ASWC_THIRDPERSONSHOULDER )
+		{
+			Vector vehicleOrigin;
+			QAngle vehicleAngle;
+			pVehicle->ASWGetSeatPosition( pMarine->m_iVehicleSeat, vehicleOrigin, vehicleAngle );
+			angAdjustedEyes[YAW] = vehicleAngle[YAW];
 		}
 	}
 
@@ -1198,14 +1170,24 @@ void CASW_Player::PlayerUse()
 
 				if ( pEnt->Classify() == CLASS_ASW_MARINE )
 				{
-					CASW_Marine* pUsableMarine = assert_cast<CASW_Marine*>( pEnt );
+					CASW_Marine *pUsableMarine = assert_cast< CASW_Marine * >( pEnt );
 					if ( pUsableMarine->m_bKnockedOut )
 						flUseHoldTime = rd_revive_duration.GetFloat();
 				}
 
-				CASW_Button_Area *pButtonArea = dynamic_cast<CASW_Button_Area *>( pEnt );
-				if ( pButtonArea && pButtonArea->m_flHoldTime > 0 )
-					flUseHoldTime = pButtonArea->m_flHoldTime;
+				if ( pEnt->Classify() == CLASS_ASW_BUTTON_PANEL )
+				{
+					CASW_Button_Area *pButtonArea = assert_cast< CASW_Button_Area * >( pEnt );
+					if ( pButtonArea->m_flHoldTime > 0 )
+						flUseHoldTime = pButtonArea->m_flHoldTime;
+				}
+
+#ifdef RD_7A_WEAPONS
+				if ( pEnt->Classify() == CLASS_ASW_REVIVE_TOOL_MARKER )
+				{
+					flUseHoldTime = rd_revive_tombstone_hold_duration.GetFloat();
+				}
+#endif
 
 				if ( ( gpGlobals->curtime - m_flUseKeyDownTime ) >= flUseHoldTime )
 				{
@@ -1397,5 +1379,34 @@ ASW_Controls_t CASW_Player::GetASWControls()
 		return ( ASW_Controls_t )asw_controls_spectator_override.GetInt();
 #endif
 
+	CASW_Inhabitable_NPC *pNPC = GetViewNPC();
+
+	// if we're in a vehicle, see if the vehicle wants to change the asw_controls setting.
+	CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
+	if ( pMarine && pMarine->IsInVehicle() )
+	{
+		int nControls = asw_controls_vehicle.GetInt();
+#ifdef GAME_DLL
+		if ( IASW_Vehicle *pVehicle = pMarine->GetASWVehicle() )
+#else
+		if ( IASW_Client_Vehicle *pVehicle = pMarine->GetASWVehicle() )
+#endif
+		{
+			pVehicle->ASWGetCameraOverrides( &nControls, NULL, NULL, NULL );
+		}
+
+		if ( nControls >= 0 )
+		{
+			return ( ASW_Controls_t )nControls;
+		}
+	}
+
+	// if we have a character, use their controls.
+	if ( pNPC )
+	{
+		return pNPC->GetASWControls();
+	}
+
+	// otherwise, use the global controls setting.
 	return ( ASW_Controls_t )asw_controls.GetInt();
 }

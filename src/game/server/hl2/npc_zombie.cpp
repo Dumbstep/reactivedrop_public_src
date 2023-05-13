@@ -99,7 +99,7 @@ public:
 	}
 
 	// reactivedrop:
-	virtual void SetHealthByDifficultyLevel();
+	virtual int GetBaseHealth() override;
 
 	//=========================================================
 	// Conditions
@@ -296,20 +296,12 @@ void CZombie::Spawn( void )
 
 	BaseClass::Spawn();
 
-	// reactivedrop: 
-	ChangeFaction(FACTION_ALIENS);
-
 	m_flNextMoanSound = gpGlobals->curtime + random->RandomFloat( 1.0, 4.0 );
 }
 
-void CZombie::SetHealthByDifficultyLevel()
+int CZombie::GetBaseHealth()
 {
-	int iHealth = MAX( 1, ASWGameRules()->ModifyAlienHealthBySkillLevel( sk_zombie_health.GetInt() ) );
-	extern ConVar asw_debug_alien_damage;
-	if ( asw_debug_alien_damage.GetBool() )
-		Msg( "Setting zombie's initial health to %d\n", iHealth + m_iHealthBonus );
-	SetHealth( iHealth + m_iHealthBonus );
-	SetMaxHealth( iHealth + m_iHealthBonus );
+	return sk_zombie_health.GetInt();
 }
 
 //-----------------------------------------------------------------------------

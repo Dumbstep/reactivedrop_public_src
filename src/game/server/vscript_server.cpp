@@ -1,4 +1,4 @@
-//========== Copyright © 2008, Valve Corporation, All rights reserved. ========
+//========== Copyright Â© 2008, Valve Corporation, All rights reserved. ========
 //
 // Purpose:
 //
@@ -24,9 +24,11 @@
 #include "inetchannelinfo.h"
 #include "decals.h"
 #include "player_voice_listener.h"
+#include "ColorText_Shared.h"
 #ifdef _WIN32
 #include "vscript_server_nut.h"
 #endif
+#include "asw_gamerules.h"
 
 extern ScriptClassDesc_t * GetScriptDesc( CBaseEntity * );
 
@@ -40,12 +42,17 @@ extern ScriptClassDesc_t * GetScriptDesc( CBaseEntity * );
 #else // !VMPROFILE
 
 #define VMPROF_START
-#define VMPROF_SHOW
+#define VMPROF_SHOW( funcname, funcdesc )
 
 #endif // VMPROFILE
 
 static ConVar sv_mapspawn_nut_exec( "sv_mapspawn_nut_exec", "0", FCVAR_NONE, "If set to 1, server will execute scripts/vscripts/mapspawn.nut file" );
 extern char *s_ElementNames[MAX_ARRAY_ELEMENTS];
+
+constexpr int CLAMP_COLOR(int value)
+{
+	return value < 0 ? 0 : value > 255 ? 255 : value;
+}
 
 //-----------------------------------------------------------------------------
 // Iterate through keys in a table and assign KeyValues on entity for spawn
@@ -1201,18 +1208,245 @@ static void Script_Say( HSCRIPT hPlayer, const char *pText )
 	}
 }
 
-static void Script_ClientPrint( HSCRIPT hPlayer, int iDest, const char *pText )
+//This is a vscript function that converts RGB into a transmittable format for colored text
+static ScriptVariant_t Script_TextColor(int R, int G, int B)
 {
-	CBaseEntity *pBaseEntity = ToEnt(hPlayer);
+	//Force channel ranges between 0 - 255
+	R = CLAMP_COLOR(R);
+	G = CLAMP_COLOR(G);
+	B = CLAMP_COLOR(B);
+
+	//create float modifiers at range 0 - 255 for conversion output
+	float outputMod_R = R / 255.0f;
+	float outputMod_G = G / 255.0f;
+	float outputMod_B = B / 255.0f;
+
+	char outputChars[5]{};
+	outputChars[0] = COLOR_INPUTCUSTOMCOL;
+	// pass float modifiers multiplied by max ASCII translation base then increment by 32 which is float ASCII offset
+	outputChars[1] = (char)( 32 + ( outputMod_R * 94 ) );
+	outputChars[2] = (char)( 32 + ( outputMod_G * 94 ) );
+	outputChars[3] = (char)( 32 + ( outputMod_B * 94 ) );
+
+	return ScriptVariant_t(outputChars, true);
+}
+
+static ScriptVariant_t Script_TextColorBlend(int R1, int G1, int B1, int R2, int G2, int B2)
+{
+	//Force channel ranges between 0 - 255
+	R1 = CLAMP_COLOR(R1);
+	G1 = CLAMP_COLOR(G1);
+	B1 = CLAMP_COLOR(B1);
+
+	R2 = CLAMP_COLOR(R2);
+	G2 = CLAMP_COLOR(G2);
+	B2 = CLAMP_COLOR(B2);
+
+	//create float modifiers at range 0 - 255 for conversion output
+	float outputMod_R1 = R1 / 255.0f;
+	float outputMod_G1 = G1 / 255.0f;
+	float outputMod_B1 = B1 / 255.0f;
+
+	float outputMod_R2 = R2 / 255.0f;
+	float outputMod_G2 = G2 / 255.0f;
+	float outputMod_B2 = B2 / 255.0f;
+
+	char outputChars[10]{};
+	outputChars[0] = COLOR_INPUTCUSTOMCOL;
+	outputChars[1] = COLOR_INPUTCUSTOMCOL;
+	outputChars[2] = BLEND_NORMAL;
+	// pass float modifiers multiplied by max ASCII translation base then increment by 32 which is float ASCII offset
+	outputChars[3] = (char)(32 + (outputMod_R1 * 94));
+	outputChars[4] = (char)(32 + (outputMod_G1 * 94));
+	outputChars[5] = (char)(32 + (outputMod_B1 * 94));
+
+	outputChars[6] = (char)(32 + (outputMod_R2 * 94));
+	outputChars[7] = (char)(32 + (outputMod_G2 * 94));
+	outputChars[8] = (char)(32 + (outputMod_B2 * 94));
+
+	return ScriptVariant_t(outputChars, true);
+}
+
+static ScriptVariant_t Script_TextColorBlendCycle(int iBlendLength, int R1, int G1, int B1, int R2, int G2, int B2)
+{
+	//Force channel ranges between 0 - 255
+	R1 = CLAMP_COLOR(R1);
+	G1 = CLAMP_COLOR(G1);
+	B1 = CLAMP_COLOR(B1);
+
+	R2 = CLAMP_COLOR(R2);
+	G2 = CLAMP_COLOR(G2);
+	B2 = CLAMP_COLOR(B2);
+
+	if (iBlendLength > 96)
+	{
+		iBlendLength = 96;
+	}
+	else if (iBlendLength < 2)
+	{
+		iBlendLength = 2;
+	}
+
+	iBlendLength -= 2; //Align offset
+
+	//create float modifiers at range 0 - 255 for conversion output
+	float outputMod_R1 = R1 / 255.0f;
+	float outputMod_G1 = G1 / 255.0f;
+	float outputMod_B1 = B1 / 255.0f;
+
+	float outputMod_R2 = R2 / 255.0f;
+	float outputMod_G2 = G2 / 255.0f;
+	float outputMod_B2 = B2 / 255.0f;
+
+	char outputChars[11]{};
+	outputChars[0] = COLOR_INPUTCUSTOMCOL;
+	outputChars[1] = COLOR_INPUTCUSTOMCOL;
+	outputChars[2] = BLEND_CYCLE;
+	outputChars[3] = iBlendLength + 32;
+	// pass float modifiers multiplied by max ASCII translation base then increment by 32 which is float ASCII offset
+	outputChars[4] = (char)(32 + (outputMod_R1 * 94));
+	outputChars[5] = (char)(32 + (outputMod_G1 * 94));
+	outputChars[6] = (char)(32 + (outputMod_B1 * 94));
+
+	outputChars[7] = (char)(32 + (outputMod_R2 * 94));
+	outputChars[8] = (char)(32 + (outputMod_G2 * 94));
+	outputChars[9] = (char)(32 + (outputMod_B2 * 94));
+
+	return ScriptVariant_t(outputChars, true);
+}
+
+static ScriptVariant_t Script_TextColorBlendSmoothCycle(int iBlendLength, int R1, int G1, int B1, int R2, int G2, int B2)
+{
+	//Force channel ranges between 0 - 255
+	R1 = CLAMP_COLOR(R1);
+	G1 = CLAMP_COLOR(G1);
+	B1 = CLAMP_COLOR(B1);
+
+	R2 = CLAMP_COLOR(R2);
+	G2 = CLAMP_COLOR(G2);
+	B2 = CLAMP_COLOR(B2);
+
+	if (iBlendLength > 96)
+	{
+		iBlendLength = 96;
+	}
+	else if (iBlendLength < 2)
+	{
+		iBlendLength = 2;
+	}
+
+	iBlendLength -= 2; //align offset
+
+	//create float modifiers at range 0 - 255 for conversion output
+	float outputMod_R1 = R1 / 255.0f;
+	float outputMod_G1 = G1 / 255.0f;
+	float outputMod_B1 = B1 / 255.0f;
+
+	float outputMod_R2 = R2 / 255.0f;
+	float outputMod_G2 = G2 / 255.0f;
+	float outputMod_B2 = B2 / 255.0f;
+
+	char outputChars[11]{};
+	outputChars[0] = COLOR_INPUTCUSTOMCOL;
+	outputChars[1] = COLOR_INPUTCUSTOMCOL;
+	outputChars[2] = BLEND_SMOOTHCYCLE;
+	outputChars[3] = iBlendLength + 32;
+	// pass float modifiers multiplied by max ASCII translation base then increment by 32 which is float ASCII offset
+	outputChars[4] = (char)(32 + (outputMod_R1 * 94));
+	outputChars[5] = (char)(32 + (outputMod_G1 * 94));
+	outputChars[6] = (char)(32 + (outputMod_B1 * 94));
+
+	outputChars[7] = (char)(32 + (outputMod_R2 * 94));
+	outputChars[8] = (char)(32 + (outputMod_G2 * 94));
+	outputChars[9] = (char)(32 + (outputMod_B2 * 94));
+
+	return ScriptVariant_t(outputChars, true);
+}
+
+static ScriptVariant_t Script_TextColorBlendInvert(int R1, int G1, int B1)
+{
+	//Force channel ranges between 0 - 255
+	R1 = CLAMP_COLOR(R1);
+	G1 = CLAMP_COLOR(G1);
+	B1 = CLAMP_COLOR(B1);
+
+	//create float modifiers at range 0 - 255 for conversion output
+	float outputMod_R1 = R1 / 255.0f;
+	float outputMod_G1 = G1 / 255.0f;
+	float outputMod_B1 = B1 / 255.0f;
+
+	char outputChars[7]{};
+	outputChars[0] = COLOR_INPUTCUSTOMCOL;
+	outputChars[1] = COLOR_INPUTCUSTOMCOL;
+	outputChars[2] = BLEND_INVERT;
+	// pass float modifiers multiplied by max ASCII translation base then increment by 32 which is float ASCII offset
+	outputChars[3] = (char)(32 + (outputMod_R1 * 94));
+	outputChars[4] = (char)(32 + (outputMod_G1 * 94));
+	outputChars[5] = (char)(32 + (outputMod_B1 * 94));
+
+	return ScriptVariant_t(outputChars, true);
+}
+
+static ScriptVariant_t Script_TextColorBlend3(int R1, int G1, int B1, int R2, int G2, int B2, int R3, int G3, int B3)
+{
+	//Force channel ranges between 0 - 255
+	R1 = CLAMP_COLOR(R1);
+	G1 = CLAMP_COLOR(G1);
+	B1 = CLAMP_COLOR(B1);
+
+	R2 = CLAMP_COLOR(R2);
+	G2 = CLAMP_COLOR(G2);
+	B2 = CLAMP_COLOR(B2);
+
+	R3 = CLAMP_COLOR(R3);
+	G3 = CLAMP_COLOR(G3);
+	B3 = CLAMP_COLOR(B3);
+
+	//create float modifiers at range 0 - 255 for conversion output
+	float outputMod_R1 = R1 / 255.0f;
+	float outputMod_G1 = G1 / 255.0f;
+	float outputMod_B1 = B1 / 255.0f;
+
+	float outputMod_R2 = R2 / 255.0f;
+	float outputMod_G2 = G2 / 255.0f;
+	float outputMod_B2 = B2 / 255.0f;
+
+	float outputMod_R3 = R3 / 255.0f;
+	float outputMod_G3 = G3 / 255.0f;
+	float outputMod_B3 = B3 / 255.0f;
+
+	char outputChars[13]{};
+	outputChars[0] = COLOR_INPUTCUSTOMCOL;
+	outputChars[1] = COLOR_INPUTCUSTOMCOL;
+	outputChars[2] = BLEND_3COLOR;
+	// pass float modifiers multiplied by max ASCII translation base then increment by 32 which is float ASCII offset
+	outputChars[3] = (char)(32 + (outputMod_R1 * 94));
+	outputChars[4] = (char)(32 + (outputMod_G1 * 94));
+	outputChars[5] = (char)(32 + (outputMod_B1 * 94));
+
+	outputChars[6] = (char)(32 + (outputMod_R2 * 94));
+	outputChars[7] = (char)(32 + (outputMod_G2 * 94));
+	outputChars[8] = (char)(32 + (outputMod_B2 * 94));
+
+	outputChars[9] = (char)(32 + (outputMod_R3 * 94));
+	outputChars[10] = (char)(32 + (outputMod_G3 * 94));
+	outputChars[11] = (char)(32 + (outputMod_B3 * 94));
+
+	return ScriptVariant_t(outputChars, true);
+}
+
+static void Script_DoClientPrint( HSCRIPT hPlayer, int iDest, const char *pText, const char *szParam1, const char *szParam2, const char *szParam3, const char *szParam4 )
+{
+	CBaseEntity *pBaseEntity = ToEnt( hPlayer );
 	CBasePlayer *pPlayer = NULL;
 
 	if ( pBaseEntity )
-		pPlayer = dynamic_cast<CBasePlayer*>(pBaseEntity);
+		pPlayer = dynamic_cast< CBasePlayer * >( pBaseEntity );
 
 	if ( pPlayer )
-		ClientPrint( pPlayer, iDest, pText );
+		ClientPrint( pPlayer, iDest, pText, szParam1, szParam2, szParam3, szParam4 );
 	else
-		UTIL_ClientPrintAll( iDest, pText );
+		UTIL_ClientPrintAll( iDest, pText, szParam1, szParam2, szParam3, szParam4 );
 }
 
 static void Script_StringToFile( const char *pszFileName, const char *pszString )
@@ -1432,6 +1666,7 @@ bool VScriptServerInit()
 	{
 		ScriptLanguage_t scriptLanguage = SL_DEFAULT;
 
+#ifndef INFESTED_DLL
 		char const *pszScriptLanguage;
 		if ( CommandLine()->CheckParm( "-scriptlang", &pszScriptLanguage ) )
 		{
@@ -1452,8 +1687,9 @@ bool VScriptServerInit()
 				DevWarning("-server_script does not recognize a language named '%s'. virtual machine did NOT start.\n", pszScriptLanguage );
 				scriptLanguage = SL_NONE;
 			}
-
 		}
+#endif
+
 		if( scriptLanguage != SL_NONE )
 		{
 			if ( g_pScriptVM == NULL )
@@ -1481,10 +1717,16 @@ bool VScriptServerInit()
 				ScriptRegisterFunctionNamed( g_pScriptVM, ScriptCreateSceneEntity, "CreateSceneEntity", "Create a scene entity to play the specified scene." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, NDebugOverlay::Box, "DebugDrawBox", "Draw a debug overlay box" );
 				ScriptRegisterFunctionNamed( g_pScriptVM, NDebugOverlay::Line, "DebugDrawLine", "Draw a debug overlay box" );
-				ScriptRegisterFunction( g_pScriptVM, DoIncludeScript, "Execute a script (internal)" );
+				ScriptRegisterFunction( g_pScriptVM, DoIncludeScript, SCRIPT_ALIAS( "IncludeScript", "Execute a script (internal)" ) );
 				ScriptRegisterFunction( g_pScriptVM, CreateProp, "Create a physics prop" );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_Say, "Say", "Have player say string" );
-				ScriptRegisterFunctionNamed( g_pScriptVM, Script_ClientPrint, "ClientPrint", "Print a client message" );
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_DoClientPrint, "DoClientPrint", SCRIPT_ALIAS( "ClientPrint", "Print a client message" ) );
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_TextColor, "TextColor", "Gets the translated ASCII characters for an RGB input." );
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_TextColorBlend, "TextColorBlend", "Gets the translated ASCII characters for an RGB blend input.");
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_TextColorBlendCycle, "TextColorBlendCycle", "Gets the translated ASCII characters for an RGB blend cycle input.");
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_TextColorBlendSmoothCycle, "TextColorBlendSmoothCycle", "Gets the translated ASCII characters for an RGB blend smooth cycle input.");
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_TextColorBlend3, "TextColorBlend3", "Gets the translated ASCII characters for a 3 color RGB blend input.");
+				ScriptRegisterFunctionNamed( g_pScriptVM, Script_TextColorBlendInvert, "TextColorBlendInvert", "Gets the translated ASCII characters for an RGB blend invert input.");
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_StringToFile, "StringToFile", "Stores the string into the file." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_FileToString, "FileToString", "Reads a string from file. Returns the string from the file, null if no file or file is too big." );
 				ScriptRegisterFunctionNamed( g_pScriptVM, Script_AddThinkToEnt, "AddThinkToEnt", "Adds a late bound think function to the C++ think tables for the obj" );
@@ -1553,6 +1795,7 @@ bool VScriptServerInit()
 				g_pScriptVM->SetValue( "HULL_MEDIUM_TALL", 9 );
 				g_pScriptVM->SetValue( "HULL_TINY_FLUID", 10 );
 				g_pScriptVM->SetValue( "HULL_MEDIUMBIG", 11 );
+				g_pScriptVM->SetValue( "HULL_HUGE", 12 );
 
 				// AI_ZoneIds_t enums for CAI_Node::GetZone and CAI_Node::SetZone
 				g_pScriptVM->SetValue( "AI_NODE_ZONE_UNKNOWN", 0 );
@@ -1577,7 +1820,7 @@ bool VScriptServerInit()
 					VScriptRunScript( "mapspawn", false );
 				}
 
-				VMPROF_SHOW( pszScriptLanguage, "virtual machine startup" );
+				VMPROF_SHOW( VScriptServerInit, "virtual machine startup" );
 
 				return true;
 			}
@@ -1729,35 +1972,15 @@ CON_COMMAND( scripted_user_func, "Call script from this user, with the value" )
 	CBasePlayer* pPlayer = UTIL_GetCommandClient();
 	const char *pszValue = args[1];
 
-	HSCRIPT hUserCommandFunc = g_pScriptVM->LookupFunction( "UserConsoleCommand" );
-	if ( hUserCommandFunc )
-	{
-		ScriptStatus_t nStatus = g_pScriptVM->Call( hUserCommandFunc, NULL, false, NULL, ToHScript( pPlayer ), pszValue );
-		if ( nStatus != SCRIPT_DONE )
-		{
-			DevWarning( "UserConsoleCommand VScript function did not finish!\n" );
-		}
-		g_pScriptVM->ReleaseFunction( hUserCommandFunc );
-	}
+	if ( !ASWGameRules() )
+		return;
 
-	if ( g_pScriptVM->ValueExists( "g_ModeScript" ) )
-	{
-		ScriptVariant_t hModeScript;
-		if ( g_pScriptVM->GetValue( "g_ModeScript", &hModeScript ) )
-		{
-			if ( HSCRIPT hFunction = g_pScriptVM->LookupFunction( "UserConsoleCommand", hModeScript ) )
-			{
-				ScriptStatus_t nStatus = g_pScriptVM->Call( hFunction, hModeScript, false, NULL, ToHScript( pPlayer ), pszValue );
-				if ( nStatus != SCRIPT_DONE )
-				{
-					DevWarning( "UserConsoleCommand VScript function did not finish!\n" );
-				}
+	ScriptVariant_t scriptArgs[2];
 
-				g_pScriptVM->ReleaseFunction( hFunction );
-			}
-			g_pScriptVM->ReleaseValue( hModeScript );
-		}
-	}
+	scriptArgs[0] = ToHScript( pPlayer );
+	scriptArgs[1] = pszValue;
+
+	ASWGameRules()->RunScriptFunctionInListenerScopes( "UserConsoleCommand", NULL, NELEMS( scriptArgs ), scriptArgs );
 }
 
 class CVScriptGameSystem : public CAutoGameSystemPerFrame

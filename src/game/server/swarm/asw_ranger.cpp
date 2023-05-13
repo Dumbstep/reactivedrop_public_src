@@ -31,7 +31,7 @@ DEFINE_EMBEDDEDBYREF( m_pExpresser ),
 END_DATADESC()
 
 ConVar asw_ranger_health( "asw_ranger_health", "101", FCVAR_CHEAT );
-ConVar sk_asw_ranger_volley_damage_direct( "sk_asw_ranger_volley_damage_direct", "12", FCVAR_CHEAT );
+ConVar sk_asw_ranger_volley_damage_direct( "sk_asw_ranger_volley_damage_direct", "6", FCVAR_CHEAT );
 ConVar sk_asw_ranger_volley_damage_splash( "sk_asw_ranger_volley_damage_splash", "0", FCVAR_CHEAT );
 extern ConVar asw_debug_alien_damage;
 
@@ -54,7 +54,7 @@ CASW_Ranger::CASW_Ranger()
 void CASW_Ranger::SetupRangerShot( CASW_AlienShot &shot )
 {
 	shot.m_flSize = 4;
-	shot.m_flDamage_direct = sk_asw_ranger_volley_damage_direct.GetFloat();
+	shot.m_flDamage_direct = ASWGameRules()->ModifyAlienDamageBySkillLevel( sk_asw_ranger_volley_damage_direct.GetFloat() );
 	shot.m_flDamage_splash = sk_asw_ranger_volley_damage_splash.GetFloat();
 	shot.m_flSeek_strength = 0;
 	shot.m_flGravity = 0;
@@ -82,7 +82,6 @@ void CASW_Ranger::Spawn( void )
 	BaseClass::Spawn();
 
 	SetHullType( HULL_MEDIUMBIG );
-	SetHealthByDifficultyLevel();
 	SetBloodColor( BLOOD_COLOR_GREEN );
 	CapabilitiesAdd( bits_CAP_MOVE_GROUND | bits_CAP_INNATE_MELEE_ATTACK1 | bits_CAP_INNATE_RANGE_ATTACK1 );
 
@@ -137,6 +136,8 @@ void CASW_Ranger::Precache( void )
 	BaseClass::Precache();
 
 	PrecacheModel( "models/aliens/rangerSpit/rangerspit.mdl" );
+	PrecacheScriptSound( "Ranger.Pain" );
+	PrecacheScriptSound( "Ranger.Death" );
 
 	// precache shot model and fx, add shot to list
 	CASW_AlienShot shot;
@@ -149,13 +150,9 @@ void CASW_Ranger::Precache( void )
 // Input:	
 // Output:	
 //-----------------------------------------------------------------------------
-void CASW_Ranger::SetHealthByDifficultyLevel()
+int CASW_Ranger::GetBaseHealth()
 {
-	int iHealth = MAX( 25, ASWGameRules()->ModifyAlienHealthBySkillLevel( asw_ranger_health.GetInt() ) );
-	if ( asw_debug_alien_damage.GetBool() )
-		Msg( "Setting ranger's initial health to %d\n", iHealth + m_iHealthBonus );
-	SetHealth( iHealth + m_iHealthBonus );
-	SetMaxHealth( iHealth + m_iHealthBonus );
+	return asw_ranger_health.GetInt();
 }
 
 
@@ -268,6 +265,15 @@ bool CASW_Ranger::CreateBehaviors()
 	return BaseClass::CreateBehaviors();
 }
 
+void CASW_Ranger::PainSound( const CTakeDamageInfo &info )
+{
+	if ( gpGlobals->curtime > m_fNextPainSound )
+	{
+		EmitSound( "Ranger.Pain" );
+		m_fNextPainSound = gpGlobals->curtime + 0.5f;
+	}
+}
+
 void CASW_Ranger::DeathSound( const CTakeDamageInfo &info )
 {
 	// if we are playing a fancy death animation, don't play death sounds from code
@@ -275,7 +281,7 @@ void CASW_Ranger::DeathSound( const CTakeDamageInfo &info )
 	if ( m_nDeathStyle == kDIE_FANCY )
 		return;
 
-	//EmitSound( "ASW_Drone.Death" );
+	EmitSound( "Ranger.Death" );
 
 	if ( m_bOnFire )
 		EmitSound( "ASW_Drone.DeathFireSizzle" );

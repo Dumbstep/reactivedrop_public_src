@@ -16,20 +16,18 @@ class CASW_Queen : public CASW_Alien
 {
 public:
 
-	DECLARE_CLASS( CASW_Queen, CASW_Alien  );
+	DECLARE_CLASS( CASW_Queen, CASW_Alien );
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
 	CASW_Queen( void );
 	virtual ~CASW_Queen( void );
 
 	virtual void Spawn();
-	virtual void NPCInit();
 	virtual void Precache();
 	virtual float GetIdealSpeed() const;
 	virtual float GetIdealAccel( ) const;
 	virtual float MaxYawSpeed( void );
-	
-	//virtual void NPCThink();
+
 	Class_T		Classify( void ) { return (Class_T) CLASS_ASW_QUEEN; }
 
 	virtual bool OverrideMoveFacing( const AILocalMoveGoal_t &move, float flInterval );
@@ -57,7 +55,10 @@ public:
 	virtual int MeleeAttack2Conditions ( float flDot, float flDist );
 	virtual float InnateRange1MinRange( void );
 	virtual float InnateRange1MaxRange( void );
-	virtual int RangeAttack1Conditions ( float flDot, float flDist );
+	virtual float InnateRange2MinRange( void );
+	virtual float InnateRange2MaxRange( void );
+	virtual int RangeAttack1Conditions( float flDot, float flDist );
+	virtual int RangeAttack2Conditions( float flDot, float flDist );
 	virtual float GetAttackDamageScale( CBaseEntity *pVictim );
 	virtual void Event_Killed( const CTakeDamageInfo &info );
 	virtual int OnTakeDamage_Alive( const CTakeDamageInfo &info );
@@ -72,6 +73,9 @@ public:
 	bool ShouldWatchEnemy();
 	void UpdatePoseParams();
 	void PrescheduleThink();
+
+	// health bar
+	CNetworkVar(bool, m_bHealthBarEnabled);
 
 	// opening/closing the vulnerable chest
 	void SetChestOpen(bool bOpen);
@@ -104,16 +108,16 @@ public:
 	int m_iSummonWave;
 	Vector m_vecLastClawPos;
 
-	virtual void SetHealthByDifficultyLevel();
+	virtual int GetBaseHealth() override;
 
-	// various states of the digger attack	
+	// various states of the digger attack
 	int m_iDiverState;
 	float m_fNextDiverState;
 	float m_fLastDiverAttack;
 	void UpdateDiver();
 	void AdvanceDiverState();
 	void SetDiverState(int iNewState);
-	CHandle<CASW_Queen_Divers> m_hDiver;	
+	CHandle<CASW_Queen_Divers> m_hDiver;
 	void NotifyGrabberKilled(CASW_Queen_Grabber* pGrabber);
 	int m_iLiveGrabbers;
 	CHandle<CASW_Marine> m_hPreventMovementMarine;
@@ -126,6 +130,7 @@ public:
 
 	// ranged attacks
 	float m_fLastRangedAttack;
+	float m_fLastSpawnedParasites;
 
 	// spawning parasites
 	CAI_BaseNPC* SpawnParasite();
@@ -136,6 +141,12 @@ public:
 
 	// blocked by a sentry gun
 	CHandle<CASW_Sentry_Base> m_hBlockingSentry;
+
+	bool m_bCanMove;
+	bool m_bCanClaw;
+	bool m_bCanSpit;
+	bool m_bCanDive;
+	bool m_bCanSpawnParasites;
 
 	enum
 	{
@@ -165,7 +176,7 @@ public:
 
 	enum
 	{
-		COND_QUEEN_BLOCKED_BY_DOOR = BaseClass::NEXT_CONDITION,
+		COND_QUEEN_BLOCKED_BY_BREAKABLE_OBJECT = BaseClass::NEXT_CONDITION,
 		NEXT_CONDITION,
 	};
 

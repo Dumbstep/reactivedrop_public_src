@@ -33,15 +33,15 @@
 
 #define ASW_GIB_ASAP 0.175f
 
-ConVar asw_alien_object_motion_blur_scale( "asw_alien_object_motion_blur_scale", "0.2" );
-ConVar asw_drone_gib_time_min("asw_drone_gib_time_min", "0.2", 0, "Minimum time a Swarm Drone ragdoll will stay around before gibbing");
-ConVar asw_drone_gib_time_max("asw_drone_gib_time_max", "0.2", 0, "Maximum time a Swarm Drone ragdoll will stay around before gibbing");
-ConVar asw_drone_fade_time_min("asw_drone_fade_time_min", "2.0", 0, "Minimum time a Swarm Drone ragdoll will stay around before fading");
-ConVar asw_drone_fade_time_max("asw_drone_fade_time_max", "4.0", 0, "Maximum time a Swarm Drone ragdoll will stay around before fading");
-ConVar asw_directional_shadows("asw_directional_shadows", "1", 0, "Whether aliens should have flashlight directional shadows");
-ConVar asw_alien_shadows("asw_alien_shadows", "0", 0, "If set to one, aliens will always have shadows (WARNING: Big fps cost when lots of aliens are active)");
+ConVar asw_alien_object_motion_blur_scale( "asw_alien_object_motion_blur_scale", "0.2", FCVAR_NONE );
+ConVar asw_drone_gib_time_min("asw_drone_gib_time_min", "0.2", FCVAR_NONE, "Minimum time a Swarm Drone ragdoll will stay around before gibbing");
+ConVar asw_drone_gib_time_max("asw_drone_gib_time_max", "0.2", FCVAR_NONE, "Maximum time a Swarm Drone ragdoll will stay around before gibbing");
+ConVar asw_drone_fade_time_min("asw_drone_fade_time_min", "2.0", FCVAR_NONE, "Minimum time a Swarm Drone ragdoll will stay around before fading");
+ConVar asw_drone_fade_time_max("asw_drone_fade_time_max", "4.0", FCVAR_NONE, "Maximum time a Swarm Drone ragdoll will stay around before fading");
+ConVar asw_directional_shadows("asw_directional_shadows", "1", FCVAR_ARCHIVE, "Whether aliens should have flashlight directional shadows");
+ConVar asw_alien_shadows("asw_alien_shadows", "0", FCVAR_ARCHIVE, "If set to one, aliens will always have shadows (WARNING: Big fps cost when lots of aliens are active)");
 ConVar asw_alien_footstep_interval( "asw_alien_footstep_interval", "0.25", 0, "Minimum interval between alien footstep sounds. Used to keep them from piling up and preventing others from playing." );
-ConVar asw_breakable_aliens( "asw_breakable_aliens", "1", 0, "If set, aliens can break into ragdoll gibs" );
+ConVar asw_breakable_aliens( "asw_breakable_aliens", "1", FCVAR_NONE, "If set, aliens can break into ragdoll gibs" );
 ConVar rd_max_drone_death_particles( "rd_max_drone_death_particles", "25", FCVAR_ARCHIVE, "Maximum number of drone blood particle being created per 1 frame" );
 ConVar glow_outline_color_alien( "glow_outline_color_alien", "77 153 26", FCVAR_NONE );
 ConVar dub_draw_aliens_glow("dub_draw_aliens_glow", "0", 0, "Draw glow object in the aliens.");
@@ -61,44 +61,25 @@ BEGIN_NETWORK_TABLE( CASW_Alien, DT_ASW_Alien )
 	RecvPropFloat( RECVINFO_NAME( m_angNetworkAngles[1], m_angRotation[1] ) ),
 	RecvPropFloat( RECVINFO_NAME( m_angNetworkAngles[2], m_angRotation[2] ) ),
 
-	RecvPropBool( RECVINFO( m_bElectroStunned ) ),// not using ElectroStunned
-	//RecvPropBool( RECVINFO( m_bElectroShockSmall ) ),
-	//RecvPropBool( RECVINFO( m_bElectroShockBig ) ),
-	RecvPropBool( RECVINFO( m_bOnFire ) ),
 	RecvPropInt( RECVINFO( m_nDeathStyle ), SPROP_UNSIGNED ),
-	RecvPropInt			( RECVINFO( m_iHealth) ),
 	RecvPropFloat( RECVINFO( m_flAlienWalkSpeed ) ),
 	RecvPropBool( RECVINFO( m_bInhabitedMovementAllowed ) ),
 END_RECV_TABLE()
-
-PRECACHE_REGISTER_BEGIN( GLOBAL, ASW_Alien )
-PRECACHE( MATERIAL, "effects/TiledFire/fire_tiled_precache" )
-PRECACHE( MATERIAL, "effects/model_layer_shock_1_precache" )
-PRECACHE( MATERIAL, "effects/model_layer_ice_1_precache" )
-PRECACHE( MATERIAL, "effects/model_layer_shockfire_1_precache" )
-PRECACHE( MATERIAL, "effects/model_layer_shockice_1_precache" )
-PRECACHE( MATERIAL, "effects/model_layer_icefire_1_precache" )
-PRECACHE( MATERIAL, "effects/model_layer_ohgod_1_precache" )
-PRECACHE( PARTICLE_SYSTEM, "damage_numbers" )
-PRECACHE_REGISTER_END()
 
 IMPLEMENT_AUTO_LIST( IClientAimTargetsAutoList );
 
 float C_ASW_Alien::sm_flLastFootstepTime = 0.0f;
 
-C_ASW_Alien::C_ASW_Alien() : 
+C_ASW_Alien::C_ASW_Alien() :
 m_GlowObject( this ),
 m_MotionBlurObject( this, 0.0f )
 {
 	m_bStepSideLeft = false;
 	m_nLastSetModel = 0;
-	m_fNextElectroStunEffect = 0;
 	m_fLastCustomContribution = 0;
 	m_vecLastCustomDir = vec3_origin;
 	m_iLastCustomFrame = -1;
-	m_bClientOnFire = false;
 	m_vecLastRenderedPos = vec3_origin;
-	m_pBurningEffect = NULL;
 	m_flAlienWalkSpeed = 0.0f;
 	m_bInhabitedMovementAllowed = false;
 
@@ -110,16 +91,12 @@ m_MotionBlurObject( this, 0.0f )
 	// reactivedrop: workaround to fix aliens red blood
 	// m_bloodColor is not networked
 	// so setting SetBloodColor() on server doesn't affect client 
-	SetBloodColor(BLOOD_COLOR_GREEN);
+	SetBloodColor( BLOOD_COLOR_GREEN );
 }
-
 
 C_ASW_Alien::~C_ASW_Alien()
 {
-	m_bOnFire = false;
-	UpdateFireEmitters();
 }
-
 
 void C_ASW_Alien::FireEvent( const Vector& origin, const QAngle& angles, int event, const char *options )
 {
@@ -563,9 +540,9 @@ ShadowType_t C_ASW_Alien::ShadowCastType()
 {	
 	if (asw_alien_shadows.GetBool())
 		return BaseClass::ShadowCastType();
+
 	// reactivedrop: disabling shadows from flashlight dlight
-	else
-		return SHADOWS_NONE;
+	return SHADOWS_NONE;
 
 	float fContribution = 0;
 	Vector vecDir = vec3_origin;
@@ -626,12 +603,6 @@ void C_ASW_Alien::PostDataUpdate( DataUpdateType_t updateType )
 	}
 }
 
-Vector C_ASW_Alien::GetLocalAutoTargetRadiusPos()
-{
-	// drone overrides this
-	return m_vecLastRenderedPos;
-}
-
 void C_ASW_Alien::ClientThink()
 {
 	BaseClass::ClientThink();
@@ -655,7 +626,7 @@ void C_ASW_Alien::ClientThink()
 	{
 		m_iMaxHealth = GetHealth();
 	}
-	else */if (GetHealth() > GetMaxHealth())
+	else */if (GetHealth() > m_iMaxHealth)
 	{
 		m_iMaxHealth = GetHealth();
 	}
@@ -832,78 +803,9 @@ void C_ASW_Alien::PaintHealthBar(CASWHud3DMarineNames *pSurface)
 
 			pChild = NextMovePeer();
 		}
-		float m_fHealthFraction = clamp(GetHealth() / (float)GetMaxHealth(), 0.0f, 1.0f);
+		float m_fHealthFraction = clamp(GetHealth() / (float)m_iMaxHealth, 0.0f, 1.0f);
 		pSurface->PaintGenericBar(this->GetRenderOrigin(), m_fHealthFraction, RGBcolor, 1.5f, Vector2D(0, 10));
 	}
-}
-
-// asw - test always advancing the frames
-void C_ASW_Alien::ASWUpdateClientSideAnimation()
-{
-	if ( GetSequence() != -1 )
-	{
-		// latch old values
-		//OnLatchInterpolatedVariables( LATCH_ANIMATION_VAR );
-		// move frame forward
-		//FrameAdvance( 0.0f ); // 0 means to use the time we last advanced instead of a constant
-
-		CStudioHdr *hdr = GetModelPtr();
-		float cyclerate = hdr ? GetSequenceCycleRate( hdr, GetSequence() ) : 1.0f;
-		float addcycle = gpGlobals->frametime * cyclerate * m_flPlaybackRate;
-		float flNewCycle = GetCycle() + addcycle;
-		m_flAnimTime = gpGlobals->curtime;
-
-		if ( (flNewCycle < 0.0f) || (flNewCycle >= 1.0f) ) 
-		{	
-			if (flNewCycle >= 1.0f)	// asw
-				ReachedEndOfSequence(); // asw
-			if ( IsSequenceLooping( hdr, GetSequence() ) )
-			{
-				flNewCycle -= (int)(flNewCycle);
-			}
-			else
-			{
-				flNewCycle = (flNewCycle < 0.0f) ? 0.0f : 1.0f;
-			}
-		}
-
-		SetCycle( flNewCycle );
-	}
-}
-
-void C_ASW_Alien::UpdateFireEmitters()
-{
-	bool bOnFire = (m_bOnFire.Get() && !IsEffectActive(EF_NODRAW));
-	if (bOnFire != m_bClientOnFire)
-	{
-		m_bClientOnFire = bOnFire;
-		if (m_bClientOnFire)
-		{
-			if ( !m_pBurningEffect )
-			{
-				m_pBurningEffect = UTIL_ASW_CreateFireEffect( this );
-			}
-			EmitSound( "ASWFire.BurningFlesh" );
-		}
-		else
-		{
-			if ( m_pBurningEffect )
-			{
-				ParticleProp()->StopEmission( m_pBurningEffect );
-				m_pBurningEffect = NULL;
-			}
-			StopSound("ASWFire.BurningFlesh");
-			if ( C_BaseEntity::IsAbsQueriesValid() )
-				EmitSound("ASWFire.StopBurning");
-		}
-	}
-}
-
-void C_ASW_Alien::UpdateOnRemove( void )
-{
-	BaseClass::UpdateOnRemove();
-	m_bOnFire = false;
-	UpdateFireEmitters();
 }
 
 // aliens require extra interpolation time due to think rate

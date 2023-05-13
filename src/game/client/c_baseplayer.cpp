@@ -312,7 +312,9 @@ BEGIN_PREDICTION_DATA_NO_BASE( CPlayerLocalData )
 	DEFINE_PRED_FIELD( m_nDuckTimeMsecs, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_nDuckJumpTimeMsecs, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_nJumpTimeMsecs, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
+#ifndef INFESTED_DLL
 	DEFINE_PRED_FIELD_TOL( m_flFallVelocity, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, 0.5f ),
+#endif
 //	DEFINE_PRED_FIELD( m_nOldButtons, FIELD_INTEGER, FTYPEDESC_INSENDTABLE ),
 	DEFINE_FIELD( m_nOldButtons, FIELD_INTEGER ),
 	DEFINE_PRED_FIELD( m_flStepSize, FIELD_FLOAT, FTYPEDESC_INSENDTABLE ),
@@ -926,6 +928,7 @@ void C_BasePlayer::OnDataChanged( DataUpdateType_t updateType )
 			render->SetAreaState( m_Local.m_chAreaBits, m_Local.m_chAreaPortalBits );
 		}
 
+#ifndef INFESTED_DLL
 		// Check for Ammo pickups.
 		int ammoTypes = GetAmmoDef()->NumAmmoTypes();
 		for ( int i = 0; i <= ammoTypes; i++ )
@@ -949,6 +952,7 @@ void C_BasePlayer::OnDataChanged( DataUpdateType_t updateType )
 				}
 			}
 		}
+#endif
 
 		// Only add this to the correct Hud
 		{

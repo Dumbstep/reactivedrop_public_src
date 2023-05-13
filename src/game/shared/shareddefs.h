@@ -12,6 +12,7 @@
 #endif
 
 #include "bittools.h"
+#include "rd_release_flags.h"
 
 #define TICK_INTERVAL			(gpGlobals->interval_per_tick)
 
@@ -119,8 +120,8 @@ inline float FractionUnDucked( int msecs )
 
 #define WEAPON_NOCLIP			-1	// clip sizes set to this tell the weapon it doesn't use a clip
 
-#define	MAX_AMMO_TYPES	35		// ???
-#define MAX_AMMO_SLOTS  35		// not really slots
+#define	MAX_AMMO_TYPES	48		// ???
+#define MAX_AMMO_SLOTS  48		// not really slots
 
 #define HUD_PRINTNOTIFY		1
 #define HUD_PRINTCONSOLE	2
@@ -459,13 +460,11 @@ enum
 	BLOOD_COLOR_GREEN,
 	BLOOD_COLOR_MECH,
 
-// reactivedrop: commented HL2_EPISODIC guard
-// BLOOD_COLOR_ANTLION_WORKER is needed for antlion code 
-//#if defined( HL2_EPISODIC )
+#if defined( HL2_EPISODIC )
 	BLOOD_COLOR_ANTLION,		// FIXME: Move to Base HL2
 	BLOOD_COLOR_ZOMBIE,			// FIXME: Move to Base HL2
 	BLOOD_COLOR_ANTLION_WORKER,
-//#endif // HL2_EPISODIC
+#endif // HL2_EPISODIC
 
 #if defined( INFESTED_DLL )
 	BLOOD_COLOR_BLOB,
@@ -837,8 +836,11 @@ bool IsHeadTrackingEnabled();
 // If this is defined, all of the scopeguard objects are NULL'd out to reduce overhead
 // #define SPLIT_SCREEN_STUBS
 
-
+#ifdef RD_SPLITSCREEN_ENABLED
+	#define MAX_SPLITSCREEN_PLAYERS 4
+#else
 	#define MAX_SPLITSCREEN_PLAYERS 1
+#endif
 
 
 inline bool IsSplitScreenSupported()

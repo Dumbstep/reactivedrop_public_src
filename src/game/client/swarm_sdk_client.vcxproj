@@ -76,7 +76,7 @@ if ERRORLEVEL 1 exit 1
       <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>.\hl2;.\swarm;.\swarm\vgui;..\statemachine;..\..\game\shared\multiplayer;..\..\game\shared\swarm;.\;..\..\common;..\..\public;..\..\public\tier0;..\..\public\tier1;..\..\game\shared;.\game_controls;$(IntDir);..\..\game\client\swarm\gameui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_WIN32;_DEBUG;DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC32;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC;MEMOVERRIDE_MODULE=client;_DLL_EXT=.dll;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;NO_STRING_T;CLIENT_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;ENABLE_HTMLWINDOW;fopen=dont_use_fopen;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;INFESTED_DLL;SWARM_DLL;INFESTED_PARTICLES;GAMEUI_EMBEDDED;GAMEUI_EXPORTS;VERSION_SAFE_STEAM_API_INTERFACES;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WIN32;_DEBUG;DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC32;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC;MEMOVERRIDE_MODULE=client;_DLL_EXT=.dll;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;NO_STRING_T;CLIENT_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;ENABLE_HTMLWINDOW;fopen=dont_use_fopen;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;INFESTED_DLL;SWARM_DLL;HL2_EPISODIC;INFESTED_PARTICLES;GAMEUI_EMBEDDED;GAMEUI_EXPORTS;VERSION_SAFE_STEAM_API_INTERFACES;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -176,7 +176,7 @@ if ERRORLEVEL 1 exit 1
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <AdditionalIncludeDirectories>.\hl2;.\swarm;.\swarm\vgui;..\statemachine;..\..\game\shared\multiplayer;..\..\game\shared\swarm;.\;..\..\common;..\..\public;..\..\public\tier0;..\..\public\tier1;..\..\game\shared;.\game_controls;$(IntDir);..\..\game\client\swarm\gameui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC32;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC;MEMOVERRIDE_MODULE=client;_DLL_EXT=.dll;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;NO_STRING_T;CLIENT_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;ENABLE_HTMLWINDOW;fopen=dont_use_fopen;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;INFESTED_DLL;SWARM_DLL;INFESTED_PARTICLES;GAMEUI_EMBEDDED;GAMEUI_EXPORTS;VERSION_SAFE_STEAM_API_INTERFACES;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC32;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;COMPILER_MSVC;MEMOVERRIDE_MODULE=client;_DLL_EXT=.dll;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;DLLNAME=client;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;NO_STRING_T;CLIENT_DLL;VECTOR;VERSION_SAFE_STEAM_API_INTERFACES;PROTECTED_THINGS_ENABLE;strncpy=use_Q_strncpy_instead;_snprintf=use_Q_snprintf_instead;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;ENABLE_HTMLWINDOW;fopen=dont_use_fopen;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;INFESTED_DLL;SWARM_DLL;HL2_EPISODIC;INFESTED_PARTICLES;GAMEUI_EMBEDDED;GAMEUI_EXPORTS;VERSION_SAFE_STEAM_API_INTERFACES;VPCGAME=swarm;VPCGAMECAPS=SWARM;_DLL_EXT=.dll;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -491,6 +491,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\game_timescale_shared.cpp" />
     <ClCompile Include="..\shared\hintmessage.cpp" />
     <ClCompile Include="..\shared\hintsystem.cpp" />
+    <ClCompile Include="..\shared\hl2\env_headcrabcanister_shared.cpp" />
     <ClCompile Include="..\shared\igamesystem.cpp" />
     <ClCompile Include="..\shared\mapentities_shared.cpp" />
     <ClCompile Include="..\shared\movevars_shared.cpp" />
@@ -515,6 +516,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\rope_helpers.cpp" />
     <ClCompile Include="..\shared\saverestore.cpp" />
     <ClCompile Include="..\shared\sceneentity_shared.cpp" />
+    <ClCompile Include="..\shared\script_intro_shared.cpp" />
     <ClCompile Include="..\shared\sequence_Transitioner.cpp" />
     <ClCompile Include="..\shared\sheetsimulator.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -542,6 +544,8 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\swarm\asw_env_spark.cpp" />
     <ClCompile Include="..\shared\swarm\asw_equipment_list.cpp" />
     <ClCompile Include="..\shared\swarm\asw_equip_req.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_fade_ent_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_fade_proxy_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_fx_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_gamemovement.cpp" />
     <ClCompile Include="..\shared\swarm\asw_gamerules.cpp" />
@@ -554,6 +558,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\swarm\asw_holdout_wave.cpp" />
     <ClCompile Include="..\shared\swarm\asw_holo_sentry_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_info_message_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_inhabitable_npc_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_laser_mine_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_marine_command.cpp" />
     <ClCompile Include="..\shared\swarm\asw_marine_gamemovement.cpp" />
@@ -585,6 +590,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\swarm\asw_weapon_50calmg_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_ammo_bag_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_ammo_satchel_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_ar2_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_assault_shotgun_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_autogun_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_bait.cpp" />
@@ -592,9 +598,11 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\swarm\asw_weapon_buff_grenade.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_chainsaw_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_combat_rifle_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_cryo_cannon_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_deagle_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_devastator_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_electrified_armor.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_energy_shield_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_fire_extinguisher_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_fist.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_flamer_shared.cpp" />
@@ -605,11 +613,13 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\swarm\asw_weapon_gas_grenades_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_grenades.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_grenade_launcher.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_hack_tool_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_healamp_gun_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_healgrenade_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_heal_gun_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_heavy_rifle_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_hornet_barrage.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_incendiary_grenades_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_jump_jet.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_laser_mines.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_medical_satchel_shared.cpp" />
@@ -623,20 +633,27 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="..\shared\swarm\asw_weapon_parse.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_pdw_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_pistol_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_plasma_thrower_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_prifle_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_railgun_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_revive_tool_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_ricochet_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_sentry_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_shield_bubble_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_shotgun_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_smart_bomb.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_sniper_rifle.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_speed_burst_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_stim_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\asw_weapon_stun_grenades_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_t75.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_tesla_gun_shared.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_tesla_trap.cpp" />
     <ClCompile Include="..\shared\swarm\asw_weapon_welder_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\rd_cause_of_death.cpp" />
     <ClCompile Include="..\shared\swarm\rd_challenges_shared.cpp" />
+    <ClCompile Include="..\shared\swarm\rd_hud_counter_shared.cpp" />
     <ClCompile Include="..\shared\swarm\rd_inventory_shared.cpp" />
     <ClCompile Include="..\shared\swarm\rd_lobby_utils.cpp" />
     <ClCompile Include="..\shared\swarm\rd_missions_shared.cpp" />
@@ -867,10 +884,19 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="history_resource.cpp" />
     <ClCompile Include="hl2\c_antlion_dust.cpp" />
     <ClCompile Include="hl2\c_ar2_explosion.cpp" />
+    <ClCompile Include="hl2\c_basehelicopter.cpp" />
+    <ClCompile Include="hl2\c_env_headcrabcanister.cpp" />
     <ClCompile Include="hl2\C_Func_Monitor.cpp" />
     <ClCompile Include="hl2\c_npc_antlionguard.cpp" />
+    <ClCompile Include="hl2\c_npc_combinegunship.cpp" />
+    <ClCompile Include="hl2\c_npc_zombine.cpp" />
+    <ClCompile Include="hl2\c_prop_combine_ball.cpp" />
     <ClCompile Include="hl2\c_rotorwash.cpp" />
+    <ClCompile Include="hl2\c_script_intro.cpp" />
+    <ClCompile Include="hl2\c_strider.cpp" />
+    <ClCompile Include="hl2\c_te_concussiveexplosion.cpp" />
     <ClCompile Include="hl2\c_waterbullet.cpp" />
+    <ClCompile Include="hl2\fx_hl2_tracers.cpp" />
     <ClCompile Include="hltvcamera.cpp" />
     <ClCompile Include="hud.cpp" />
     <ClCompile Include="hud_basechat.cpp" />
@@ -989,10 +1015,10 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_computer_area.cpp" />
     <ClCompile Include="swarm\c_asw_concommands.cpp" />
     <ClCompile Include="swarm\c_asw_debrief_stats.cpp" />
+    <ClCompile Include="swarm\c_asw_detonator.cpp" />
     <ClCompile Include="swarm\c_asw_door.cpp" />
     <ClCompile Include="swarm\c_asw_door_area.cpp" />
     <ClCompile Include="swarm\c_asw_drone_advanced.cpp" />
-    <ClCompile Include="swarm\c_asw_dummy_vehicle.cpp" />
     <ClCompile Include="swarm\c_asw_dynamic_light.cpp" />
     <ClCompile Include="swarm\c_asw_egg.cpp" />
     <ClCompile Include="swarm\c_asw_entity_dissolve.cpp" />
@@ -1001,6 +1027,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_firewall_piece.cpp" />
     <ClCompile Include="swarm\c_asw_flamer_projectile.cpp" />
     <ClCompile Include="swarm\c_asw_flare_projectile.cpp" />
+    <ClCompile Include="swarm\c_asw_flock.cpp" />
     <ClCompile Include="swarm\c_asw_fourwheelvehiclephysics.cpp" />
     <ClCompile Include="swarm\c_asw_fx.cpp" />
     <ClCompile Include="swarm\c_asw_fx_proxy.cpp" />
@@ -1008,13 +1035,12 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_gas_grenade_projectile.cpp" />
     <ClCompile Include="swarm\c_asw_generic_emitter.cpp" />
     <ClCompile Include="swarm\c_asw_generic_emitter_entity.cpp" />
-    <ClCompile Include="swarm\c_asw_grub.cpp" />
     <ClCompile Include="swarm\c_asw_gun_smoke_emitter.cpp" />
     <ClCompile Include="swarm\c_asw_hack.cpp" />
     <ClCompile Include="swarm\c_asw_hack_computer.cpp" />
     <ClCompile Include="swarm\c_asw_hack_wire_tile.cpp" />
     <ClCompile Include="swarm\c_asw_jeep.cpp" />
-    <ClCompile Include="swarm\c_asw_jeep_clientside.cpp" />
+    <ClCompile Include="swarm\c_asw_juggernaut.cpp" />
     <ClCompile Include="swarm\c_asw_jukebox.cpp" />
     <ClCompile Include="swarm\c_asw_laser_mine.cpp" />
     <ClCompile Include="swarm\c_asw_lesson.cpp" />
@@ -1023,6 +1049,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_marine_resource.cpp" />
     <ClCompile Include="swarm\c_asw_marine_speech.cpp" />
     <ClCompile Include="swarm\c_asw_marker.cpp" />
+    <ClCompile Include="swarm\c_asw_meatbug.cpp" />
     <ClCompile Include="swarm\c_asw_mesh_emitter_entity.cpp" />
     <ClCompile Include="swarm\c_asw_mine.cpp" />
     <ClCompile Include="swarm\c_asw_objective.cpp" />
@@ -1048,7 +1075,9 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_railgun_beam.cpp" />
     <ClCompile Include="swarm\c_asw_ranger.cpp" />
     <ClCompile Include="swarm\c_asw_render_targets.cpp" />
+    <ClCompile Include="swarm\c_asw_rifle_grenade.cpp" />
     <ClCompile Include="swarm\c_asw_rocket.cpp" />
+    <ClCompile Include="swarm\c_asw_runner.cpp" />
     <ClCompile Include="swarm\c_asw_scanner_info.cpp" />
     <ClCompile Include="swarm\c_asw_scanner_noise.cpp" />
     <ClCompile Include="swarm\c_asw_sentry_base.cpp" />
@@ -1061,6 +1090,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_simple_drone.cpp" />
     <ClCompile Include="swarm\c_asw_snow_emitter.cpp" />
     <ClCompile Include="swarm\c_asw_snow_volume.cpp" />
+    <ClCompile Include="swarm\c_asw_spitter.cpp" />
     <ClCompile Include="swarm\c_asw_steamstats.cpp" />
     <ClCompile Include="swarm\c_asw_t75.cpp" />
     <ClCompile Include="swarm\c_asw_tesla_trap.cpp" />
@@ -1068,6 +1098,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\c_asw_use_area.cpp" />
     <ClCompile Include="swarm\c_asw_inhabitable_npc.cpp" />
     <ClCompile Include="swarm\c_asw_vphysics_npc.cpp" />
+    <ClCompile Include="swarm\c_asw_watcher.cpp" />
     <ClCompile Include="swarm\c_asw_weapon.cpp" />
     <ClCompile Include="swarm\c_asw_weapon_rifle.cpp" />
     <ClCompile Include="swarm\c_env_sprite_asw_fade.cpp" />
@@ -1431,6 +1462,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="swarm\gameui\swarm\vdemos.cpp" />
     <ClCompile Include="swarm\gameui\swarm\vdownloadcampaign.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
       </PrecompiledHeader>
@@ -1559,6 +1591,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="swarm\gameui\swarm\vitemshowcase.cpp" />
     <ClCompile Include="swarm\gameui\swarm\vjukebox.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
       </PrecompiledHeader>
@@ -1703,12 +1736,17 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\rd_collections_inventory.cpp" />
     <ClCompile Include="swarm\rd_collections_swarmopedia.cpp" />
     <ClCompile Include="swarm\rd_convar_hacks.cpp" />
+    <ClCompile Include="swarm\rd_demo_utils.cpp" />
     <ClCompile Include="swarm\rd_font_hack.cpp" />
     <ClCompile Include="swarm\rd_fps_max_hack.cpp" />
+    <ClCompile Include="swarm\rd_hit_confirm.cpp" />
     <ClCompile Include="swarm\rd_hud_boss_bar.cpp" />
     <ClCompile Include="swarm\rd_rich_presence.cpp" />
+    <ClCompile Include="swarm\rd_steam_input.cpp" />
+    <ClCompile Include="swarm\rd_steam_input_binds.cpp" />
     <ClCompile Include="swarm\rd_swarmopedia.cpp" />
     <ClCompile Include="swarm\rd_text_filtering.cpp" />
+    <ClCompile Include="swarm\rd_tooltip_fix.cpp" />
     <ClCompile Include="swarm\vgui\asw_build_map_frame.cpp" />
     <ClCompile Include="swarm\vgui\asw_circularprogressbar.cpp" />
     <ClCompile Include="swarm\vgui\asw_hudelement.cpp" />
@@ -1720,16 +1758,12 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\vgui\asw_hud_emotes.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_floating_number.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_health.cpp" />
-    <ClCompile Include="swarm\vgui\asw_hud_health_cross.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_holdout.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_kills.cpp" />
-    <ClCompile Include="swarm\vgui\asw_hud_marine_portrait.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_master.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_minimap.cpp" />
-    <ClCompile Include="swarm\vgui\asw_hud_money.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_objective.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_overlay_messages.cpp" />
-    <ClCompile Include="swarm\vgui\asw_hud_portraits.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_powerups.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_squad_hotbar.cpp" />
     <ClCompile Include="swarm\vgui\asw_hud_use_area.cpp" />
@@ -1818,26 +1852,18 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClCompile Include="swarm\vgui\nb_lobby_row_small.cpp" />
     <ClCompile Include="swarm\vgui\nb_lobby_tooltip.cpp" />
     <ClCompile Include="swarm\vgui\nb_main_panel.cpp" />
-    <ClCompile Include="swarm\vgui\nb_mission_options.cpp" />
     <ClCompile Include="swarm\vgui\nb_mission_panel.cpp" />
     <ClCompile Include="swarm\vgui\nb_mission_summary.cpp" />
     <ClCompile Include="swarm\vgui\nb_promotion_panel.cpp" />
-    <ClCompile Include="swarm\vgui\nb_select_campaign_entry.cpp" />
-    <ClCompile Include="swarm\vgui\nb_select_campaign_panel.cpp" />
     <ClCompile Include="swarm\vgui\nb_select_marine_entry.cpp" />
     <ClCompile Include="swarm\vgui\nb_select_marine_panel.cpp" />
-    <ClCompile Include="swarm\vgui\nb_select_mission_entry.cpp" />
-    <ClCompile Include="swarm\vgui\nb_select_mission_panel.cpp" />
     <ClCompile Include="swarm\vgui\nb_select_save_entry.cpp" />
     <ClCompile Include="swarm\vgui\nb_select_save_panel.cpp" />
-    <ClCompile Include="swarm\vgui\nb_select_weapon_entry.cpp" />
-    <ClCompile Include="swarm\vgui\nb_select_weapon_panel.cpp" />
     <ClCompile Include="swarm\vgui\nb_skill_panel.cpp" />
     <ClCompile Include="swarm\vgui\nb_spend_skill_points.cpp" />
     <ClCompile Include="swarm\vgui\nb_suggest_difficulty.cpp" />
     <ClCompile Include="swarm\vgui\nb_vote_panel.cpp" />
     <ClCompile Include="swarm\vgui\nb_weapon_detail.cpp" />
-    <ClCompile Include="swarm\vgui\nb_weapon_unlocked.cpp" />
     <ClCompile Include="swarm\vgui\objectivedetailspanel.cpp" />
     <ClCompile Include="swarm\vgui\objectiveicons.cpp" />
     <ClCompile Include="swarm\vgui\objectivelistbox.cpp" />
@@ -2203,7 +2229,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="..\shared\hintmessage.h" />
     <ClInclude Include="..\shared\hintsystem.h" />
     <ClInclude Include="..\shared\hl2\basehlcombatweapon_shared.h" />
-    <ClInclude Include="..\shared\hl2\hl2_player_shared.h" />
+    <ClInclude Include="..\shared\hl2\env_headcrabcanister_shared.h" />
     <ClInclude Include="..\shared\hl2\hl_movedata.h" />
     <ClInclude Include="..\shared\ichoreoeventcallback.h" />
     <ClInclude Include="..\shared\IEffects.h" />
@@ -2269,6 +2295,8 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="..\shared\swarm\asw_deathmatch_mode_light.h" />
     <ClInclude Include="..\shared\swarm\asw_equipment_list.h" />
     <ClInclude Include="..\shared\swarm\asw_equip_req.h" />
+    <ClInclude Include="..\shared\swarm\asw_fade_ent_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_fade_proxy_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_fx_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_gamerules.h" />
     <ClInclude Include="..\shared\swarm\asw_gamestats_shared.h" />
@@ -2305,6 +2333,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="..\shared\swarm\asw_weapon_50calmg_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_ammo_bag_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_ammo_satchel_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_ar2_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_assault_shotgun_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_autogun_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_bait.h" />
@@ -2312,8 +2341,11 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="..\shared\swarm\asw_weapon_buff_grenade.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_chainsaw_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_combat_rifle_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_cryo_cannon_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_deagle_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_devastator_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_electrified_armor.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_energy_shield_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_fire_extinguisher_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_fist.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_flamer_shared.h" />
@@ -2324,11 +2356,13 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="..\shared\swarm\asw_weapon_gas_grenades_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_grenades.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_grenade_launcher.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_hack_tool_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_healamp_gun_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_healgrenade_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_heal_gun_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_heavy_rifle_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_hornet_barrage.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_incendiary_grenades_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_jump_jet.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_laser_mines.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_medical_satchel_shared.h" />
@@ -2342,20 +2376,27 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="..\shared\swarm\asw_weapon_parse.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_pdw_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_pistol_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_plasma_thrower_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_prifle_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_railgun_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_revive_tool_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_ricochet_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_sentry_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_shield_bubble_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_shotgun_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_smart_bomb.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_sniper_rifle.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_speed_burst_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_stim_shared.h" />
+    <ClInclude Include="..\shared\swarm\asw_weapon_stun_grenades_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_t75.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_tesla_gun_shared.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_tesla_trap.h" />
     <ClInclude Include="..\shared\swarm\asw_weapon_welder_shared.h" />
+    <ClInclude Include="..\shared\swarm\iconsistency.h" />
     <ClInclude Include="..\shared\swarm\rd_boss_bar_shared.h" />
+    <ClInclude Include="..\shared\swarm\rd_cause_of_death.h" />
     <ClInclude Include="..\shared\swarm\rd_challenges_shared.h" />
     <ClInclude Include="..\shared\swarm\rd_inventory_shared.h" />
     <ClInclude Include="..\shared\swarm\rd_lobby_utils.h" />
@@ -2506,6 +2547,8 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="glow_outline_effect.h" />
     <ClInclude Include="glow_overlay.h" />
     <ClInclude Include="history_resource.h" />
+    <ClInclude Include="hl2\c_basehelicopter.h" />
+    <ClInclude Include="hl2\c_prop_combine_ball.h" />
     <ClInclude Include="hltvcamera.h" />
     <ClInclude Include="hud.h" />
     <ClInclude Include="hudelement.h" />
@@ -2609,10 +2652,10 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\c_asw_client_corpse.h" />
     <ClInclude Include="swarm\c_asw_computer_area.h" />
     <ClInclude Include="swarm\c_asw_debrief_stats.h" />
+    <ClInclude Include="swarm\c_asw_detonator.h" />
     <ClInclude Include="swarm\c_asw_door.h" />
     <ClInclude Include="swarm\c_asw_door_area.h" />
     <ClInclude Include="swarm\c_asw_drone_advanced.h" />
-    <ClInclude Include="swarm\c_asw_dummy_vehicle.h" />
     <ClInclude Include="swarm\c_asw_dynamic_light.h" />
     <ClInclude Include="swarm\c_asw_egg.h" />
     <ClInclude Include="swarm\c_asw_entity_dissolve.h" />
@@ -2621,25 +2664,26 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\c_asw_firewall_piece.h" />
     <ClInclude Include="swarm\c_asw_flamer_projectile.h" />
     <ClInclude Include="swarm\c_asw_flare_projectile.h" />
+    <ClInclude Include="swarm\c_asw_flock.h" />
     <ClInclude Include="swarm\c_asw_fourwheelvehiclephysics.h" />
     <ClInclude Include="swarm\c_asw_fx.h" />
     <ClInclude Include="swarm\c_asw_game_resource.h" />
     <ClInclude Include="swarm\c_asw_gas_grenade_projectile.h" />
     <ClInclude Include="swarm\c_asw_generic_emitter.h" />
     <ClInclude Include="swarm\c_asw_generic_emitter_entity.h" />
-    <ClInclude Include="swarm\c_asw_grub.h" />
     <ClInclude Include="swarm\c_asw_gun_smoke_emitter.h" />
     <ClInclude Include="swarm\c_asw_hack.h" />
     <ClInclude Include="swarm\c_asw_hack_computer.h" />
     <ClInclude Include="swarm\c_asw_hack_wire_tile.h" />
     <ClInclude Include="swarm\c_asw_jeep.h" />
-    <ClInclude Include="swarm\c_asw_jeep_clientside.h" />
+    <ClInclude Include="swarm\c_asw_juggernaut.h" />
     <ClInclude Include="swarm\c_asw_jukebox.h" />
     <ClInclude Include="swarm\c_asw_laser_mine.h" />
     <ClInclude Include="swarm\c_asw_level_exploder.h" />
     <ClInclude Include="swarm\c_asw_marine.h" />
     <ClInclude Include="swarm\c_asw_marine_resource.h" />
     <ClInclude Include="swarm\c_asw_marker.h" />
+    <ClInclude Include="swarm\c_asw_meatbug.h" />
     <ClInclude Include="swarm\c_asw_mesh_emitter_entity.h" />
     <ClInclude Include="swarm\c_asw_mine.h" />
     <ClInclude Include="swarm\c_asw_objective.h" />
@@ -2665,7 +2709,9 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\c_asw_railgun_beam.h" />
     <ClInclude Include="swarm\c_asw_ranger.h" />
     <ClInclude Include="swarm\c_asw_render_targets.h" />
+    <ClInclude Include="swarm\c_asw_rifle_grenade.h" />
     <ClInclude Include="swarm\c_asw_rocket.h" />
+    <ClInclude Include="swarm\c_asw_runner.h" />
     <ClInclude Include="swarm\c_asw_scanner_info.h" />
     <ClInclude Include="swarm\c_asw_scanner_noise.h" />
     <ClInclude Include="swarm\c_asw_sentry_base.h" />
@@ -2678,6 +2724,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\c_asw_simple_drone.h" />
     <ClInclude Include="swarm\c_asw_snow_emitter.h" />
     <ClInclude Include="swarm\c_asw_snow_volume.h" />
+    <ClInclude Include="swarm\c_asw_spitter.h" />
     <ClInclude Include="swarm\c_asw_steamstats.h" />
     <ClInclude Include="swarm\c_asw_t75.h" />
     <ClInclude Include="swarm\c_asw_tesla_trap.h" />
@@ -2685,6 +2732,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\c_asw_use_area.h" />
     <ClInclude Include="swarm\c_asw_inhabitable_npc.h" />
     <ClInclude Include="swarm\c_asw_vphysics_npc.h" />
+    <ClInclude Include="swarm\c_asw_watcher.h" />
     <ClInclude Include="swarm\c_asw_weapon.h" />
     <ClInclude Include="swarm\c_asw_weapon_rifle.h" />
     <ClInclude Include="swarm\c_env_sprite_asw_fade.h" />
@@ -2753,6 +2801,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\gameui\swarm\vcontrolleroptionsbuttons.h" />
     <ClInclude Include="swarm\gameui\swarm\vcontrolleroptionssticks.h" />
     <ClInclude Include="swarm\gameui\swarm\vcustomcampaigns.h" />
+    <ClInclude Include="swarm\gameui\swarm\vdemos.h" />
     <ClInclude Include="swarm\gameui\swarm\vdownloadcampaign.h" />
     <ClInclude Include="swarm\gameui\swarm\vdownloads.h" />
     <ClInclude Include="swarm\gameui\swarm\vdropdownmenu.h" />
@@ -2776,6 +2825,7 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\gameui\swarm\vingamedifficultyselect.h" />
     <ClInclude Include="swarm\gameui\swarm\vingamekickplayerlist.h" />
     <ClInclude Include="swarm\gameui\swarm\vingamemainmenu.h" />
+    <ClInclude Include="swarm\gameui\swarm\vitemshowcase.h" />
     <ClInclude Include="swarm\gameui\swarm\vjukebox.h" />
     <ClInclude Include="swarm\gameui\swarm\vkeyboard.h" />
     <ClInclude Include="swarm\gameui\swarm\vkeyboardmouse.h" />
@@ -2804,9 +2854,11 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\iasw_fade_list.h" />
     <ClInclude Include="swarm\ibriefing.h" />
     <ClInclude Include="swarm\rd_collections.h" />
+    <ClInclude Include="swarm\rd_demo_utils.h" />
     <ClInclude Include="swarm\rd_font_hack.h" />
     <ClInclude Include="swarm\rd_hud_boss_bar.h" />
     <ClInclude Include="swarm\rd_rich_presence.h" />
+    <ClInclude Include="swarm\rd_steam_input.h" />
     <ClInclude Include="swarm\rd_swarmopedia.h" />
     <ClInclude Include="swarm\rd_text_filtering.h" />
     <ClInclude Include="swarm\vgui\asw_build_map_frame.h" />
@@ -2816,13 +2868,10 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\vgui\asw_hud_chat.h" />
     <ClInclude Include="swarm\vgui\asw_hud_crosshair.h" />
     <ClInclude Include="swarm\vgui\asw_hud_floating_number.h" />
-    <ClInclude Include="swarm\vgui\asw_hud_health_cross.h" />
     <ClInclude Include="swarm\vgui\asw_hud_holdout.h" />
-    <ClInclude Include="swarm\vgui\asw_hud_marine_portrait.h" />
     <ClInclude Include="swarm\vgui\asw_hud_master.h" />
     <ClInclude Include="swarm\vgui\asw_hud_minimap.h" />
     <ClInclude Include="swarm\vgui\asw_hud_objective.h" />
-    <ClInclude Include="swarm\vgui\asw_hud_portraits.h" />
     <ClInclude Include="swarm\vgui\asw_hud_powerups.h" />
     <ClInclude Include="swarm\vgui\asw_hud_squad_hotbar.h" />
     <ClInclude Include="swarm\vgui\asw_hud_use_area.h" />
@@ -2909,26 +2958,18 @@ if exist ..\..\devtools\bin\postbuild.cmd ..\..\devtools\bin\postbuild.cmd clien
     <ClInclude Include="swarm\vgui\nb_lobby_row_small.h" />
     <ClInclude Include="swarm\vgui\nb_lobby_tooltip.h" />
     <ClInclude Include="swarm\vgui\nb_main_panel.h" />
-    <ClInclude Include="swarm\vgui\nb_mission_options.h" />
     <ClInclude Include="swarm\vgui\nb_mission_panel.h" />
     <ClInclude Include="swarm\vgui\nb_mission_summary.h" />
     <ClInclude Include="swarm\vgui\nb_promotion_panel.h" />
-    <ClInclude Include="swarm\vgui\nb_select_campaign_entry.h" />
-    <ClInclude Include="swarm\vgui\nb_select_campaign_panel.h" />
     <ClInclude Include="swarm\vgui\nb_select_marine_entry.h" />
     <ClInclude Include="swarm\vgui\nb_select_marine_panel.h" />
-    <ClInclude Include="swarm\vgui\nb_select_mission_entry.h" />
-    <ClInclude Include="swarm\vgui\nb_select_mission_panel.h" />
     <ClInclude Include="swarm\vgui\nb_select_save_entry.h" />
     <ClInclude Include="swarm\vgui\nb_select_save_panel.h" />
-    <ClInclude Include="swarm\vgui\nb_select_weapon_entry.h" />
-    <ClInclude Include="swarm\vgui\nb_select_weapon_panel.h" />
     <ClInclude Include="swarm\vgui\nb_skill_panel.h" />
     <ClInclude Include="swarm\vgui\nb_spend_skill_points.h" />
     <ClInclude Include="swarm\vgui\nb_suggest_difficulty.h" />
     <ClInclude Include="swarm\vgui\nb_vote_panel.h" />
     <ClInclude Include="swarm\vgui\nb_weapon_detail.h" />
-    <ClInclude Include="swarm\vgui\nb_weapon_unlocked.h" />
     <ClInclude Include="swarm\vgui\objectivedetailspanel.h" />
     <ClInclude Include="swarm\vgui\objectiveicons.h" />
     <ClInclude Include="swarm\vgui\objectivelistbox.h" />

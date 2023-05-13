@@ -20,6 +20,7 @@ namespace ReactiveDropMissions
 
 #ifdef GAME_DLL
 	void CreateNetworkStringTables();
+	void ClearServerCache();
 #else
 	void InstallStringTableCallback( const char *tableName );
 	void ClearClientCache();
@@ -110,6 +111,7 @@ struct RD_Campaign_t
 {
 	char BaseName[64]{};
 	PublishedFileId_t WorkshopID{ k_PublishedFileIdInvalid };
+	bool Installed{ false };
 
 	string_t CampaignName{ NULL_STRING }; // could be localized
 	string_t CampaignDescription{ NULL_STRING }; // could be localized
@@ -157,6 +159,7 @@ struct RD_Mission_t
 {
 	char BaseName[64]{};
 	PublishedFileId_t WorkshopID{ k_PublishedFileIdInvalid };
+	bool Installed{ false };
 
 	int32_t PosX{};
 	int32_t PosY{};

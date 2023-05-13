@@ -13,7 +13,6 @@
 #include "clientmode_asw.h"
 #include "asw_vgui_edit_emitter.h"
 #include "engine/IEngineSound.h"
-#include "c_asw_jeep_clientside.h"
 #include "vgui\asw_hud_minimap.h"
 #include "asw_vgui_manipulator.h"
 #include "c_asw_camera_volume.h"
@@ -35,6 +34,7 @@
 #include "asw_deathmatch_mode.h"
 #include "asw_medal_store.h"
 #include "asw_weapon_parse.h"
+#include "asw_equipment_list.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -334,7 +334,7 @@ void ASW_ActivateExtra_f()
 	if ( pMarine )
 	{
 		C_ASW_Weapon *pTempExtra = pMarine->GetASWWeapon( ASW_TEMPORARY_WEAPON_SLOT );
-		if ( pTempExtra && pTempExtra->GetWeaponInfo() && pTempExtra->GetWeaponInfo()->m_bExtra )
+		if ( pTempExtra && pTempExtra->GetEquipItem() && pTempExtra->GetEquipItem()->m_bIsExtra )
 		{
 			index = ASW_TEMPORARY_WEAPON_SLOT;
 		}
@@ -346,32 +346,6 @@ ConCommand ASW_ActivatePrimary( "ASW_ActivatePrimary", ASW_ActivatePrimary_f, "A
 ConCommand ASW_ActivateSecondary( "ASW_ActivateSecondary", ASW_ActivateSecondary_f, "Activates the item in your secondary inventory slot", 0 );
 ConCommand ASW_ActivateTertiary( "ASW_ActivateTertiary", ASW_ActivateTertiary_f, "Activates the item in your tertiary (temporary) inventory slot", 0 );
 ConCommand ASW_ActivateExtra( "ASW_ActivateExtra", ASW_ActivateExtra_f, "Activates the item in your extra inventory slot", 0 );
-
-C_ASW_PropJeep_Clientside* g_pJeep = NULL;
-void asw_make_jeep_f()
-{
-	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if (pPlayer)
-	{
-		C_ASW_PropJeep_Clientside* pJeep = C_ASW_PropJeep_Clientside::CreateNew(false);
-		pJeep->SetAbsOrigin(pPlayer->GetAbsOrigin());
-		pJeep->Initialize();
-		g_pJeep = pJeep;
-		// need to set player?
-	}
-}
-ConCommand asw_make_jeep( "asw_make_jeep", asw_make_jeep_f, "Creates a clientside jeep", FCVAR_CHEAT );
-
-
-void asw_make_jeep_phys_f()
-{
-	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	if (pPlayer && g_pJeep)
-	{
-		g_pJeep->InitPhysics();
-	}
-}
-ConCommand asw_make_jeep_phys( "asw_make_jeep_phys", asw_make_jeep_phys_f, "Creates physics for test clientside jeep", FCVAR_CHEAT );
 
 /*
 void asw_snow_test_f()

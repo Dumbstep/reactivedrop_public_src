@@ -201,7 +201,7 @@ void CASW_Weapon_Sniper_Rifle::PrimaryAttack( void )
 #ifndef CLIENT_DLL
 	if (asw_debug_marine_damage.GetBool())
 		Msg("Weapon dmg = %f\n", info.m_flDamage);
-	info.m_flDamage *= pMarine->GetMarineResource()->OnFired_GetDamageScale();
+	pMarine->GetMarineResource()->OnFired_ScaleDamage( info );
 #endif
 
 	int iPenetration = 1;
@@ -231,12 +231,20 @@ void CASW_Weapon_Sniper_Rifle::PrimaryAttack( void )
 	m_fSlowTime = gpGlobals->curtime + 0.03f;
 }
 
+void CASW_Weapon_Sniper_Rifle::SecondaryAttack()
+{
+	m_flNextSecondaryAttack = gpGlobals->curtime + 0.5f;
+}
+
 void CASW_Weapon_Sniper_Rifle::Precache()
 {
 	PrecacheModel( "swarm/sprites/whiteglow1.vmt" );
 	PrecacheModel( "swarm/sprites/greylaser1.vmt" );
-	PrecacheScriptSound("ASW_Pistol.ReloadA");
-	PrecacheScriptSound("ASW_Pistol.ReloadB");
+	PrecacheScriptSound( "ASW_Weapon_Sniper_Rifle.ReloadA" );
+	PrecacheScriptSound( "ASW_Weapon_Sniper_Rifle.ReloadB" );
+	PrecacheScriptSound( "ASW_Weapon_Sniper_Rifle.ReloadC" );
+	PrecacheScriptSound( "ASW_Weapon_Sniper_Rifle.Zoomin" );
+	PrecacheScriptSound( "ASW_Weapon_Sniper_Rifle.Zoomout" );
 
 	BaseClass::Precache();
 }
@@ -284,6 +292,7 @@ void CASW_Weapon_Sniper_Rifle::UpdateZoomState( void )
 	if ( !pMarine->IsInhabited() && IsZoomed() )
 	{
 		m_bZoomed = false;
+		EmitSound( "ASW_Weapon_Sniper_Rifle.Zoomout" );
 		return;
 	}
 
@@ -299,6 +308,7 @@ void CASW_Weapon_Sniper_Rifle::UpdateZoomState( void )
 	if ( bAttack2 && !bOldAttack2 )
 	{
 		m_bZoomed = !IsZoomed();
+		EmitSound( m_bZoomed ? "ASW_Weapon_Sniper_Rifle.Zoomin" : "ASW_Weapon_Sniper_Rifle.Zoomout" );
 	}
 }
 
@@ -437,5 +447,14 @@ void CASW_Weapon_Sniper_Rifle::OnMuzzleFlashed()
 	{
 		FX_ASW_ShotgunSmoke(attachOrigin, attachAngles);
 	}
+}
+
+const char *CASW_Weapon_Sniper_Rifle::GetPartialReloadSound( int iPart )
+{
+	if ( iPart == 1 )
+		return "ASW_Weapon_Sniper_Rifle.ReloadB";
+	if ( iPart == 2 )
+		return "ASW_Weapon_Sniper_Rifle.ReloadC";
+	return "ASW_Weapon_Sniper_Rifle.ReloadA";
 }
 #endif

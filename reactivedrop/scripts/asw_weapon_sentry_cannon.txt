@@ -62,7 +62,7 @@ WeaponData
 		"double_shot"		"ASW_Weapon.Reload4"
 		"single_shot"		"ASW_Weapon.Reload4"
 		// weapon switch sound
-		"special3"		"ASW_Weapon.Reload3"
+		"special3"		"ASW_Weapon.Reload1"
 
 		// NPC SECTION
 		"single_shot_npc"	"ASW_Weapon.Reload4"

@@ -62,6 +62,7 @@ public:
 	CASW_Spawn_Set( KeyValues *pKV, bool bOverlay );
 	bool MatchesLevel( string_t iszLevelName ) const;
 	void ApplyOverlay( CASW_Spawn_Set *pTarget );
+	void Precache();
 	void Dump();
 	float ComputeTotalWeight( ASW_Spawn_Type iSpawnType ) const;
 
@@ -110,7 +111,9 @@ class CASW_Spawn_Definition
 public:
 	CASW_Spawn_Definition( KeyValues *pKV );
 	CASW_Spawn_Definition( const CASW_Spawn_Definition & def );
+	void Precache();
 	void Dump( float flTotalWeight );
+	const char *GetHordeSoundName() const;
 
 	float m_flSelectionWeight;
 	CUtlVectorAutoPurge<CASW_Spawn_NPC *> m_NPCs;
@@ -120,20 +123,24 @@ public:
 class CASW_Spawn_NPC
 {
 public:
+	explicit CASW_Spawn_NPC( const char *szAlienClass );
 	CASW_Spawn_NPC( KeyValues *pKV );
 	CASW_Spawn_NPC( const CASW_Spawn_NPC & npc );
+	void Precache();
 	void Dump();
 
-	ASW_Alien_Class_Entry *m_pAlienClass;
+	const ASW_Alien_Class_Entry *m_pAlienClass;
 	int m_iHealthBonus;
 	float m_flSpeedScale;
 	float m_flSizeScale;
 	bool m_bFlammable;
 	bool m_bFreezable;
+	float m_flFreezeResistance;
 	bool m_bTeslable;
 	bool m_bFlinches;
 	bool m_bGrenadeReflector;
 	string_t m_iszVScript;
+	string_t m_iszModelOverride;
 	float m_flSpawnChance;
 	CASW_Spawn_Requirement m_Requirement;
 };

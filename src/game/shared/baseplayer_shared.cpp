@@ -1791,7 +1791,11 @@ void CBasePlayer::SharedSpawn()
 	pl.deadflag	= false;
 	m_lifeState	= LIFE_ALIVE;
 	m_iHealth = 100;
+#ifdef INFESTED_DLL
+	m_takedamage = DAMAGE_NO;
+#else
 	m_takedamage		= DAMAGE_YES;
+#endif
 
 	m_Local.m_bDrawViewmodel = true;
 	m_Local.m_flStepSize = sv_stepsize.GetFloat();

@@ -98,6 +98,11 @@ void C_ASW_Hack_Computer::ClientThink()
 			{
 				vgui::HScheme scheme = vgui::scheme()->LoadSchemeFromFile("resource/SwarmSchemeNew.res", "SwarmSchemeNew");
 
+				vgui::Panel *pOldFrame = GetClientMode()->GetPanelFromViewport( "ComputerContainer" );
+				Assert( !pOldFrame );
+				if ( pOldFrame )
+					pOldFrame->MarkForDeletion();
+
 				if (GetComputerArea() && GetComputerArea()->IsPDA())
 					m_hFrame = new CASW_VGUI_Computer_Container( GetClientMode()->GetViewport(), "ComputerContainer", "#asw_syntek_pda" );
 				else
@@ -111,8 +116,8 @@ void C_ASW_Hack_Computer::ClientThink()
 
 				m_hFrame->MoveToFront();
 				m_hFrame->RequestFocus();
-				m_hFrame->SetVisible(true);
-				m_hFrame->SetEnabled(true);			
+				m_hFrame->SetVisible( true );
+				m_hFrame->SetEnabled( true );
 				
 				m_bLaunchedHackPanel = true;
 			}
@@ -195,19 +200,20 @@ bool C_ASW_Hack_Computer::ShouldPredict()
 //  also allows overriding during the splash screen
 bool C_ASW_Hack_Computer::CanOverrideHack()
 {
-	if (m_hComputerFrame.Get())
+	CASW_VGUI_Computer_Frame *pFrame = m_hComputerFrame;
+	C_ASW_Computer_Area *pArea = GetComputerArea();
+	if ( !pFrame || !pArea )
+		return false;
+
+	if ( pArea->IsLocked() )
 	{
-		if (GetComputerArea() && GetComputerArea()->IsLocked())
-		{
-			if (m_hComputerFrame->m_iBackdropType == 1 || m_hComputerFrame->m_bPlayingSplash)
-			{
-				if (m_hComputerFrame->m_pMenuPanel && m_hComputerFrame->m_pMenuPanel->IsHacking())	// already hacking
-					return false;
-				return true;
-			}
-		}
+		if ( pFrame->m_pMenuPanel && pFrame->m_pMenuPanel->IsHacking() ) // already hacking
+			return false;
+
+		return pFrame->m_iBackdropType == 1 || pFrame->m_bPlayingSplash;
 	}
-	return false;
+
+	return pFrame->m_bPlayingSplash;
 }
 
 int C_ASW_Hack_Computer::GetTumblerPosition(int i)

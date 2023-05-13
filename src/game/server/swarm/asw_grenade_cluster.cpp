@@ -78,7 +78,8 @@ END_SCRIPTDESC();
 void CASW_Grenade_Cluster::Spawn( void )
 {
 	Precache();
-	SetModel(CLUSTER_GRENADE_MODEL);
+	SetModel( CLUSTER_GRENADE_MODEL );
+	m_nSkin = 0;
 	
 	SetMoveType( MOVETYPE_FLYGRAVITY, MOVECOLLIDE_FLY_BOUNCE );
 
@@ -151,24 +152,19 @@ void CASW_Grenade_Cluster::CheckNearbyDrones()
 	// see if an alien is nearby
 	if (gpGlobals->curtime >= m_fEarliestAOEDetonationTime)
 	{
-		float flRadius = asw_cluster_grenade_radius_check_scale.GetFloat() * m_DmgRadius;
-		Vector vecSrc = GetAbsOrigin();
-		CBaseEntity *pEntity = NULL;
-		for ( CEntitySphereQuery sphere( vecSrc, flRadius ); (pEntity = sphere.GetCurrentEntity()) != NULL; sphere.NextEntity() )
+		if ( !GetOwnerEntity() || !GetOwnerEntity()->IsAlien() )
 		{
-			//if (!pEntity->IsNPC())
-			//	continue;
+			float flRadius = asw_cluster_grenade_radius_check_scale.GetFloat() * m_DmgRadius;
+			Vector vecSrc = GetAbsOrigin();
+			CBaseEntity *pEntity = NULL;
+			for ( CEntitySphereQuery sphere( vecSrc, flRadius ); ( pEntity = sphere.GetCurrentEntity() ) != NULL; sphere.NextEntity() )
+			{
+				if ( !pEntity->IsAlien() )
+					continue;
 
-			//IASW_Spawnable_NPC *pSpawnable = dynamic_cast<IASW_Spawnable_NPC*>(pEntity);
-			//if (!pSpawnable)
-			//	continue;
-			
-			//Simplify checks. We lose only CASW_Simple_Drone/CASW_Simple_Alien and unimplemented CASW_Zombie with no even files in project
-			if (!pEntity->IsAlien())
-				continue;
-		
-			Detonate();
-			return;
+				Detonate();
+				return;
+			}
 		}
 
 		if (gpGlobals->curtime >= m_fDetonateTime)
@@ -244,8 +240,11 @@ CASW_Grenade_Cluster* CASW_Grenade_Cluster::Cluster_Grenade_Create( float flDama
 	pGrenade->SetAbsVelocity( velocity );
 	pGrenade->SetClusters(iClusters, true);
 	pGrenade->m_hCreatorWeapon = pCreatorWeapon;
-	if( pCreatorWeapon )
+	if ( pCreatorWeapon )
+	{
 		pGrenade->m_CreatorWeaponClass = pCreatorWeapon->Classify();
+		pGrenade->m_ProjectileData.GetForModify().SetFromWeapon( pCreatorWeapon );
+	}
 
 	IGameEvent* event = gameeventmanager->CreateEvent("cluster_grenade_create");
 	if (event)
@@ -491,6 +490,7 @@ void CASW_Grenade_Cluster::VGrenadeTouch(CBaseEntity* pOther)
 								m_DmgRadius,
 								m_iClusters,
 								GetAbsOrigin(), GetAbsAngles(), GetAbsVelocity(), AngularImpulse(0, 0, 0), m_hFirer.Get(), m_hCreatorWeapon.Get());
+							pGrenade->m_ProjectileData.GetForModify() = m_ProjectileData;
 
 							UTIL_Remove(this);
 
@@ -526,7 +526,14 @@ void CASW_Grenade_Cluster::VGrenadeTouch(CBaseEntity* pOther)
 
 	if ( m_bExplodeOnWorldContact )
 	{
+		if ( pOther->m_takedamage != DAMAGE_NO && pOther->IsNPC() )
+		{
+			m_flDamage *= m_flDirectHitDamageMultiplier;
+			m_flDirectHitDamageMultiplier = 1.0f;
+		}
+
 		Detonate();
+		return;
 	}
 
 	//Orange. Ricochet stuff

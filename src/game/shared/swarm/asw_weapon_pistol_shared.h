@@ -59,8 +59,6 @@ public:
 
 		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
 
-		virtual const char* GetPickupClass() { return "asw_pickup_pistol"; }
-
 		virtual bool IsRapidFire() { return false; }
 		virtual float GetMadFiringBias() { return 0.2f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
 	#else
@@ -68,10 +66,11 @@ public:
 		//virtual const char* GetTracerEffectName() { return "tracer_pistol"; }	// particle effect name
 		//virtual const char* GetMuzzleEffectName() { return "muzzle_pistol"; }	// particle effect name
 
-		virtual bool DisplayClipsDoubled() { return false; }
+		virtual bool DisplayClipsDoubled() { return true; }
 		virtual const char* GetTracerEffectName() { return "tracer_pistol"; }	// particle effect name
 		virtual const char* GetMuzzleEffectName() { return "muzzle_pistol"; }	// particle effect name
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/pistol_empty_clip.mdl"; }
 
 	virtual const char* GetUTracerType();
 	// Classification

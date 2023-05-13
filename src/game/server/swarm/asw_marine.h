@@ -8,6 +8,8 @@
 #include "asw_playeranimstate.h"
 #include "asw_lag_compensation.h"
 #include "iasw_server_usable_entity.h"
+#include "asw_weapon.h"
+#include "rd_inventory_shared.h"
 
 class CASW_Player;
 class CASW_Marine_Resource;
@@ -90,15 +92,15 @@ public:
 	virtual void PrecacheSpeech();
 	
 	virtual void	Spawn( void );
-	virtual void	NPCInit();
 	virtual void	UpdateOnRemove();
-	void	SetModelFromProfile();
 	void	SelectModelFromProfile();
 	void	SelectModel();
 	
 	CAI_Senses *CreateSenses();
 
 	void SetHeightLook( float flHeightLook );
+	int GetBaseHealth() { return 100; }
+	void SetHealthByDifficultyLevel() {}
 
 	// Thinking
 	virtual void Think(void);
@@ -113,6 +115,7 @@ public:
 	// Camera
 	virtual const QAngle& ASWEyeAngles( void );
 	Vector EyePosition(void);
+	QAngle m_AIEyeAngles;
 
 	// Classification
 	Class_T		Classify( void ) { return (Class_T) CLASS_ASW_MARINE; }
@@ -126,9 +129,10 @@ public:
 	
 	// Marine resource
 	void SetMarineResource(CASW_Marine_Resource *pMR);
-	CASW_Marine_Resource* GetMarineResource() const;
-	CASW_Marine_Profile* GetMarineProfile();
-	EHANDLE m_MarineResource;
+	CASW_Marine_Resource *GetMarineResource() const;
+	CHandle<CASW_Marine_Resource> m_MarineResource;
+	CASW_Marine_Profile *GetMarineProfile();
+	CNetworkVar( int, m_nMarineProfile );
 
 	// Commander/Inhabiting
 	bool IsInhabited();
@@ -140,9 +144,11 @@ public:
 	bool IsAlienNear();	// is an alien nearby? (used by speech to know if we should shout urgent lines)
 	void HurtAlien(CBaseEntity *pAlien, const CTakeDamageInfo &info);
 	void HurtJunkItem(CBaseEntity *pAlien, const CTakeDamageInfo &info);
+	void SetSpawnZombineOnDeath( bool bSpawn );
 	float m_fMadFiringCounter;
 	static float s_fNextMadFiringChatter;
 	float m_fNextAlienWalkDamage;	// timer for pain from walking on aliens
+	bool m_bSpawnZombineOnDeath;	// spawns a zombine in the place of a marine after death
 
 	// Sound, speech
 	CASW_MarineSpeech* GetMarineSpeech() { return m_MarineSpeech; }		
@@ -168,7 +174,6 @@ public:
 	virtual bool ASWAnim_CanMove();
 	virtual float MaxSpeed();
 	void AvoidPhysicsProps( CUserCmd *pCmd );
-	void    PhysicsSimulate( void );		
 	virtual void InhabitedPhysicsSimulate();
 	virtual bool ShouldPlayerAvoid( void );
 	virtual float GetIdealSpeed() const;
@@ -184,8 +189,7 @@ public:
 	bool TeleportToFreeNode( CASW_Marine *pTarget = NULL, float fNearestDist = -1 );
 	CNetworkVar( bool, m_bForceWalking );
 	CNetworkVector( m_vecGroundVelocity );
-
-	CASW_Lag_Compensation m_LagCompensation;
+	CNetworkVar( bool, m_bRolls );
 
 	// melee
 	void PhysicsShove();
@@ -271,9 +275,17 @@ public:
 	Class_T m_iLastDamageBuffType;
 	CHandle<CASW_Marine> m_hLastDamageBuffApplier;
 
-	void AddElectrifiedArmor( float flDuration ) { m_flElectrifiedArmorEndTime = MAX( GetElectrifiedArmorEndTime(), gpGlobals->curtime + flDuration ); }
+	void SetNightVision( bool bNightVision ) { m_bNightVision = bNightVision; }
+	CNetworkVar( bool, m_bNightVision );
+
+	void AddElectrifiedArmor( float flDuration, CASW_Weapon *pArmor )
+	{
+		m_flElectrifiedArmorEndTime = MAX( GetElectrifiedArmorEndTime(), gpGlobals->curtime + flDuration );
+		m_ElectrifiedArmorProjectileData.GetForModify().SetFromWeapon( pArmor );
+	}
 	float GetElectrifiedArmorEndTime() { return m_flElectrifiedArmorEndTime.Get(); }
 	bool IsElectrifiedArmorActive() { return GetElectrifiedArmorEndTime() > gpGlobals->curtime; }
+	CNetworkVarEmbedded( CRD_ProjectileData, m_ElectrifiedArmorProjectileData );
 	CNetworkVar( float, m_flElectrifiedArmorEndTime );
 	
 	void ApplyPassiveArmorEffects( CTakeDamageInfo &dmgInfo ) RESTRICT ;
@@ -402,6 +414,9 @@ public:
 	CNetworkVar(int, m_ASWOrders);
 	ASW_Orders GetASWOrders() { return (ASW_Orders) m_ASWOrders.Get(); }
 	void SetASWOrders(ASW_Orders NewOrders, float fHoldingYaw=-1, const Vector *pOrderPos=NULL);
+	void ScriptOrderFollowSquadLeader();
+	void ScriptOrderHoldPosition( float flYaw );
+	void ScriptOrderMoveTo( float flYaw, Vector vecOrderPos );
 	void OrdersFromPlayer(CASW_Player* pPlayer, ASW_Orders NewOrders, CBaseEntity *pMarine, bool bChatter, float fHoldingYaw=-1, Vector *pVecOrderPos = NULL);	// called by the player when ordering this marine about	
 	virtual bool CreateBehaviors();
 	void ProjectBeam( const Vector &vecStart, const Vector &vecDir, int width, int brightness, float duration );
@@ -424,6 +439,7 @@ public:
 	float m_flLastEnemyYawTime;
 
 	void OrderHackArea( CASW_Use_Area *pArea );
+	void ScriptOrderHackArea( HSCRIPT area );
 
 	// AI taking ammo
 	virtual int SelectTakeAmmoSchedule();
@@ -471,8 +487,9 @@ public:
 	int SelectOffhandItemSchedule();
 	void FinishedUsingOffhandItem( bool bItemThrown = false, bool bFailed = false );
 	bool CanThrowOffhand( CASW_Weapon *pWeapon, const Vector &vecSrc, const Vector &vecDest, bool bDrawArc = false );
-	const Vector& GetOffhandItemSpot() { return m_vecOffhandItemSpot; }
+	const Vector &GetOffhandItemSpot() { return m_vecOffhandItemSpot; }
 	Vector GetOffhandThrowSource( const Vector *vecStandingPos = NULL );
+	const Vector &GetOffhandThrowDest();
 	int FindThrowNode( const Vector &vThreatPos, float flMinThreatDist, float flMaxThreatDist, float flBlockTime );
 	Vector m_vecOffhandItemSpot;					// the place we want to throw/deploy our offhand item
 	CHandle<CASW_Weapon> m_hOffhandItemToUse;		// ordering the marine to use an offhand item
@@ -540,13 +557,13 @@ public:
 	void Script_GetInventoryTable( HSCRIPT hTable );
 	const char* Script_GetMarineName();
 	void Script_Speak( const char *pszConcept, float delay, const char *pszCriteria );
+	void SetMarineRolls( bool bRolls );
 
 	void DoDamagePowerupEffects( CBaseEntity *pTarget, CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr );
-	int m_iDamageAttributeEffects;
 	virtual void FireBullets( const FireBulletsInfo_t &info );
 	virtual void FireRegularBullets( const FireBulletsInfo_t &info );
 	virtual void FirePenetratingBullets( const FireBulletsInfo_t &info, int iMaxPenetrate, float fPenetrateChance, int iSeedPlus, bool bAllowChange=true, Vector *pPiercingTracerEnd=NULL, bool bSegmentTracer = true );
-	virtual void FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBounce, int iSeedPlus=0 );
+	virtual void FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBounce, int iSeedPlus = 0, bool bAllowHittingAttacker = false );
 	CBaseCombatWeapon* GetLastWeaponSwitchedTo();
 	EHANDLE m_hLastWeaponSwitchedTo;
 	bool m_bLastWeaponBeforeTempWasSecondary;
@@ -554,19 +571,15 @@ public:
 	virtual void AimGun();
 	float m_fLastShotAlienTime;
 	float m_fLastShotJunkTime;
-	virtual void DoMuzzleFlash();
-	virtual void DoImpactEffect( trace_t &tr, int nDamageType );
-	void MakeTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType );
-	void MakeUnattachedTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType );
 	void OnWeaponFired( const CBaseEntity *pWeapon, int nShotsFired, bool bIsSecondary = false );
 	float m_flLastAttributeExplosionSound;
 	int m_nFastReloadsInARow;
 	CNetworkVar( float, m_flPreventLaserSightTime );
 
 	// AI control of firing
-	bool AIWantsToFire();
-	bool AIWantsToFire2();
-	bool AIWantsToReload();
+	virtual bool AIWantsToFire();
+	virtual bool AIWantsToFire2();
+	virtual bool AIWantsToReload();
 	bool m_bWantsToFire, m_bWantsToFire2;
 	float m_fMarineAimError;
 	CNetworkVar(float, m_fAIPitch);	// pitch aim of the AI, so it can be shown by the clientside anims
@@ -597,7 +610,7 @@ public:
 	void AllowOverHeal(bool state) { m_bOverHealAllowed = state; }
 	void MeleeBleed(CTakeDamageInfo* info);
 	void BecomeInfested(CASW_Alien* pAlien);
-	void CureInfestation(CASW_Marine *pHealer, float fCureFraction);
+	void CureInfestation( CASW_Marine *pHealer, CBaseEntity *pWeapon, float fCureFraction );
 	void ScriptBecomeInfested();
 	void ScriptCureInfestation();
 	bool m_bPlayedCureScream;	// have we played a scream sound for our parasite?
@@ -608,13 +621,16 @@ public:
 	virtual void ScriptIgnite( float flFlameLifetime );
 	virtual void ASW_Ignite( float flFlameLifetime, float flSize, CBaseEntity *pAttacker, CBaseEntity *pDamagingWeapon = NULL );
 	virtual void Ignite( float flFlameLifetime, bool bNPCOnly = true, float flSize = 0.0f, bool bCalledByLevelDesigner = false );
+	virtual void Extinguish( CBaseEntity *pHealer, CBaseEntity *pWeapon );
 	virtual void Extinguish();
+	void ScriptExtinguish() { Extinguish( NULL, NULL ); }
 	virtual	bool		AllowedToIgnite( void );
 	float m_flFirstBurnTime;
 	float m_flLastBurnTime;
 	float m_flLastBurnSoundTime;
 	float m_fNextPainSoundTime;
 	virtual void Event_Killed( const CTakeDamageInfo &info );
+	bool CanBecomeRagdoll();
 	virtual bool BecomeRagdollOnClient( const Vector &force );
 	void Suicide();
 	bool IsWounded() const;	// less than 60% health
@@ -642,13 +658,12 @@ public:
 	float m_fLastMobDamageTime;
 	bool m_bHasBeenMobAttacked;
 	CHandle<CASW_Marine> m_hInfestationCurer;	// the last medic to cure us of some infestation - give him some stats if I survive the infestation
+	EHANDLE m_hInfestationCureWeapon;
 	CNetworkVar(bool, m_bOnFire);
 	virtual bool TestHitboxes( const Ray_t &ray, unsigned int fContentsMask, trace_t& tr );
 	virtual void TraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr );
 	virtual void Bleed( const CTakeDamageInfo &info, const Vector &vecPos, const Vector &vecDir, trace_t *ptr );
 	void PerformResurrectionEffect( void );		///< issue any special effects or sounds on resurrection
-	// we want to no part of this freezing business!
-	void Freeze( float flFreezeAmount, CBaseEntity *pFreezer, Ray_t *pFreezeRay ) { }
 	int m_iPoisonHeal;
 	float m_flNextPoisonHeal;
 
@@ -676,13 +691,13 @@ public:
 		fEmoteGoTime, fEmoteExclaimTime, fEmoteAnimeSmileTime, fEmoteQuestionTime;
 
 	// driving
-	virtual void StartDriving(IASW_Vehicle* pVehicle);
-	virtual void StopDriving(IASW_Vehicle* pVehicle);
-	IASW_Vehicle* GetASWVehicle();
-	bool IsDriving() { return m_bDriving; }
+	virtual void EnterVehicle( IASW_Vehicle *pVehicle, int iSeat );
+	virtual void ExitVehicle( IASW_Vehicle *pVehicle );
+	IASW_Vehicle *GetASWVehicle();
+	bool IsDriving() { return m_bIsInVehicle && m_iVehicleSeat < 0; }
 	bool IsInVehicle() { return m_bIsInVehicle; }
 	CNetworkHandle( CBaseEntity, m_hASWVehicle );
-	CNetworkVar( bool, m_bDriving );
+	CNetworkVar( int, m_iVehicleSeat );
 	CNetworkVar( bool, m_bIsInVehicle );
 
 	// controlling a turret
@@ -723,7 +738,6 @@ public:
 	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_hGroundEntity );
 	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_iHealth );
 	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_iMaxHealth );
-	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_vecBaseVelocity );
 	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_vecVelocity );
 	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_fFlags );
 	IMPLEMENT_NETWORK_VAR_FOR_DERIVED( m_iAmmo );
@@ -752,6 +766,9 @@ public:
 	void CreateBackPackModel(CASW_Weapon *pWeapon);
 	void RemoveBackPackModel();
 	CBaseEntity* GetBackPackModel();
+
+	void InputAddPoints( inputdata_t &inputdata );
+	COutputInt m_TotalPoints;
 private:
 	float m_flNextBreadcrumbTime;
 	EHANDLE m_BackPackWeaponBaseEntity;

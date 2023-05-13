@@ -18,8 +18,6 @@
 // Base weapon pickup
 //--------------------
 
-CUtlDict< int, int > g_WeaponUseIcons;
-
 IMPLEMENT_CLIENTCLASS_DT( C_ASW_Pickup_Weapon, DT_ASW_Pickup_Weapon, CASW_Pickup_Weapon )
 	RecvPropInt		(RECVINFO(m_iBulletsInGun)),
 	RecvPropInt		(RECVINFO(m_iClips)),
@@ -35,30 +33,14 @@ C_ASW_Pickup_Weapon::C_ASW_Pickup_Weapon()
 
 void C_ASW_Pickup_Weapon::InitPickup()
 {
-	if ( !ASWEquipmentList() )
+	CASW_EquipItem *pItem = g_ASWEquipmentList.GetEquipItemFor( GetWeaponClass() );
+	if ( !pItem )
 		return;
 
-	CASW_WeaponInfo* pInfo = ASWEquipmentList()->GetWeaponDataFor( GetWeaponClass() );
-	if ( !pInfo )
-		return;
+	V_snprintf( m_szUseIconText, sizeof( m_szUseIconText ), "%s", pItem->m_szShortName );
 
-	Q_snprintf(m_szUseIconText, sizeof(m_szUseIconText), "%s", pInfo->szPrintName );
-
-	int nIndex = g_WeaponUseIcons.Find( GetWeaponClass() );
-	if ( nIndex == g_WeaponUseIcons.InvalidIndex() )
-	{
-		m_nUseIconTextureID = vgui::surface()->CreateNewTextureID();
-		char buffer[ 256 ];
-		Q_snprintf( buffer, sizeof( buffer ), "vgui/%s", pInfo->szEquipIcon );
-		vgui::surface()->DrawSetTextureFile( m_nUseIconTextureID, buffer, true, false);
-
-		nIndex = g_WeaponUseIcons.Insert( GetWeaponClass(), m_nUseIconTextureID );
-	}
-	else
-	{
-		m_nUseIconTextureID = g_WeaponUseIcons.Element( nIndex );
-	}
-	m_bWideIcon = !pInfo->m_bExtra;
+	m_nUseIconTextureID = g_ASWEquipmentList.GetEquipIconTexture( !pItem->m_bIsExtra, pItem->m_iItemIndex );
+	m_bWideIcon = !pItem->m_bIsExtra;
 }
 
 void C_ASW_Pickup_Weapon::GetUseIconText( wchar_t *unicode, int unicodeBufferSizeInBytes )
@@ -377,7 +359,7 @@ C_ASW_Pickup_Weapon_Ricochet::C_ASW_Pickup_Weapon_Ricochet()
 // Flechette
 //---------
 
-IMPLEMENT_CLIENTCLASS_DT(C_ASW_Pickup_Weapon_Flechette, DT_ASW_Pickup_Weapon_Flechette, CASW_Pickup_Weapon_Flechette)
+IMPLEMENT_CLIENTCLASS_DT( C_ASW_Pickup_Weapon_Flechette, DT_ASW_Pickup_Weapon_Flechette, CASW_Pickup_Weapon_Flechette )
 END_RECV_TABLE()
 
 C_ASW_Pickup_Weapon_Flechette::C_ASW_Pickup_Weapon_Flechette()

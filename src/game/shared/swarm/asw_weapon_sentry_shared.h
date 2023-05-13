@@ -43,12 +43,6 @@ public:
 	DECLARE_ENT_SCRIPTDESC();
 
 	int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-
-	int		GetSentryAmmo() { return m_nSentryAmmo; }
-	void	SetSentryAmmo( int nAmmo ) { m_nSentryAmmo = nAmmo; }
-
-	virtual const char* GetPickupClass() { return "asw_pickup_sentry"; }
-
 #else
 	virtual void OnDataChanged( DataUpdateType_t type );
 	virtual void UpdateOnRemove();
@@ -58,6 +52,11 @@ public:
 
 	virtual bool IsOffensiveWeapon() { return false; }
 
+	int		GetSentryAmmo() { return m_nSentryAmmo; }
+	void	SetSentryAmmo( int nAmmo ) { m_nSentryAmmo = nAmmo; }
+	int		DisplayClip1() { return GetSentryAmmo(); }
+	int		DisplayMaxClip1() { return m_nMaxSentryAmmo; }
+
 protected:
 #ifndef CLIENT_DLL
 	int m_iSentryMunitionType;
@@ -66,11 +65,10 @@ protected:
 	QAngle m_angValidSentryFacing;
 	EHANDLE m_hValidSentryParent;
 
-	CNetworkVar(bool, m_bDisplayValid);
-
-#ifndef CLIENT_DLL
-	int m_nSentryAmmo;
-#else
+	CNetworkVar( bool, m_bDisplayValid );
+	CNetworkVar( int, m_nSentryAmmo );
+	CNetworkVar( int, m_nMaxSentryAmmo );
+#ifdef CLIENT_DLL
 	float m_flNextDeployCheckThink;
 	bool m_bDisplayActive;
 	EHANDLE m_hOwningMarine; // need to store this so we can destroy the effect on the marine
@@ -90,10 +88,6 @@ public:
 
 	CASW_Weapon_Sentry_Flamer();
 
-#ifndef CLIENT_DLL
-	virtual const char* GetPickupClass() { return "asw_pickup_sentry_flamer"; }
-#endif
-
 	// Classification
 	virtual Class_T		Classify( void ) { return (Class_T) CLASS_ASW_SENTRY_FLAMER_CASE; }
 };
@@ -106,10 +100,6 @@ public:
 	DECLARE_PREDICTABLE();
 
 	CASW_Weapon_Sentry_Cannon();
-
-#ifndef CLIENT_DLL
-	virtual const char* GetPickupClass() { return "asw_pickup_sentry_cannon"; }
-#endif
 
 	virtual int GetWeaponSkillId();
 	virtual int GetWeaponSubSkillId();
@@ -126,10 +116,6 @@ public:
 	DECLARE_PREDICTABLE();
 
 	CASW_Weapon_Sentry_Freeze();
-
-#ifndef CLIENT_DLL
-	virtual const char* GetPickupClass() { return "asw_pickup_sentry_freeze"; }
-#endif
 
 	// Classification
 	virtual Class_T		Classify( void ) { return (Class_T) CLASS_ASW_SENTRY_FREEZE_CASE; }

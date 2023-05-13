@@ -73,6 +73,7 @@
 #include "videocfg/videocfg.h"
 #ifdef INFESTED_DLL
 #include "asw_trace_filter.h"
+#include "rd_cause_of_death.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -1900,6 +1901,10 @@ void CBaseEntity::TakeDamage( const CTakeDamageInfo &inputInfo )
 		}
 	}
 
+#if defined( DBGFLAG_ASSERT ) && defined( INFESTED_DLL )
+	( void )GetCauseOfDeath( this, inputInfo );
+#endif
+
 	// Make sure our damage filter allows the damage.
 	if ( !PassesDamageFilter( inputInfo ))
 	{
@@ -2455,7 +2460,7 @@ BEGIN_ENT_SCRIPTDESC_ROOT( CBaseEntity, "Root class of all server-side entities"
 	DEFINE_SCRIPTFUNC_NAMED( GetAbsOrigin, "GetOrigin", ""  )
 	DEFINE_SCRIPTFUNC( SetAbsOrigin, "SetAbsOrigin" )
 
-	
+
 	DEFINE_SCRIPTFUNC_NAMED( ScriptSetOrigin, "SetOrigin", ""  )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetForward, "GetForwardVector", "Get the forward vector of the entity"  )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetLeft, "GetLeftVector", "Get the left vector of the entity"  )
@@ -2463,10 +2468,11 @@ BEGIN_ENT_SCRIPTDESC_ROOT( CBaseEntity, "Root class of all server-side entities"
 
 	DEFINE_SCRIPTFUNC_NAMED( ScriptSetForward, "SetForwardVector", "Set the orientation of the entity to have this forward vector"  )
 	DEFINE_SCRIPTFUNC_NAMED( GetAbsVelocity, "GetVelocity", ""  )
-	DEFINE_SCRIPTFUNC_NAMED( SetAbsVelocity, "SetVelocity", ""  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptSetAbsVelocity, "SetVelocity", ""  )
 
 	DEFINE_SCRIPTFUNC_NAMED( ScriptSetLocalAngularVelocity, "SetAngularVelocity", "Set the local angular velocity - takes float pitch,yaw,roll velocities"  )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetLocalAngularVelocity, "GetAngularVelocity", "Get the local angular velocity - returns a vector of pitch,yaw,roll"  )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptWake, "Wake", "Wakes this entity's physics object" )
 
 
 	DEFINE_SCRIPTFUNC_NAMED( WorldSpaceCenter, "GetCenter", "Get vector to center of object - absolute coords")
@@ -5413,7 +5419,7 @@ void CBaseEntity::PrecacheModelComponents( int nModelIndex )
 
 			KeyValues *pParticleEffects = pModelKeyValues->FindKey(keyParticles);
 			if ( pParticleEffects )
-			{						   
+			{
 				// Start grabbing the sounds and slotting them in
 				for ( KeyValues *pSingleEffect = pParticleEffects->GetFirstSubKey(); pSingleEffect; pSingleEffect = pSingleEffect->GetNextKey() )
 				{
@@ -5533,6 +5539,7 @@ void CBaseEntity::PrecacheModelComponents( int nModelIndex )
 //-----------------------------------------------------------------------------
 int CBaseEntity::PrecacheModel( const char *name )
 {
+	Assert( name && *name );
 	if ( !name || !*name )
 	{
 		Msg( "Attempting to precache model, but model name is NULL\n");
@@ -6722,6 +6729,17 @@ void CBaseEntity::SetAbsVelocity( const Vector &vecAbsVelocity )
 	Vector vNew;
 	VectorIRotate( relVelocity, pMoveParent->EntityToWorldTransform(), vNew );
 	m_vecVelocity = vNew;
+}
+
+void CBaseEntity::ScriptSetAbsVelocity( const Vector &vecAbsVelocity )
+{
+	SetAbsVelocity( vecAbsVelocity );
+
+	// physics objects need their velocity changed a different way
+	if ( IPhysicsObject *pPhys = VPhysicsGetObject() )
+	{
+		pPhys->SetVelocity( &vecAbsVelocity, NULL );
+	}
 }
 
 // FIXME: While we're using (dPitch, dYaw, dRoll) as our local angular velocity

@@ -91,6 +91,7 @@ const char *SkillToString( ASW_Skill nSkill );
 	ENUM_ITEM( HEALING, HEAL_GUN_CHARGES, 5 ) \
 	ENUM_ITEM( HEALING, HEAL_GUN_HEAL_AMOUNT, 6 ) \
 	ENUM_ITEM( HEALING, HEALAMP_GUN_CHARGES, 7 ) \
+	ENUM_ITEM( HEALING, MEDRIFLE_HEALING_CHARGES, 8 ) \
 	\
 	ENUM_ITEM( DRUGS, STIM_DURATION, 0 ) \
 	ENUM_ITEM( DRUGS, HEALAMP_GUN_AMP_CHARGES, 1 ) \
@@ -111,6 +112,8 @@ const char *SkillToString( ASW_Skill nSkill );
 	ENUM_ITEM( ACCURACY, ACCURACY_MEDRIFLE_DMG, 10 ) \
 	ENUM_ITEM( ACCURACY, ACCURACY_MUZZLE, 11 ) \
 	ENUM_ITEM( ACCURACY, ACCURACY_DEAGLE_DMG, 12 ) \
+	ENUM_ITEM( ACCURACY, ACCURACY_AR2_DMG, 13 ) \
+	ENUM_ITEM( ACCURACY, ACCURACY_DEVASTATOR_DMG, 14 ) \
 	\
 	ENUM_ITEM( HACKING, HACKING_SPEED_SCALE, 0 ) \
 	ENUM_ITEM( HACKING, HACKING_TUMBLER_COUNT_REDUCTION, 1 ) \
@@ -157,9 +160,11 @@ public:
 	float GetBestSkillValue( ASW_Skill iSkillIndex, int iSubSkill = 0 );
 	float GetHighestSkillValueNearby( const Vector &pos, float MaxDistance, ASW_Skill iSkillIndex, int iSubSkill = 0 );
 	float GetLowestSkillValueNearby( const Vector &pos, float MaxDistance, ASW_Skill iSkillIndex, int iSubSkill = 0 );
+
 	// get the value based on the current skills of that marine, or based on some specified number of points in that skill
 	float GetSkillBasedValue( CASW_Marine_Profile *pProfile, ASW_Skill iSkillIndex, int iSubSkill = 0, int iSkillPoints = -1 );
 #ifndef CLIENT_DLL
+	CASW_Marine *CheckSkillChanceNearby( CBaseEntity *pAlly, const Vector &pos, float MaxDistance, ASW_Skill iSkillIndex, int iSubSkill = 0 );
 	// returns the marine last used by the GetHighest/Lowest functions
 	CASW_Marine *GetLastSkillMarine() { return m_hLastSkillMarine.Get(); }
 	CHandle<CASW_Marine> m_hLastSkillMarine;
@@ -168,6 +173,7 @@ public:
 	const char *GetSkillName( ASW_Skill nSkillIndex );
 	const char *GetSkillDescription( ASW_Skill nSkillIndex );
 #endif
+	int GetSkillPoints( CASW_Marine_Profile *pProfile, ASW_Skill iSkillIndex );
 	int GetMaxSkillPoints( ASW_Skill nSkillIndex );
 };
 

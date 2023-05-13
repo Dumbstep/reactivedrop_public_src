@@ -26,11 +26,12 @@
 	#include "engine/ivdebugoverlay.h"
 	#include "c_asw_game_resource.h"
 	#include "c_asw_marine_resource.h"
+	#include "c_asw_aoegrenade_projectile.h"
 #else
 	#include "asw_player.h"
 	#include "asw_marine.h"
 	#include "asw_marine_profile.h"
-	#define C_ASW_Marine CASW_Marine
+	#define C_ASW_Inhabitable_NPC CASW_Inhabitable_NPC
 	#define C_ASW_Weapon_Ammo_Bag CASW_Weapon_Ammo_Bag
 	#define C_ASW_Marine CASW_Marine
 #endif
@@ -59,7 +60,8 @@
 
 #define FIRESEQUENCE_LAYER		(AIMSEQUENCE_LAYER+NUM_AIMSEQUENCE_LAYERS)
 #define RELOADSEQUENCE_LAYER	(FIRESEQUENCE_LAYER + 1)
-#define NUM_LAYERS_WANTED		(RELOADSEQUENCE_LAYER + 1)
+#define EXTRAPOSE_LAYER	(RELOADSEQUENCE_LAYER + 1)
+#define NUM_LAYERS_WANTED		(EXTRAPOSE_LAYER + 1)
 
 ConVar asw_debuganimstate("asw_debuganimstate", "0", FCVAR_REPLICATED);
 ConVar asw_walk_speed("asw_walk_speed", "175", FCVAR_REPLICATED);
@@ -80,6 +82,9 @@ ConVar asw_fixed_movement_playback_rate("asw_fixed_movement_playback_rate", "0",
 ConVar asw_feetyawrate("asw_feetyawrate", "300",  FCVAR_REPLICATED, "How many degrees per second that we can turn our feet or upper body." );
 ConVar asw_facefronttime( "asw_facefronttime", "2.0", FCVAR_REPLICATED, "How many seconds before marine faces front when standing still." );
 ConVar asw_max_body_yaw( "asw_max_body_yaw", "30", FCVAR_REPLICATED, "Max angle body yaw can turn either side before feet snap." );
+#ifdef CLIENT_DLL
+extern ConVar rd_marine_gear;
+#endif
 extern ConVar asw_melee_debug;
 
 #define ASW_WALK_SPEED asw_walk_speed.GetFloat()
@@ -204,6 +209,7 @@ private:
 	int m_iFireSequence;				// (For any sequences in the fire layer, including grenade throw).
 	float m_flFireCycle;
 	bool m_bPlayingEmoteGesture;
+	int m_iExtraPoseSequence;
 
 	IASWPlayerAnimStateHelpers *m_pHelpers;
 
@@ -241,6 +247,7 @@ CASWPlayerAnimState::CASWPlayerAnimState()
 	m_fMiscPlaybackRate = 1.0f;
 	m_flMiscCycle = 0.0f;
 	m_bMiscCycleRewound = false;
+	m_iExtraPoseSequence = 0;
 }
 
 
@@ -273,12 +280,21 @@ void CASWPlayerAnimState::ClearAnimationState()
 void CASWPlayerAnimState::DoAnimationEvent( PlayerAnimEvent_t event )
 {
 	if ( event == PLAYERANIMEVENT_FIRE_GUN_PRIMARY || 
-		 event == PLAYERANIMEVENT_FIRE_GUN_SECONDARY )
+		 event == PLAYERANIMEVENT_FIRE_GUN_SECONDARY ||
+		 event == PLAYERANIMEVENT_FIRE_GUN_TERTIARY )
 	{
 		// Regardless of what we're doing in the fire layer, restart it.
 		m_flFireCycle = 0;
 		m_iFireSequence = CalcFireLayerSequence( event );
 		m_bFiring = m_iFireSequence != -1;
+
+		C_ASW_Inhabitable_NPC *pNPC = assert_cast< C_ASW_Inhabitable_NPC * >( GetOuter() );
+		CASW_Weapon *pActiveWeapon = pNPC ? pNPC->GetActiveASWWeapon() : NULL;
+		if ( pActiveWeapon && pActiveWeapon->ShouldPlayFiringAnimations() && event != PLAYERANIMEVENT_FIRE_GUN_TERTIARY )
+		{
+			pActiveWeapon->SetIdealActivity( event == PLAYERANIMEVENT_FIRE_GUN_PRIMARY ? ACT_VM_PRIMARYATTACK : ACT_VM_SECONDARYATTACK );
+			pActiveWeapon->SetCycle( 0.0f );
+		}
 	}
 	else if ( event == PLAYERANIMEVENT_JUMP )
 	{
@@ -337,6 +353,17 @@ void CASWPlayerAnimState::DoAnimationEvent( PlayerAnimEvent_t event )
 			m_flReloadCycle = 0;
 		}
 	}
+	else if ( event == PLAYERANIMEVENT_DROP_MAGAZINE_GIB )
+	{
+#ifdef CLIENT_DLL
+		CASW_Marine *pOuter = CASW_Marine::AsMarine( GetOuter() );
+		CASW_Weapon *pWeapon = pOuter ? pOuter->GetActiveASWWeapon() : NULL;
+		if ( pWeapon )
+		{
+			pWeapon->DropMagazineGib();
+		}
+#endif
+	}
 	else
 	{
 		DoAnimationEventForMiscLayer( event );
@@ -393,6 +420,14 @@ bool CASWPlayerAnimState::DoAnimationEventForMiscLayer( PlayerAnimEvent_t event 
 
 	if ( event == PLAYERANIMEVENT_WEAPON_SWITCH )
 	{
+#ifdef CLIENT_DLL
+		// force AOE grenade projectiles to update attachments ASAP
+		FOR_EACH_VEC( IASW_AOEGrenade_Projectile_List::AutoList(), i )
+		{
+			assert_cast< C_ASW_AOEGrenade_Projectile * >( IASW_AOEGrenade_Projectile_List::AutoList()[i]->GetEntity() )->m_fUpdateAttachFXTime = 0;
+		}
+#endif
+
 		// weapon change actually interrupts flare throws, so we allow cancelling this special anim
 		if (m_bPlayingMisc && m_iMiscSequence == m_pOuter->LookupSequence( "grenade_roll_trim" ))
 			m_bMiscNoOverride = false;
@@ -808,6 +843,23 @@ void CASWPlayerAnimState::ComputeMiscSequence()
 	Assert( !m_bMiscCycleRewound );
 
 	UpdateLayerSequenceGeneric( RELOADSEQUENCE_LAYER, m_bPlayingMisc, m_flMiscCycle, m_iMiscSequence, bHoldAtEnd, m_flMiscBlendIn, m_flMiscBlendOut, m_bMiscOnlyWhenStill, m_fMiscPlaybackRate );	
+
+#ifdef CLIENT_DLL
+	int iExtraPoseSequence = 0;
+	if ( rd_marine_gear.GetBool() && pMarine && pMarine->HasPowerFist() )
+	{
+		iExtraPoseSequence = m_pOuter->LookupSequence( "gesture_hide_left_hand" );
+	}
+
+	if ( m_iExtraPoseSequence != iExtraPoseSequence )
+	{
+		CAnimationLayer *pLayer = pOuter->GetAnimOverlay( EXTRAPOSE_LAYER );
+		pLayer->SetSequence( iExtraPoseSequence );
+		pLayer->SetWeight( iExtraPoseSequence ? 1 : 0 );
+		pLayer->SetOrder( iExtraPoseSequence ? EXTRAPOSE_LAYER : CBaseAnimatingOverlay::MAX_OVERLAYS );
+		m_iExtraPoseSequence = iExtraPoseSequence;
+	}
+#endif
 }
 
 bool CASWPlayerAnimState::ShouldResetGroundSpeed( Activity oldActivity, Activity idealActivity )
@@ -1050,15 +1102,7 @@ Activity CASWPlayerAnimState::CalcMainActivity()
 	{
 		Activity idealActivity = ACT_IDLE;
 
-		// asw - commented out crouching for now
-		//if ( m_pOuter->GetFlags() & FL_DUCKING )
-		//{
-			//if ( flOuterSpeed > 0.1f )
-				//idealActivity = ACT_RUN_CROUCH;
-			//else
-				//idealActivity = ACT_CROUCHIDLE;
-		//}
-		//else
+		if ( !pMarine->IsInVehicle() )
 		{
 			if ( flOuterSpeed > 0.1f )
 			{
@@ -1114,7 +1158,19 @@ Activity CASWPlayerAnimState::CalcMainActivity()
 				{
 					idealActivity = ACT_CROUCHIDLE;
 				}
+
+#ifdef GAME_DLL
+				if ( pMarine->IsCurTaskContinuousMove() )
+				{
+					// don't allow the marine to stop animating movement
+					idealActivity = ACT_RUN;
+				}
+#endif
 			}
+		}
+		else
+		{
+			idealActivity = pMarine->IsDriving() ? ACT_DRIVING : ACT_RIDING;
 		}
 		return idealActivity;
 	}
@@ -1208,10 +1264,6 @@ void CASWPlayerAnimState::GetOuterAbsVelocity( Vector& vel ) const
 	else
 	{
 		GetOuter()->EstimateAbsVelocity( vel );
-		if ( pMarine )
-		{
-			vel -= pMarine->m_vecGroundVelocity;
-		}
 	}
 #else
 	vel = GetOuter()->GetAbsVelocity();

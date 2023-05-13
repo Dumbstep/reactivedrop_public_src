@@ -21,6 +21,7 @@
 #include "hud.h"
 #include "hudelement.h"
 #include "vgui_int.h"
+#include "rd_steam_input.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -518,7 +519,7 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 	{
 		// Get the first parameter
 		int iTokenBindingCount = 0;
-		const char *pchBinding = engine->Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, iAllowJoystick );
+		const char *pchBinding = g_RD_Steam_Input.Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, iAllowJoystick );
 
 		while ( m_iBindingChoicesCount < MAX_LOCATOR_BINDINGS_SHOWN && pchBinding )
 		{
@@ -527,7 +528,7 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 			++m_iBindingChoicesCount;
 			++iTokenBindingCount;
 
-			pchBinding = engine->Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, iAllowJoystick );
+			pchBinding = g_RD_Steam_Input.Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, iAllowJoystick );
 		}
 
 		nOriginalToken++;
@@ -571,7 +572,8 @@ const char *CLocatorTarget::UseBindingImage( char *pchIconTextureName, size_t bu
 	}
 
 	if ( input->ControllerModeActive() && 
-		 ( Q_strcmp( pchBinding, "A_BUTTON" ) == 0 || 
+		 ( g_RD_Steam_Input.IsOriginPlaceholderString( pchBinding ) ||
+		   Q_strcmp( pchBinding, "A_BUTTON" ) == 0 || 
 		   Q_strcmp( pchBinding, "B_BUTTON" ) == 0 || 
 		   Q_strcmp( pchBinding, "X_BUTTON" ) == 0 || 
 		   Q_strcmp( pchBinding, "Y_BUTTON" ) == 0 || 
@@ -2016,7 +2018,7 @@ int CLocatorPanel::GetScreenWidthForCaption( const wchar_t *pString, vgui::HFont
 //-----------------------------------------------------------------------------
 void CLocatorPanel::DrawBindingName( CLocatorTarget *pTarget, const char *pchBindingName, int x, int y, bool bController )
 {
-	if ( !bController && !IsConsole() )
+	if ( !bController && !g_RD_Steam_Input.IsOriginPlaceholderString( pchBindingName ) && !IsConsole() )
 	{
 		// Draw the caption
 		vgui::surface()->DrawSetTextFont( m_hKeysFont );
@@ -2047,28 +2049,7 @@ void CLocatorPanel::DrawBindingName( CLocatorTarget *pTarget, const char *pchBin
 	}
 	else
 	{
-		// Draw the caption
-		wchar_t	wszCaption[ 64 ];
-
-		vgui::surface()->DrawSetTextFont( BUTTON_FONT_HANDLE );
-		int fontTall = vgui::surface()->GetFontTall( BUTTON_FONT_HANDLE );
-
-		char szBinding[ 256 ];
-
-		// Turn localized string into icon character
-		Q_snprintf( szBinding, sizeof( szBinding ), "#GameUI_Icons_%s", pchBindingName );
-		g_pVGuiLocalize->ConstructString( wszCaption, sizeof( wszCaption ), g_pVGuiLocalize->Find( szBinding ), 0 );
-		g_pVGuiLocalize->ConvertUnicodeToANSI( wszCaption, szBinding, sizeof( szBinding ) );
-
-		int iWidth = GetScreenWidthForCaption( wszCaption, BUTTON_FONT_HANDLE );
-
-		int iLargeIconShift = MAX( 0, iWidth - ( ScreenWidth() * ICON_SIZE + ICON_GAP + ICON_GAP ) );
-
-		// Draw the button
-		vgui::surface()->DrawSetTextColor( 255,255,255, pTarget->m_alpha );
-		vgui::surface()->DrawSetTextPos( x - (iWidth>>1) - iLargeIconShift, y - (fontTall >>1) );
-		vgui::surface()->DrawUnicodeString( wszCaption );
-
+		g_RD_Steam_Input.DrawLegacyControllerGlyph( pchBindingName, x, y, true, true, BUTTON_FONT_HANDLE );
 	}
 }
 

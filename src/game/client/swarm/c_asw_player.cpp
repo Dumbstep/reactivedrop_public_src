@@ -76,7 +76,6 @@
 #include "c_asw_weapon.h"
 #include "asw_marineandobjectenumerator.h"
 #include "asw_usableobjectsenumerator.h"
-#include "c_asw_jeep_clientside.h"
 #include "obstacle_pushaway.h"
 #include "asw_shareddefs.h"
 #include "c_asw_camera_volume.h"
@@ -194,6 +193,8 @@ extern ConVar cl_sidespeed;
 extern ConVar asw_marine_death_cam_time;
 extern ConVar asw_time_scale_delay;
 extern ConVar asw_stim_time_scale;
+extern ConVar rd_sound_pitch_scale;
+extern ConVar asw_debug_fade;
 
 extern float g_fMarinePoisonDuration;
 
@@ -271,9 +272,7 @@ IMPLEMENT_NETWORKCLASS_ALIASED( ASW_Player, DT_ASW_Player )
 
 BEGIN_NETWORK_TABLE( C_ASW_Player, DT_ASW_Player )
 	RecvPropBool( RECVINFO( m_fIsWalking ) ),
-	RecvPropFloat( RECVINFO( m_angEyeAngles[0] ) ),
-	RecvPropFloat( RECVINFO( m_angEyeAngles[1] ) ),
-	RecvPropFloat( RECVINFO( m_angEyeAngles[2] ) ),
+	RecvPropQAngles( RECVINFO( m_angEyeAngles ) ),
 	RecvPropEHandle( RECVINFO( m_hInhabiting ) ),
 	RecvPropEHandle( RECVINFO( m_hSpectating ) ),
 	RecvPropInt( RECVINFO( m_iHealth ) ),
@@ -291,17 +290,13 @@ BEGIN_NETWORK_TABLE( C_ASW_Player, DT_ASW_Player )
 	RecvPropInt( RECVINFO( m_iMapVoted ) ),
 	RecvPropInt( RECVINFO( m_iNetworkedXP ) ),
 	RecvPropInt( RECVINFO( m_iNetworkedPromotion ) ),
-
-	// BenLubar(spectator-mouse)
-	RecvPropInt( RECVINFO( m_iScreenWidth ) ),
-	RecvPropInt( RECVINFO( m_iScreenHeight ) ),
-	RecvPropInt( RECVINFO( m_iMouseX ) ),
-	RecvPropInt( RECVINFO( m_iMouseY ) ),
-
+	RecvPropInt( RECVINFO( m_iScreenWidthHeight ) ),
+	RecvPropInt( RECVINFO( m_iMouseXY ) ),
 	RecvPropBool( RECVINFO( m_bSentJoinedMessage ) ),
 	RecvPropQAngles( RECVINFO( m_angMarineAutoAimFromClient ) ),
-	RecvPropBool( RECVINFO( m_bWantsSpectatorOnly ) ),
 	RecvPropFloat( RECVINFO( m_flInactiveKickWarning ) ),
+	RecvPropDataTable( RECVINFO_DT( m_EquippedItemDataStatic ), 0, &REFERENCE_RECV_TABLE( DT_RD_ItemInstances_Static ) ),
+	RecvPropDataTable( RECVINFO_DT( m_EquippedItemDataDynamic ), 0, &REFERENCE_RECV_TABLE( DT_RD_ItemInstances_Dynamic ) ),
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_ASW_Player )
@@ -311,10 +306,8 @@ BEGIN_PREDICTION_DATA( C_ASW_Player )
 	DEFINE_PRED_FIELD( m_flUseKeyDownTime, FIELD_FLOAT, FTYPEDESC_NOERRORCHECK ),
 	DEFINE_PRED_FIELD( m_hUseKeyDownEnt, FIELD_EHANDLE, FTYPEDESC_NOERRORCHECK ),
 	DEFINE_PRED_FIELD( m_angMarineAutoAimFromClient, FIELD_VECTOR, FTYPEDESC_NOERRORCHECK ),
-	DEFINE_PRED_FIELD( m_iScreenWidth, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_iScreenHeight, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_iMouseX, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD( m_iMouseY, FIELD_SHORT, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_ARRAY( m_iScreenWidthHeight, FIELD_SHORT, 2, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_ARRAY( m_iMouseXY, FIELD_SHORT, 2, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
 
 vgui::DHANDLE<vgui::Frame> g_hBriefingFrame;
@@ -327,13 +320,12 @@ C_ASW_Player::C_ASW_Player() :
 	m_PlayerAnimState = CreatePlayerAnimState( this, this, LEGANIM_9WAY, false );
 
 	AddVar( &m_angEyeAngles, &m_iv_angEyeAngles, LATCH_SIMULATION_VAR );
-	AddVar( &m_iMouseX, &m_iv_iMouseX, LATCH_SIMULATION_VAR ); // BenLubar(spectator-mouse)
+	AddVar( &m_iMouseX, &m_iv_iMouseX, LATCH_SIMULATION_VAR );
 	AddVar( &m_iMouseY, &m_iv_iMouseY, LATCH_SIMULATION_VAR );
 
 	// create the profile list for clients
 	//  (server creates it in the game rules constructor serverside)
 	MarineProfileList();
-	ASWEquipmentList();
 	m_pStimMusic = NULL;
 	m_bCheckedLevel = false;
 	m_vecLastMarineOrigin = vec3_origin;
@@ -378,11 +370,8 @@ C_ASW_Player::C_ASW_Player() :
 	m_nChangingMR = -1;
 	m_nChangingSlot = 0;
 
-	// BenLubar(spectator-mouse)
-	m_iScreenWidth = 0;
-	m_iScreenHeight = 0;
-	m_iMouseX = 0;
-	m_iMouseY = 0;
+	m_iScreenWidthHeight = 0;
+	m_iMouseXY = 0;
 
 	m_angMarineAutoAimFromClient = vec3_angle;
 	m_flInactiveKickWarning = 0.0f;
@@ -555,28 +544,28 @@ void C_ASW_Player::SendRosterSelectCommand( const char *command, int i, int nPre
 		if ( pCVar )
 			default_extra = pCVar->GetInt();
 
-		CASW_EquipItem *pPrimary = ASWEquipmentList()->GetRegular( default_primary );
+		CASW_EquipItem *pPrimary = g_ASWEquipmentList.GetRegular( default_primary );
 		if ( pPrimary )
 		{
-			if ( !IsWeaponUnlocked( STRING( pPrimary->m_EquipClass ) ) )
+			if ( !IsWeaponUnlocked( pPrimary->m_szEquipClass ) )
 			{
-				default_primary = 0;
+				default_primary = ASW_EQUIP_RIFLE;
 			}
 		}
-		CASW_EquipItem *pSecondary = ASWEquipmentList()->GetRegular( default_secondary );
+		CASW_EquipItem *pSecondary = g_ASWEquipmentList.GetRegular( default_secondary );
 		if ( pSecondary )
 		{
-			if ( !IsWeaponUnlocked( STRING( pSecondary->m_EquipClass ) ) )
+			if ( !IsWeaponUnlocked( pSecondary->m_szEquipClass ) )
 			{
-				default_secondary = 0;
+				default_secondary = ASW_EQUIP_RIFLE;
 			}
 		}
-		CASW_EquipItem *pExtra = ASWEquipmentList()->GetExtra( default_extra );
+		CASW_EquipItem *pExtra = g_ASWEquipmentList.GetExtra( default_extra );
 		if ( pExtra )
 		{
-			if ( !IsWeaponUnlocked( STRING( pExtra->m_EquipClass ) ) )
+			if ( !IsWeaponUnlocked( pExtra->m_szEquipClass ) )
 			{
-				default_extra = ASWEquipmentList()->GetExtraIndex( "asw_weapon_medkit" );
+				default_extra = ASW_EQUIP_MEDKIT;
 			}
 		}
 		Q_snprintf( buffer, sizeof( buffer ), "%s %d %d %d %d %d", command, i, nPreferredSlot, default_primary, default_secondary, default_extra );
@@ -639,18 +628,18 @@ void C_ASW_Player::RosterSpendSkillPoint( int iProfileIndex, int nSkillSlot )
 
 void C_ASW_Player::LoadoutSelectEquip( int iMarineIndex, int iInvSlot, int iEquipIndex )
 {
-	CASW_EquipItem *pWeapon = ASWEquipmentList()->GetItemForSlot( iInvSlot, iEquipIndex );
+	CASW_EquipItem *pWeapon = g_ASWEquipmentList.GetItemForSlot( iInvSlot, iEquipIndex );
 	if ( pWeapon )
 	{
-		if ( !IsWeaponUnlocked( STRING( pWeapon->m_EquipClass ) ) )
+		if ( !IsWeaponUnlocked( pWeapon->m_szEquipClass ) )
 		{
 			if ( iInvSlot == ASW_INVENTORY_SLOT_EXTRA )
 			{
-				iEquipIndex = ASWEquipmentList()->GetExtraIndex( "asw_weapon_medkit" );
+				iEquipIndex = ASW_EQUIP_MEDKIT;
 			}
 			else
 			{
-				iEquipIndex = 0;
+				iEquipIndex = ASW_EQUIP_RIFLE;
 			}
 		}
 	}
@@ -676,6 +665,11 @@ void C_ASW_Player::LoadoutSelectEquip( int iMarineIndex, int iInvSlot, int iEqui
 				if ( pCVar )
 				{
 					pCVar->SetValue( iEquipIndex );
+				}
+
+				if ( ASWGameRules() )
+				{
+					ASWGameRules()->m_bShouldSaveChangedLoadout = true;
 				}
 			}
 		}
@@ -734,28 +728,28 @@ void C_ASW_Player::LoadoutSendStored( C_ASW_Marine_Resource *pMR )
 	if ( pCVar )
 		iExtra = pCVar->GetInt();
 
-	CASW_EquipItem *pPrimary = ASWEquipmentList()->GetRegular( iPrimary );
+	CASW_EquipItem *pPrimary = g_ASWEquipmentList.GetRegular( iPrimary );
 	if ( pPrimary )
 	{
-		if ( !IsWeaponUnlocked( STRING( pPrimary->m_EquipClass ) ) )
+		if ( !IsWeaponUnlocked( pPrimary->m_szEquipClass ) )
 		{
-			iPrimary = 0;
+			iPrimary = ASW_EQUIP_RIFLE;
 		}
 	}
-	CASW_EquipItem *pSecondary = ASWEquipmentList()->GetRegular( iSecondary );
+	CASW_EquipItem *pSecondary = g_ASWEquipmentList.GetRegular( iSecondary );
 	if ( pSecondary )
 	{
-		if ( !IsWeaponUnlocked( STRING( pSecondary->m_EquipClass ) ) )
+		if ( !IsWeaponUnlocked( pSecondary->m_szEquipClass ) )
 		{
-			iSecondary = 0;
+			iSecondary = ASW_EQUIP_RIFLE;
 		}
 	}
-	CASW_EquipItem *pExtra = ASWEquipmentList()->GetExtra( iExtra );
+	CASW_EquipItem *pExtra = g_ASWEquipmentList.GetExtra( iExtra );
 	if ( pExtra )
 	{
-		if ( !IsWeaponUnlocked( STRING( pExtra->m_EquipClass ) ) )
+		if ( !IsWeaponUnlocked( pExtra->m_szEquipClass ) )
 		{
-			iExtra = ASWEquipmentList()->GetExtraIndex( "asw_weapon_medkit" );
+			iExtra = ASW_EQUIP_MEDKIT;
 		}
 	}
 
@@ -1022,7 +1016,7 @@ void C_ASW_Player::ClientThink()
 		if ( m_nLastInactiveKickWarning != nInactiveKickSeconds )
 		{
 			wchar_t buffer[12]{};
-			V_snwprintf( buffer, sizeof( buffer ), L"%d", nInactiveKickSeconds );
+			V_snwprintf( buffer, ARRAYSIZE( buffer ), L"%d", nInactiveKickSeconds );
 			char *szBuffer = reinterpret_cast< char * >( &buffer[0] ); // FIXME: ClientPrint is weird on the client-side.
 			ClientPrint( this, ASW_HUD_PRINTTALKANDCONSOLE, "#rd_inactive_kick_seconds", szBuffer );
 
@@ -1059,7 +1053,7 @@ void C_ASW_Player::ClientThink()
 			}
 			else
 			{
-				if ( gpGlobals->curtime >= ASWGameRules()->m_flStimEndTime && ( ( asw_stim_time_scale.GetFloat() < 1.0f && lastTimescale <= asw_stim_time_scale.GetFloat() && f > lastTimescale ) || ( asw_stim_time_scale.GetFloat() > 1.0f && lastTimescale >= asw_stim_time_scale.GetFloat() && f < lastTimescale ) ) )
+				if ( gpGlobals->curtime >= ASWGameRules()->m_flStimEndTime && ( ( asw_stim_time_scale.GetFloat() < 1.0f && lastTimescale != -1 && lastTimescale <= asw_stim_time_scale.GetFloat() && f > lastTimescale ) || ( asw_stim_time_scale.GetFloat() > 1.0f && lastTimescale >= asw_stim_time_scale.GetFloat() && f < lastTimescale ) ) )
 				{
 					StopStimSound();
 					StopStimMusic();
@@ -1073,7 +1067,7 @@ void C_ASW_Player::ClientThink()
 			}
 
 			lastTimescale = f;
-			engine->SetPitchScale( f );
+			engine->SetPitchScale( f * rd_sound_pitch_scale.GetFloat() );
 			if ( f > asw_stim_cam_time.GetFloat() )
 			{
 				if ( GetStimCam() )
@@ -1317,6 +1311,14 @@ void C_ASW_Player::ClientThink()
 
 	UpdateLocalMarineGlow();
 
+	if ( asw_debug_fade.GetBool() )
+	{
+		if ( C_ASW_Inhabitable_NPC *pViewNPC = GetViewNPC() )
+		{
+			NDebugOverlay::Cross3DOriented( pViewNPC->EyePosition(), pViewNPC->EyeAngles(), 4.0f, 255, 255, 255, false, 0.01f );
+		}
+	}
+
 	if ( missionchooser->RandomMissions() && missionchooser->RandomMissions()->ValidMapLayout() )
 	{
 		UpdateRoomDetails();
@@ -1474,7 +1476,7 @@ void C_ASW_Player::OnDataChanged( DataUpdateType_t updateType )
 			// This shows a panel where player can select a marine. 
 			// Called after player have joined the game 
 			// TODO check if this is correct
-			if ( ASWGameRules()->GetGameState() == ASW_GS_INGAME )
+			if ( !engine->IsPlayingDemo() && ASWGameRules()->GetGameState() == ASW_GS_INGAME )
 			{
 				engine->ClientCmd( "cl_select_loadout" );
 			}
@@ -2528,20 +2530,6 @@ void C_ASW_Player::RequestMissionRestart()
 {
 	char buffer[20];
 	Q_snprintf( buffer, sizeof( buffer ), "cl_restart_mission" );
-	engine->ClientCmd( buffer );
-}
-
-void C_ASW_Player::RequestSkillUp()
-{
-	char buffer[20];
-	Q_snprintf( buffer, sizeof( buffer ), "cl_skill_up" );
-	engine->ClientCmd( buffer );
-}
-
-void C_ASW_Player::RequestSkillDown()
-{
-	char buffer[20];
-	Q_snprintf( buffer, sizeof( buffer ), "cl_skill_down" );
 	engine->ClientCmd( buffer );
 }
 

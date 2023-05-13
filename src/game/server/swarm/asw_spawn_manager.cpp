@@ -64,7 +64,7 @@ int CASW_Spawn_Manager::GetNumAlienClasses()
 	return NELEMS( g_Aliens );
 }
 
-ASW_Alien_Class_Entry* CASW_Spawn_Manager::GetAlienClass( int i )
+const ASW_Alien_Class_Entry* CASW_Spawn_Manager::GetAlienClass( int i )
 {
 	Assert( i >= 0 && i < NELEMS( g_Aliens ) );
 	return &g_Aliens[ i ];
@@ -92,6 +92,12 @@ void CASW_Spawn_Manager::LevelInitPostEntity()
 	m_northCandidateNodes.Purge();
 	m_southCandidateNodes.Purge();
 	m_bWarnedAboutMissingNodes = false;
+
+	UTIL_PrecacheOther( "asw_alien_goo" );
+	CBaseEntity::PrecacheModel( "models/aliens/biomass/biomasshelix.mdl" );
+	CBaseEntity::PrecacheModel( "models/aliens/biomass/biomassl.mdl" );
+	CBaseEntity::PrecacheModel( "models/aliens/biomass/biomasss.mdl" );
+	CBaseEntity::PrecacheModel( "models/aliens/biomass/biomassu.mdl" );
 
 	FindEscapeTriggers();
 }
@@ -342,9 +348,16 @@ bool CASW_Spawn_Manager::SpawnAlientAtRandomNode( CASW_Spawn_Definition *pSpawn 
 		}
 
 		// reactivedrop: preventing wanderers from spawning behind closed airlocks
-		if (UTIL_ASW_BrushBlockingRoute(pRoute, MASK_PLAYERSOLID_BRUSHONLY, COLLISION_GROUP_PLAYER_MOVEMENT))
+		if ( UTIL_ASW_BrushBlockingRoute( pRoute, MASK_NPCSOLID_BRUSHONLY, ASW_COLLISION_GROUP_ALIEN ) )
 		{
-			DeleteRoute(pRoute);
+			DeleteRoute( pRoute );
+			continue;
+		}
+
+		// reactivedrop: preventing wanderers from spawning behind closed airlocks x2
+		if ( UTIL_ASW_AirlockBlockingRoute( pRoute, CONTENTS_SOLID | CONTENTS_MOVEABLE | CONTENTS_MONSTER, ASW_COLLISION_GROUP_ALIEN ) )
+		{
+			DeleteRoute( pRoute );
 			continue;
 		}
 
@@ -520,6 +533,8 @@ void CASW_Spawn_Manager::UpdateCandidateNodes()
 			continue;
 
 		Vector vecPos = pNode->GetPosition( CANDIDATE_ALIEN_HULL );
+		if ( !ValidSpawnPoint( vecPos, NAI_Hull::Mins( CANDIDATE_ALIEN_HULL ), NAI_Hull::Maxs( CANDIDATE_ALIEN_HULL ), false ) )
+			continue;
 		
 		// find the nearest marine to this node
 		float flDistance = 0;
@@ -624,6 +639,17 @@ bool CASW_Spawn_Manager::FindHordePos( bool bNorth, const CUtlVector<int> &candi
 			if ( asw_director_debug.GetInt() >= 2 )
 			{
 				DevMsg( "  Discarding horde node %d as there's a brush in the way.\n", iChosen );
+			}
+			DeleteRoute( pRoute );
+			continue;
+		}
+
+		// reactivedrop: since airlock has collision now and brushes were removed from certain maps
+		if ( UTIL_ASW_AirlockBlockingRoute( pRoute, CONTENTS_SOLID | CONTENTS_MOVEABLE | CONTENTS_MONSTER, ASW_COLLISION_GROUP_ALIEN ) )
+		{
+			if ( asw_director_debug.GetInt() >= 2 )
+			{
+				DevMsg( "  Discarding horde node %d as there's an airlock in the way.\n", iChosen );
 			}
 			DeleteRoute( pRoute );
 			continue;
@@ -863,11 +889,13 @@ int CASW_Spawn_Manager::SpawnAlienBatch( Alien szAlienClass, int iNumAliens, con
 
 int CASW_Spawn_Manager::SpawnAlienBatch( const char *szAlienClass, int iNumAliens, const Vector &vecPosition, const QAngle &angle, float flMarinesBeyondDist )
 {
-	Vector vecMins = NAI_Hull::Mins(HULL_MEDIUMBIG);
-	Vector vecMaxs = NAI_Hull::Maxs(HULL_MEDIUMBIG);
+	Vector vecMins = NAI_Hull::Mins( HULL_MEDIUMBIG );
+	Vector vecMaxs = NAI_Hull::Maxs( HULL_MEDIUMBIG );
 	GetAlienBounds( szAlienClass, vecMins, vecMaxs );
 
-	return SpawnAlienBatch( szAlienClass, iNumAliens, vecPosition, angle, flMarinesBeyondDist, vecMins, vecMaxs );
+	CASW_Spawn_NPC npc( szAlienClass );
+
+	return SpawnAlienBatch( &npc, iNumAliens, vecPosition, angle, flMarinesBeyondDist, vecMins, vecMaxs );
 }
 
 int CASW_Spawn_Manager::SpawnAlienBatch( CASW_Spawn_Definition *pSpawn, int iNumAliens, const Vector &vecPosition, const QAngle &angle, float flMarinesBeyondDist )
@@ -877,85 +905,6 @@ int CASW_Spawn_Manager::SpawnAlienBatch( CASW_Spawn_Definition *pSpawn, int iNum
 	const Vector & vecMaxs = NAI_Hull::Maxs( iHull );
 
 	return SpawnAlienBatch( pSpawn, iNumAliens, vecPosition, angle, flMarinesBeyondDist, vecMins, vecMaxs );
-}
-
-CBaseEntity* CASW_Spawn_Manager::SpawnAlienAtWithOrders( const char* szAlienClass, const Vector& vecPos, const QAngle &angle, AlienOrder_t orders )
-{	
-	CBaseEntity	*pEntity = CreateEntityByName( szAlienClass );
-
-	if (!pEntity)
-	{
-		Warning("NULL Ent in CASW_Spawn_Manager::SpawnAlienAt! AlienClass = %s\n", szAlienClass);
-		UTIL_Remove(pEntity);
-		return NULL;
-	}
-
-	CAI_BaseNPC* pNPC = pEntity->MyNPCPointer();
-	if ( pNPC )
-	{
-		pNPC->AddSpawnFlags( SF_NPC_FALL_TO_GROUND );		
-	}
-	else
-	{
-		Warning("NULL NPC in CASW_Spawn_Manager::SpawnAlienAt! AlienClass = %s\n", szAlienClass);
-		UTIL_Remove(pEntity);
-		return NULL;
-	}
-
-	// Strip pitch and roll from the spawner's angles. Pass only yaw to the spawned NPC.
-	QAngle angles = angle;
-	angles.x = 0.0;
-	angles.z = 0.0;	
-	pEntity->SetAbsOrigin( vecPos );	
-	pEntity->SetAbsAngles( angles );
-
-	IASW_Spawnable_NPC* pSpawnable = dynamic_cast<IASW_Spawnable_NPC*>(pEntity);
-	ASSERT(pSpawnable);	
-	if ( !pSpawnable )
-	{
-		Warning("NULL Spawnable Ent in CASW_Spawn_Manager::SpawnAlienAt! AlienClass = %s\n", szAlienClass);
-		UTIL_Remove(pEntity);
-		return NULL;
-	}
-
-	// have drones unburrow by default, so we don't worry so much about them spawning onscreen
-	if ( !Q_strcmp( szAlienClass, "asw_drone" ) )
-	{			
-		pSpawnable->StartBurrowed();
-		pSpawnable->SetUnburrowIdleActivity( NULL_STRING );
-		pSpawnable->SetUnburrowActivity( NULL_STRING );
-	}
-
-	DispatchSpawn( pEntity );	
-	pEntity->Activate();	
-
-	UTIL_DropToFloor(pEntity, MASK_NPCSOLID);
-
-	// give our aliens the orders
-	pSpawnable->SetAlienOrders( orders, vec3_origin, NULL );
-
-#ifdef _DEBUG
-	if ( pEntity->MyNPCPointer() )
-	{
-		Vector hullMins = pEntity->MyNPCPointer()->GetHullMins();
-		Vector hullMaxs = pEntity->MyNPCPointer()->GetHullMaxs();
-		Vector realMins = pEntity->CollisionProp()->OBBMins();
-		Vector realMaxs = pEntity->CollisionProp()->OBBMaxs();
-		Assert( hullMins.x <= realMins.x );
-		Assert( hullMins.y <= realMins.y );
-		Assert( hullMins.z <= realMins.z );
-		Assert( hullMaxs.x >= realMaxs.x );
-		Assert( hullMaxs.y >= realMaxs.y );
-		Assert( hullMaxs.z >= realMaxs.z );
-	}
-#endif
-
-	return pEntity;
-}
-
-CBaseEntity* CASW_Spawn_Manager::SpawnAlienAt( const char* szAlienClass, const Vector& vecPos, const QAngle &angle )
-{
-	return SpawnAlienAtWithOrders( szAlienClass, vecPos, angle, AOT_MoveToNearestMarine );
 }
 
 bool CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_Definition *pSpawn, const Vector & vecPos, const QAngle & angle, bool bAllowSpawner )
@@ -1004,14 +953,14 @@ bool CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_Definition *pSpawn, const Vect
 	return bAny || !bTried;
 }
 
-CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vector & vecPos, const QAngle & angle, bool bAllowSpawner )
+CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vector &vecPos, const QAngle &angle, bool bAllowSpawner )
 {
 	if ( bAllowSpawner )
 	{
 		CASW_Spawner *pSpawner = FindAvailableSpawner( pNPC, vecPos );
 		if ( pSpawner )
 		{
-			CBaseEntity *pSpawned = dynamic_cast<CBaseEntity *>( pSpawner->SpawnAlien( pNPC->m_pAlienClass->m_pszAlienClass, NAI_Hull::Mins( pNPC->m_pAlienClass->m_nHullType ), NAI_Hull::Maxs( pNPC->m_pAlienClass->m_nHullType ), pNPC ) );
+			CBaseEntity *pSpawned = dynamic_cast< CBaseEntity * >( pSpawner->SpawnAlien( pNPC->m_pAlienClass->m_pszAlienClass, NAI_Hull::Mins( pNPC->m_pAlienClass->m_nHullType ), NAI_Hull::Maxs( pNPC->m_pAlienClass->m_nHullType ), pNPC ) );
 			if ( pSpawned )
 			{
 				return pSpawned;
@@ -1019,19 +968,25 @@ CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vecto
 		}
 	}
 
-	CBaseEntity	*pEntity = CreateEntityByName( pNPC->m_pAlienClass->m_pszAlienClass );
+	CBaseEntity *pEntity = CreateEntityByName( pNPC->m_pAlienClass->m_pszAlienClass );
 	if ( !pEntity )
 	{
 		return NULL;
 	}
 
-	if ( pEntity->IsAlienClassType() )
+	if ( pNPC->m_iszModelOverride != NULL_STRING )
 	{
-		CASW_Alien* pAlien = assert_cast<CASW_Alien*>(pEntity);
+		pEntity->SetModelName( pNPC->m_iszModelOverride );
+	}
+
+	if ( pEntity->IsInhabitableNPC() )
+	{
+		CASW_Inhabitable_NPC *pAlien = assert_cast< CASW_Inhabitable_NPC * >( pEntity );
 
 		pAlien->m_bFlammable = pNPC->m_bFlammable;
 		pAlien->m_bTeslable = pNPC->m_bTeslable;
 		pAlien->m_bFreezable = pNPC->m_bFreezable;
+		pAlien->m_flFreezeResistance = pNPC->m_flFreezeResistance;
 		pAlien->m_bFlinchable = pNPC->m_bFlinches;
 		pAlien->m_bGrenadeReflector = pNPC->m_bGrenadeReflector;
 		pAlien->m_iHealthBonus = pNPC->m_iHealthBonus;
@@ -1039,20 +994,7 @@ CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vecto
 		pAlien->m_fSpeedScale = pNPC->m_flSpeedScale;
 	}
 
-	if ( pEntity->Classify() == CLASS_ASW_BUZZER )
-	{
-		CASW_Buzzer *pBuzzer = assert_cast<CASW_Buzzer *>( pEntity );
-		pBuzzer->m_bFlammable = pNPC->m_bFlammable;
-		pBuzzer->m_bTeslable = pNPC->m_bTeslable;
-		pBuzzer->m_bFreezable = pNPC->m_bFreezable;
-		pBuzzer->m_bFlinchable = pNPC->m_bFlinches;
-		pBuzzer->m_bGrenadeReflector = pNPC->m_bGrenadeReflector;
-		pBuzzer->m_iHealthBonus = pNPC->m_iHealthBonus;
-		pBuzzer->m_fSizeScale = pNPC->m_flSizeScale;
-		pBuzzer->m_fSpeedScale = pNPC->m_flSpeedScale;
-	}
-
-	CAI_BaseNPC	*pBaseNPC = pEntity->MyNPCPointer();
+	CAI_BaseNPC *pBaseNPC = pEntity->MyNPCPointer();
 	if ( pBaseNPC )
 	{
 		pBaseNPC->AddSpawnFlags( SF_NPC_FALL_TO_GROUND );
@@ -1061,11 +1003,11 @@ CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vecto
 	// Strip pitch and roll from the spawner's angles. Pass only yaw to the spawned NPC.
 	QAngle angles = angle;
 	angles.x = 0.0;
-	angles.z = 0.0;	
+	angles.z = 0.0;
 	pEntity->SetAbsOrigin( vecPos );
 	pEntity->SetAbsAngles( angles );
 
-	IASW_Spawnable_NPC* pSpawnable = dynamic_cast<IASW_Spawnable_NPC *>( pEntity );
+	IASW_Spawnable_NPC *pSpawnable = dynamic_cast< IASW_Spawnable_NPC * >( pEntity );
 	Assert( pSpawnable );
 	if ( !pSpawnable )
 	{
@@ -1076,16 +1018,16 @@ CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vecto
 
 	// have drones and rangers unburrow by default, so we don't worry so much about them spawning onscreen
 	if ( pNPC->m_pAlienClass->m_nHullType == HULL_MEDIUMBIG )
-	{			
+	{
 		pSpawnable->StartBurrowed();
 		pSpawnable->SetUnburrowIdleActivity( NULL_STRING );
 		pSpawnable->SetUnburrowActivity( NULL_STRING );
 	}
 
-	DispatchSpawn( pEntity );	
-	pEntity->Activate();	
+	DispatchSpawn( pEntity );
+	pEntity->Activate();
 
-	UTIL_DropToFloor( pEntity, MASK_NPCSOLID );
+	UTIL_DropToFloor( pEntity, pEntity->PhysicsSolidMaskForEntity() );
 
 	// give our aliens the orders
 	pSpawnable->SetAlienOrders( AOT_MoveToNearestMarine, vec3_origin, NULL );
@@ -1100,6 +1042,16 @@ CBaseEntity *CASW_Spawn_Manager::SpawnAlienAt( CASW_Spawn_NPC *pNPC, const Vecto
 
 bool CASW_Spawn_Manager::ValidSpawnPoint( const Vector &vecPosition, const Vector &vecMins, const Vector &vecMaxs, bool bCheckGround, float flMarineNearDistance )
 {
+	// check if there's a brush telling us to not spawn there
+	FOR_EACH_VEC( IRD_No_Director_Aliens::AutoList(), d )
+	{
+		CRD_No_Director_Aliens *pNoDirectorAliens = assert_cast< CRD_No_Director_Aliens * >( IRD_No_Director_Aliens::AutoList()[d] );
+		if ( !pNoDirectorAliens->m_bDisabled && pNoDirectorAliens->CollisionProp()->IsPointInBounds( vecPosition ) )
+		{
+			return false;
+		}
+	}
+
 	// check if we can fit there
 	trace_t tr;
 	UTIL_TraceHull( vecPosition,
@@ -1440,6 +1392,7 @@ void CASW_Spawn_Manager::PrespawnAliens(int multiplier)
 
 void CASW_Spawn_Manager::PrespawnAlienAtRandomNode(const char *szAlienClass, const int iNumAliens, const int iHull, const Vector &playerStartPos, const int iNumNodes)
 {
+	CASW_Spawn_NPC npc( szAlienClass );
 	for (int i = 0; i < iNumAliens; ++i)
 	{
 		CAI_Node *pNode = NULL;
@@ -1457,7 +1410,7 @@ void CASW_Spawn_Manager::PrespawnAlienAtRandomNode(const char *szAlienClass, con
 			if (ValidSpawnPoint(pNode->GetPosition(iHull), NAI_Hull::Mins(iHull), NAI_Hull::Maxs(iHull), true, 0.0f))
 			{
 				// Raise the end position a little up off the floor, place the npc and drop him down
-				CBaseEntity *pAlien = SpawnAlienAt(szAlienClass, pNode->GetPosition(iHull) + Vector(0.f, 0.f, 12.f), RandomAngle(0, 360));
+				CBaseEntity *pAlien = SpawnAlienAt( &npc, pNode->GetPosition( iHull ) + Vector( 0.f, 0.f, 12.f ), RandomAngle( 0, 360 ) );
 				IASW_Spawnable_NPC *pSpawnable = dynamic_cast<IASW_Spawnable_NPC*>(pAlien);
 				if (pSpawnable)
 				{
@@ -1491,11 +1444,6 @@ void CASW_Spawn_Manager::PrespawnEntityAtRandomNode( const char *szEntityClass, 
 				continue;
 			}
 
-			MDLCACHE_CRITICAL_SECTION();
-
-			bool allowPrecache = CBaseEntity::IsPrecacheAllowed();
-			CBaseEntity::SetAllowPrecache( true );
-
 			// Try to create entity
 			CBaseEntity *entity = dynamic_cast< CBaseEntity * >( CreateEntityByName( szEntityClass ) );
 			if ( entity )
@@ -1516,17 +1464,17 @@ void CASW_Spawn_Manager::PrespawnEntityAtRandomNode( const char *szEntityClass, 
 						ang.Init( 0, RandomFloat( 0.0f, 360.0f ), 0.0f );
 						break;
 					case 2: 
-						pBiomass->SetModelName( AllocPooledString( "models/aliens/biomass/biomassl.mdl" ) ); 
+						pBiomass->SetModelName( AllocPooledString( "models/aliens/biomass/biomassl.mdl" ) );
 						vecPositionOffset.Init( 0, 0, -32.f );
 						ang.Init( 40.f, RandomFloat( 0.0f, 360.0f ), 0.0f );
 						break;
 					case 3: 
-						pBiomass->SetModelName( AllocPooledString( "models/aliens/biomass/biomasss.mdl" ) ); 
+						pBiomass->SetModelName( AllocPooledString( "models/aliens/biomass/biomasss.mdl" ) );
 						vecPositionOffset.Init( 0, 0, -32.f );
 						ang.Init( 0, RandomFloat( 0.0f, 360.0f ), 0.0f );
 						break;
 					case 4: 
-						pBiomass->SetModelName( AllocPooledString( "models/aliens/biomass/biomassu.mdl" ) ); 
+						pBiomass->SetModelName( AllocPooledString( "models/aliens/biomass/biomassu.mdl" ) );
 						vecPositionOffset.Init( 0, 0, 32.f );
 						ang.Init( -81.5, RandomFloat( 0.0f, 360.0f ), 0.0f );
 						break;
@@ -1538,7 +1486,6 @@ void CASW_Spawn_Manager::PrespawnEntityAtRandomNode( const char *szEntityClass, 
 
 				DispatchSpawn( entity );
 			}
-			CBaseEntity::SetAllowPrecache( allowPrecache );
 
 			if ( entity )
 				break;			// exit from 30 tries

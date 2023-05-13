@@ -31,27 +31,29 @@ BEGIN_RECV_TABLE_NOBASE( C_ASW_Marine_Resource, DT_MR_Timelines )
 	RecvPropDataTable( RECVINFO_DT( m_TimelineScore ), 0, &REFERENCE_RECV_TABLE(DT_Timeline) ),
 END_RECV_TABLE();
 
-IMPLEMENT_CLIENTCLASS_DT(C_ASW_Marine_Resource, DT_ASW_Marine_Resource, CASW_Marine_Resource)
-	RecvPropDataTable( "mr_timelines", 0, 0, &REFERENCE_RECV_TABLE(DT_MR_Timelines) ),
-	RecvPropInt		(RECVINFO(m_MarineProfileIndex)),
-	RecvPropEHandle (RECVINFO(m_MarineEntity)),
-	RecvPropEHandle (RECVINFO(m_Commander)),
-	RecvPropInt		(RECVINFO(m_iCommanderIndex)),
-	RecvPropArray	( RecvPropInt( RECVINFO(m_iWeaponsInSlots[0]), 30 ), m_iWeaponsInSlots ),
-	RecvPropBool	(RECVINFO(m_bInfested) ),
-	RecvPropBool	(RECVINFO(m_bInhabited) ),
-	RecvPropInt		(RECVINFO(m_iServerFiring) ),
-	//RecvPropFloat		(RECVINFO(m_fDamageTaken) ),
-	RecvPropInt		(RECVINFO(m_iAliensKilled), 16 ),
-	RecvPropBool	(RECVINFO(m_bTakenWoundDamage) ),
-	RecvPropBool	(RECVINFO(m_bHealthHalved) ),
-	RecvPropString	(RECVINFO(m_MedalsAwarded) ),
-	RecvPropEHandle	(RECVINFO(m_hWeldingDoor)),
-	RecvPropBool	(RECVINFO(m_bUsingEngineeringAura) ),
-	RecvPropInt		(RECVINFO(m_iBotFrags)),
-	RecvPropInt		(RECVINFO(m_iScore)),
-	RecvPropFloat	(RECVINFO(m_flFinishedMissionTime)),
-END_RECV_TABLE()
+IMPLEMENT_CLIENTCLASS_DT( C_ASW_Marine_Resource, DT_ASW_Marine_Resource, CASW_Marine_Resource )
+	RecvPropDataTable( "mr_timelines", 0, 0, &REFERENCE_RECV_TABLE( DT_MR_Timelines ) ),
+	RecvPropIntWithMinusOneFlag( RECVINFO( m_MarineProfileIndex ) ),
+	RecvPropEHandle( RECVINFO( m_MarineEntity ) ),
+	RecvPropEHandle( RECVINFO( m_OriginalCommander ) ),
+	RecvPropEHandle( RECVINFO( m_Commander ) ),
+	RecvPropIntWithMinusOneFlag( RECVINFO( m_iCommanderIndex ) ),
+	RecvPropArray( RecvPropIntWithMinusOneFlag( RECVINFO( m_iWeaponsInSlots[0] ) ), m_iWeaponsInSlots ),
+	RecvPropArray( RecvPropIntWithMinusOneFlag( RECVINFO( m_iWeaponsInSlotsDynamic[0] ) ), m_iWeaponsInSlotsDynamic ),
+	RecvPropArray( RecvPropIntWithMinusOneFlag( RECVINFO( m_iInitialWeaponsInSlots[0] ) ), m_iInitialWeaponsInSlots ),
+	RecvPropBool( RECVINFO( m_bInfested ) ),
+	RecvPropBool( RECVINFO( m_bInhabited ) ),
+	RecvPropInt( RECVINFO( m_iServerFiring ) ),
+	RecvPropInt( RECVINFO( m_iAliensKilled ) ),
+	RecvPropBool( RECVINFO( m_bTakenWoundDamage ) ),
+	RecvPropBool( RECVINFO( m_bHealthHalved ) ),
+	RecvPropString( RECVINFO( m_MedalsAwarded ) ),
+	RecvPropEHandle( RECVINFO( m_hWeldingDoor ) ),
+	RecvPropBool( RECVINFO( m_bUsingEngineeringAura ) ),
+	RecvPropInt( RECVINFO( m_iBotFrags ) ),
+	RecvPropIntWithMinusOneFlag( RECVINFO( m_iScore ) ),
+	RecvPropFloat( RECVINFO( m_flFinishedMissionTime ) ),
+END_RECV_TABLE();
 
 extern ConVar asw_leadership_radius;
 extern ConVar asw_skill_healing_charges_base;
@@ -67,10 +69,8 @@ C_ASW_Marine_Resource::C_ASW_Marine_Resource()
 	m_fLastHealthPercent = 0;
 	m_fHurtPulse = 0;
 	m_bTakenWoundDamage = 0;
-	m_fNextLeadershipTest = 0;
-	m_fLeadershipResist = 0;
 	m_iServerFiring = 0;
-	m_fNextMedsCountTime = 0;	
+	m_fNextMedsCountTime = 0;
 	m_fCachedMedsPercent = 0;
 	m_MedalsAwarded[0] = '\0';
 	m_bUsingEngineeringAura = false;
@@ -327,7 +327,20 @@ void C_ASW_Marine_Resource::OnDataChanged(DataUpdateType_t updateType)
 		}
 		SetNextClientThink(gpGlobals->curtime);
 	}
+
 	BaseClass::OnDataChanged(updateType);
+
+	if ( updateType == DATA_UPDATE_CREATED )
+	{
+		m_iCurScore = m_iPrevScore = m_iScore;
+		m_flScoreLastChanged = gpGlobals->curtime;
+	}
+	else if ( m_iCurScore != m_iScore )
+	{
+		m_iPrevScore = GetInterpolatedScore();
+		m_iCurScore = m_iScore;
+		m_flScoreLastChanged = gpGlobals->curtime;
+	}
 }
 
 void C_ASW_Marine_Resource::ClientThink()
@@ -392,27 +405,7 @@ void C_ASW_Marine_Resource::ClientThink()
 	}
 	m_fLastHealthPercent = flHealth;
 
-	if (gpGlobals->curtime > m_fNextLeadershipTest)
-	{
-		UpdateLeadershipBonus();
-	}
-
 	SetNextClientThink( CLIENT_THINK_ALWAYS );
-}
-
-void C_ASW_Marine_Resource::UpdateLeadershipBonus()
-{
-	if (GetMarineEntity() && GetHealthPercent() > 0)
-	{
-		m_fLeadershipResist = MarineSkills()->GetHighestSkillValueNearby(GetMarineEntity()->GetAbsOrigin(),
-			asw_leadership_radius.GetFloat(),
-				ASW_MARINE_SKILL_LEADERSHIP, ASW_MARINE_SUBSKILL_LEADERSHIP_DAMAGE_RESIST);		
-		m_fNextLeadershipTest = gpGlobals->curtime + 0.5f;
-	}
-	else
-	{
-		m_fNextLeadershipTest = gpGlobals->curtime + 2.0f;
-	}
 }
 
 // note: assumes marine entity is networked to all clients...
@@ -446,4 +439,20 @@ float C_ASW_Marine_Resource::GetClipsPercentForHUD()
 	int iGuns = pMarine->GetNumberOfWeaponsUsingAmmo( pWeapon->GetPrimaryAmmoType() );
 	int iMaxAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType(), pMarine );
 	return (float) pMarine->GetAmmoCount( pWeapon->GetPrimaryAmmoType() ) / (float) ( iMaxAmmo * iGuns );
+}
+
+int C_ASW_Marine_Resource::GetInterpolatedScore()
+{
+	float flSinceChange = gpGlobals->curtime - m_flScoreLastChanged - 0.5f;
+	if ( flSinceChange < 0.0f )
+	{
+		return m_iPrevScore;
+	}
+
+	if ( flSinceChange >= 0.5f )
+	{
+		return m_iCurScore;
+	}
+
+	return RemapValClamped( flSinceChange, 0.0f, 0.5f, m_iPrevScore, m_iCurScore );
 }

@@ -36,6 +36,9 @@
 #include "soundent.h"
 #include "ai_navigator.h"
 #include "tier1/functors.h"
+#ifdef INFESTED_DLL
+#include "asw_shareddefs.h"
+#endif
 
 
 #define PLAYER_SQUADNAME "player_squad"
@@ -2146,6 +2149,7 @@ public:
 	virtual bool		IsMovementFrozen( void ) { return m_flMovementFrozen > m_flFrozenMoveBlock; }
 	virtual bool		IsAttackFrozen( void ) { return m_flAttackFrozen > 0.0f; }
 	virtual void		Unfreeze();
+	bool				m_bWasEverFrozen;
 
 	static void			ClearAllSchedules(void);
 
@@ -2927,6 +2931,12 @@ inline int CAI_Component::GetHullTraceMask() const
 
 inline int CAI_Component::GetCollisionGroup() const
 {
+#ifdef INFESTED_DLL
+	// HACK!
+	if ( const_cast< CAI_BaseNPC * >( GetOuter() )->Classify() == CLASS_ASW_MARINE )
+		return ASW_COLLISION_GROUP_BOT_MOVEMENT;
+#endif
+
 	return GetOuter()->GetCollisionGroup();
 }
 

@@ -19,6 +19,7 @@
 #include "in_buttons.h"
 #include "holdout_resupply_frame.h"
 #include "asw_trace_filter.h"
+#include "menu.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -26,6 +27,9 @@
 ConVar joy_pan_camera("joy_pan_camera", "0", FCVAR_ARCHIVE);
 ConVar asw_ground_secondary("asw_ground_secondary", "1", FCVAR_NONE, "Set to 1 to make marines aim grenades at the floor instead of firing them straight");
 extern ConVar rd_ground_shooting;
+extern ConVar asw_DebugAutoAim;
+ConVar rd_first_person_aim_correction( "rd_first_person_aim_correction", "1", FCVAR_USERINFO, "Make the gun point where the player is looking rather than straight forward." );
+ConVar rd_first_person_aim_correction_weapon_length( "rd_first_person_aim_correction_weapon_length", "35", FCVAR_USERINFO, "Scale down aim angle correction linearly when distance is below this." );
 // BenLubar(spectator-mouse)
 ConVar rd_networked_mouse("rd_networked_mouse", "1", FCVAR_NONE, "Send the mouse position to the server for spectating");
 ConVar dub_forced_action("dub_forced_action", "0", FCVAR_CLIENTDLL);
@@ -74,78 +78,23 @@ ConVar asw_mouse_order_dist("asw_mouse_order_dist", "100", 0, "Minimum distance 
 void GetVGUICursorPos( int& x, int& y );
 void SetVGUICursorPos( int x, int y );
 
-void SelectMarineDown(int iMarine)
-{	
-	// number ordering disabled for now
-	/*
-	if (s_fMarineDownTime == 0)
-	{
-	s_fMarineDownTime = gpGlobals->curtime;
-	s_iMarineOrdering = iMarine;
-	GetVGUICursorPos(s_iMarineOrderingStartX, s_iMarineOrderingStartY);
-	int x, y;
-	engine->GetScreenSize( x, y );
-	x = x >> 1;
-	y = y >> 1;
-
-	float mx, my;
-	mx = s_iMarineOrderingStartX - x;
-	my = s_iMarineOrderingStartY - y;
-	float mx_ratio =((float) mx) / ((float) x);
-	float my_ratio =((float) my) / ((float) y);			
-	HUDTraceToWorld(-mx_ratio * 0.5f, -my_ratio * 0.5f, s_vecMarineOrderPos);	// store the spot we'll send a marine to
-	}
-	*/
-
+void SelectMarineDown( int iMarine )
+{
 	// if we change marines, clear any marine ordering we're about to give
-	if (s_hOrderTarget.Get())
+	if ( s_hOrderTarget.Get() )
 	{
 		s_hOrderTarget = NULL;
-		ASWInput()->ASW_SetOrderingMarine(0);
+		ASWInput()->ASW_SetOrderingMarine( 0 );
 	}
+
 	// send marine switch command
 	char buffer[64];
-	Q_snprintf(buffer, sizeof(buffer), "cl_switchm %d", iMarine+1);
-	engine->ServerCmd(buffer);
+	Q_snprintf( buffer, sizeof( buffer ), "cl_switchm %d", iMarine + 1 );
+	engine->ServerCmd( buffer );
 }
 
 void SelectMarineUp(int iMarine)
-{	
-	// number ordering disabled for now
-	/*
-	// check for
-	if (s_iMarineOrdering == iMarine)
-	{
-	// find how much the mouse has moved
-	int cx, cy;
-	GetVGUICursorPos(cx, cy);
-	int dx = cx - s_iMarineOrderingStartX;
-	int dy = cy - s_iMarineOrderingStartY;
-	float dist_sqr = dx * dx + dy * dy;
-	s_iMarineOrdering = 0;
-	s_fMarineDownTime = 0;
-	float fScreenScale = ScreenWidth() / 1024.0f;
-	int iMinPixels = asw_mouse_order_dist.GetFloat() * fScreenScale;
-	if (dist_sqr > iMinPixels)
-	{
-	// order that marine to face this way
-	Vector vecOrderDir(dx, dy, 0);
-	float fYaw = -UTIL_VecToYaw(vecOrderDir);
-	char buffer[64];
-
-	Q_snprintf(buffer, sizeof(buffer), "cl_marineface %d %f %d %d %d", iMarine, fYaw,
-	int(s_vecMarineOrderPos.x), int(s_vecMarineOrderPos.y), int(s_vecMarineOrderPos.z));
-	//Msg("Sending command %s\n", buffer);
-	engine->ClientCmd(buffer);
-	return;
-	}
-	}
-	// otherwise send the normal marine switch
-	char buffer[64];
-	Q_snprintf(buffer, sizeof(buffer), "cl_switchm %d", iMarine+1);
-	//Msg("Sending command %s\n", buffer);
-	engine->ClientCmd(buffer);
-	*/
+{
 }
 
 void IN_SelectMarine1Down(void) { SelectMarineDown(0); }
@@ -410,6 +359,14 @@ int CASWInput::KeyEvent( int down, ButtonCode_t code, const char *pszCurrentBind
 	if (down && pszCurrentBinding && Q_strcmp( pszCurrentBinding, "+use" ) == 0 && CASW_VGUI_Info_Message::CloseInfoMessage())
 		return false;
 
+	CHudMenu *pMenu = GET_FULLSCREEN_HUDELEMENT( CHudMenu );
+	if ( pMenu && pMenu->IsMenuOpen() && code >= KEY_F1 && code <= KEY_F10 )
+	{
+		if ( down )
+			pMenu->SelectMenuItem( code - KEY_F1 + 1 );
+		return false;
+	}
+
 	return CInput::KeyEvent( down, code, pszCurrentBinding );
 }
 
@@ -640,27 +597,77 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 	}
 	cmd->crosshair_entity = GetHighlightEntity() ? GetHighlightEntity()->entindex() : 0;
 
-	if ( pPlayer && pPlayer->GetASWControls() != ASWC_TOPDOWN && pMarine )
+	if ( pPlayer && pPlayer->GetASWControls() != ASWC_TOPDOWN && pMarine && rd_first_person_aim_correction.GetBool() )
 	{
 		Vector vecFacing;
 		AngleVectors( cmd->viewangles, &vecFacing );
 
 		trace_t tr;
 		CASW_Trace_Filter filter( pMarine, COLLISION_GROUP_NONE );
-		UTIL_TraceLine( pMarine->EyePosition(), pMarine->EyePosition() + vecFacing * ASW_MAX_AIM_TRACE, MASK_VISIBLE_AND_NPCS, &filter, &tr );
+		UTIL_TraceLine( pPlayer->EyePosition(), pPlayer->EyePosition() + vecFacing * ASW_MAX_AIM_TRACE, MASK_VISIBLE_AND_NPCS | CONTENTS_HITBOX, &filter, &tr );
 
 		cmd->crosshairtrace = tr.endpos;
 		cmd->crosshair_entity = MAX( tr.GetEntityIndex(), 0 );
 
+		Vector vecHitLocation;
+		IASW_Client_Aim_Target *pAutoAimEnt = NULL;
+		C_BaseEntity *pAimEnt = HUDToWorld( 0, 0, vecHitLocation, pAutoAimEnt );
+
+		if ( asw_DebugAutoAim.GetInt() >= 1 )
+		{
+			if ( tr.startsolid )
+			{
+				NDebugOverlay::Cross3D( tr.endpos, 16.0f, 255, 0, 0, true, 0.1f );
+			}
+			else
+			{
+				NDebugOverlay::Cross3D( tr.endpos, 16.0f, 255, 255, 255, true, 0.1f );
+				if ( pAutoAimEnt && !vecHitLocation.IsZero() )
+				{
+					NDebugOverlay::Box( vecHitLocation, Vector( -2, -2, -2 ), Vector( 2, 2, 2 ), 255, 255, 0, 127, 0.1f );
+				}
+			}
+		}
+
+		Vector vecScreenPos;
+		if ( pAutoAimEnt && !vecHitLocation.IsZero() && !debugoverlay->ScreenPosition( vecHitLocation, vecScreenPos ) )
+		{
+			tr.endpos = vecHitLocation;
+		}
+
+		Vector vecShootPos = pMarine->Weapon_ShootPosition();
+		if ( asw_DebugAutoAim.GetInt() >= 1 )
+		{
+			NDebugOverlay::Line( vecShootPos, tr.endpos, 255, 0, 127, true, 0.1f );
+
+			Vector vecUnadjustedForward;
+			AngleVectors( pPlayer->EyeAngles(), &vecUnadjustedForward );
+
+			NDebugOverlay::Line( tr.endpos, vecShootPos + vecUnadjustedForward * vecShootPos.DistTo( tr.endpos ), 255, 0, 0, true, 0.1f );
+		}
+
 		if ( !tr.startsolid )
 		{
 			Vector vecAimDelta;
-			VectorSubtract( tr.endpos, pMarine->Weapon_ShootPosition(), vecAimDelta );
+			VectorSubtract( tr.endpos, vecShootPos, vecAimDelta );
 			QAngle angIdealAim;
 			VectorAngles( vecAimDelta, angIdealAim );
-			cmd->aimangleoffset = angIdealAim - cmd->viewangles;
+			cmd->aimangleoffset = angIdealAim - pPlayer->EyeAngles();
 			cmd->aimangleoffset.z = 0;
 			NormalizeAngles( cmd->aimangleoffset );
+
+			float flDist = vecAimDelta.Length();
+			if ( rd_first_person_aim_correction_weapon_length.GetFloat() > 0 && flDist < rd_first_person_aim_correction_weapon_length.GetFloat() )
+			{
+				cmd->aimangleoffset *= flDist / rd_first_person_aim_correction_weapon_length.GetFloat();
+
+				if ( asw_DebugAutoAim.GetInt() >= 1 )
+				{
+					Vector vecForward;
+					AngleVectors( pPlayer->EyeAngles() + cmd->aimangleoffset, &vecForward );
+					NDebugOverlay::Line( tr.endpos, vecShootPos + vecForward * rd_first_person_aim_correction_weapon_length.GetFloat(), 255, 0, 255, true, 0.1f );
+				}
+			}
 		}
 	}
 
@@ -754,49 +761,6 @@ void CASWInput::CreateMove( int sequence_number, float input_sample_frametime, b
 }
 
 // asw
-
-bool CASWInput::ASWWriteVehicleMessage( bf_write *buf )
-{
-	int startbit = buf->GetNumBitsWritten();
-
-	if (!PlayerDriving())
-		return false;
-
-	C_ASW_Player* pPlayer = C_ASW_Player::GetLocalASWPlayer();
-	C_ASW_Marine *pMarine = pPlayer ? C_ASW_Marine::AsMarine( pPlayer->GetNPC() ) : NULL;
-	if ( !pMarine || !pMarine->GetClientsideVehicle() )
-		return false;
-
-	C_BaseAnimating *pAnimating = dynamic_cast< C_BaseAnimating * >( pMarine->GetClientsideVehicle()->GetEntity() );
-	if ( !pAnimating )
-		return false;
-
-	// = static_cast<C_BaseAnimating*>(s_pCVehicle->GetVehicleEnt());
-	buf->WriteBitVec3Coord(pAnimating->GetAbsOrigin());
-	buf->WriteBitAngles(pAnimating->GetAbsAngles());
-	//todo: velocity?
-
-	// poseparams
-	//Msg(" Client params: ");
-	for (int i=0;i<12;i++)
-	{
-		buf->WriteBitFloat(pAnimating->GetPoseParameterRaw(i));
-		//Msg("%f ", pAnimating->GetPoseParameter(i));
-	}
-	//Msg("\n");
-
-	if ( buf->IsOverflowed() )
-	{
-		int endbit = buf->GetNumBitsWritten();
-
-		Msg( "WARNING! ASW Vehicle packet buffer overflow, last cmd was %i bits long\n",
-			endbit - startbit );
-
-		return false;
-	}
-
-	return true;
-}
 
 int CASWInput::GetButtonBits( bool bResetState )
 {

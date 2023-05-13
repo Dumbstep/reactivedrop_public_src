@@ -13,12 +13,19 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+extern ConVar asw_skill_grenades_freeze_duration_base;
+
 LINK_ENTITY_TO_CLASS( asw_grenade_freeze, CASW_Grenade_Freeze );
 PRECACHE_REGISTER( asw_grenade_freeze );
 
 BEGIN_DATADESC( CASW_Grenade_Freeze )	
 	DEFINE_FIELD( m_flFreezeAmount, FIELD_FLOAT ),
 END_DATADESC()
+
+CASW_Grenade_Freeze::CASW_Grenade_Freeze()
+{
+	m_flFreezeAmount = 1.0f + asw_skill_grenades_freeze_duration_base.GetFloat();
+}
 
 void CASW_Grenade_Freeze::DoExplosion()
 {
@@ -30,7 +37,7 @@ void CASW_Grenade_Freeze::DoExplosion()
 	}
 
 	// Add freeze to all creatures in the radius
-	ASWGameRules()->FreezeAliensInRadius( m_hFirer.Get(), m_flFreezeAmount, GetAbsOrigin(), m_DmgRadius );
+	ASWGameRules()->FreezeAliensInRadius( m_hFirer.Get(), this, m_flFreezeAmount, GetAbsOrigin(), m_DmgRadius );
 }
 
 void CASW_Grenade_Freeze::Precache()
@@ -40,6 +47,13 @@ void CASW_Grenade_Freeze::Precache()
 	PrecacheParticleSystem( "freeze_grenade_explosion" );
 	PrecacheParticleSystem( "grenade_freeze_main_trail" );
 	PrecacheScriptSound( "ASW_Freeze_Grenade.Explode" );
+}
+
+void CASW_Grenade_Freeze::Spawn()
+{
+	BaseClass::Spawn();
+
+	m_nSkin = 1;
 }
 
 CASW_Grenade_Freeze* CASW_Grenade_Freeze::Freeze_Grenade_Create( float flDamage, float flFreezeAmount, float fRadius, int iClusters, const Vector &position, const QAngle &angles, const Vector &velocity, const AngularImpulse &angVelocity, CBaseEntity *pOwner, CBaseEntity *pCreatorWeapon )
@@ -55,6 +69,10 @@ CASW_Grenade_Freeze* CASW_Grenade_Freeze::Freeze_Grenade_Create( float flDamage,
 	pGrenade->SetOwnerEntity( pOwner );
 	pGrenade->SetClusters(iClusters, true);	
 	pGrenade->m_hCreatorWeapon.Set( pCreatorWeapon );
+	if ( pCreatorWeapon )
+	{
+		pGrenade->m_ProjectileData.GetForModify().SetFromWeapon( pCreatorWeapon );
+	}
 
 	// hack attack!  for some reason, grenades refuse to be affect by damage forces until they're actually dead
 	//  so we kill it immediately.

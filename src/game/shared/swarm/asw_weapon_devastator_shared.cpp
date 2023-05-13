@@ -67,9 +67,11 @@ void CASW_Weapon_Devastator::Precache()
 	PrecacheModel( "swarm/sprites/whiteglow1.vmt" );
 	PrecacheModel( "swarm/sprites/greylaser1.vmt");
 	PrecacheScriptSound( "ASW_Weapon.Empty" );
-	PrecacheScriptSound( "ASW_Weapon.Reload3" );
 	PrecacheScriptSound( "ASW_Weapon_Devastator.SingleFP" );
 	PrecacheScriptSound( "ASW_Weapon_Devastator.Single" );
+	PrecacheScriptSound( "ASW_Weapon_Devastator.ReloadA" );
+	PrecacheScriptSound( "ASW_Weapon_Devastator.ReloadB" );
+	PrecacheScriptSound( "ASW_Weapon_Devastator.ReloadC" );
 
 	BaseClass::Precache();
 }
@@ -87,7 +89,7 @@ float CASW_Weapon_Devastator::GetWeaponDamage()
 
 	if (GetMarine())
 	{
-		flDamage += MarineSkills()->GetSkillBasedValueByMarine( GetMarine(), ASW_MARINE_SKILL_ACCURACY, ASW_MARINE_SUBSKILL_ACCURACY_RIFLE_DMG );
+		flDamage += MarineSkills()->GetSkillBasedValueByMarine( GetMarine(), ASW_MARINE_SKILL_ACCURACY, ASW_MARINE_SUBSKILL_ACCURACY_DEVASTATOR_DMG );
 	}
 
 	return flDamage;
@@ -99,6 +101,20 @@ float CASW_Weapon_Devastator::GetMovementScale()
 	return ShouldMarineMoveSlow() ? 0.3f : 0.7f;
 }
 
+#ifndef CLIENT_DLL
+#else
+const char *CASW_Weapon_Devastator::GetPartialReloadSound( int iPart )
+{
+	switch ( iPart )
+	{
+	case 1: return "ASW_Weapon_Devastator.ReloadB"; break;
+	case 2: return "ASW_Weapon_Devastator.ReloadC"; break;
+	default: break;
+	};
+	return "ASW_Weapon_Devastator.ReloadA";
+}
+#endif
+
 bool CASW_Weapon_Devastator::ShouldMarineMoveSlow()
 {
 	bool bAttack1, bAttack2, bReload, bOldReload, bOldAttack1;
@@ -107,8 +123,15 @@ bool CASW_Weapon_Devastator::ShouldMarineMoveSlow()
 	return ( BaseClass::ShouldMarineMoveSlow() || bAttack1 );
 }
 
-void CASW_Weapon_Devastator::FireShotgunPellet( CASW_Marine *pMarine, const FireBulletsInfo_t &info, int iSeed )
+void CASW_Weapon_Devastator::FireShotgunPellet( CASW_Inhabitable_NPC *pNPC, const FireBulletsInfo_t &info, int iSeed )
 {
+	CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
+	if ( !pMarine )
+	{
+		BaseClass::FireShotgunPellet( pNPC, info, iSeed );
+		return;
+	}
+
 	float fPiercingChance = 0;
 	if (pMarine->GetMarineResource() && pMarine->GetMarineProfile() && pMarine->GetMarineProfile()->GetMarineClass() == MARINE_CLASS_SPECIAL_WEAPONS)
 		fPiercingChance = MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_PIERCING);
@@ -123,16 +146,16 @@ void CASW_Weapon_Devastator::FireShotgunPellet( CASW_Marine *pMarine, const Fire
 	}
 }
 
-const Vector& CASW_Weapon_Devastator::GetAngularBulletSpread()
+const Vector &CASW_Weapon_Devastator::GetAngularBulletSpread()
 {
-	static Vector cone( 22, 22, 22 );
-	static Vector cone_duck( 14, 14, 14 );
+	const static Vector cone( 22, 22, 22 );
+	const static Vector cone_duck( 14, 14, 14 );
 
 	CASW_Marine *marine = GetMarine();
 
 	if ( marine && rd_devastator_dynamic_bullet_spread.GetBool() )
 	{
-		if ( marine->GetAbsVelocity() == Vector( 0, 0, 0 ) && marine->m_bWalking )
+		if ( marine->GetLocalVelocity().IsZero() && marine->m_bWalking )
 			return cone_duck;
 	}
 	return cone;

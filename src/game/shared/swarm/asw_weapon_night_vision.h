@@ -57,18 +57,11 @@ public:
 
 	#ifndef CLIENT_DLL
 		DECLARE_DATADESC();
-
-		virtual const char* GetPickupClass() { return "asw_pickup_night_vision"; }
-	#else
-		float UpdateVisionAlpha();
-		float UpdateFlashAlpha();
-
-		float m_flVisionAlpha;
-		float m_flFlashAlpha;
-		bool m_bOldVisionActive;
 	#endif
 
+	const char *GetEquipSound() override { return "ASW_Weapon.AttachmentEquipSmall"; }
 	virtual bool IsOffensiveWeapon() { return false; }
+	virtual bool ViewModelIsMarineAttachment() const { return true; }
 	bool IsVisionActive() { return m_bVisionActive.Get(); }
 	float GetPower() { return m_flPower.Get(); }
 	virtual float GetBatteryCharge();

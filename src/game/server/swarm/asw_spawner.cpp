@@ -1,7 +1,6 @@
 #include "cbase.h"
 #include "baseentity.h"
 #include "asw_spawner.h"
-//#include "asw_simpleai_senses.h"
 #include "asw_marine.h"
 #include "asw_gamerules.h"
 #include "asw_marine_resource.h"
@@ -14,6 +13,8 @@
 #include "asw_director.h"
 #include "asw_fail_advice.h"
 #include "asw_spawn_manager.h"
+#include "asw_spawn_selection.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -32,6 +33,7 @@ BEGIN_DATADESC( CASW_Spawner )
 	DEFINE_KEYFIELD( m_flSpawnInterval,			FIELD_FLOAT,	"SpawnInterval" ),
 	DEFINE_KEYFIELD( m_flSpawnIntervalJitter,	FIELD_FLOAT,	"SpawnIntervalJitter" ),
 	DEFINE_KEYFIELD( m_AlienClassNum,			FIELD_INTEGER,	"AlienClass" ),
+	DEFINE_KEYFIELD( m_szAlienModelOverride,	FIELD_MODELNAME, "AlienModelOverride" ),
 	DEFINE_KEYFIELD( m_SpawnerState,			FIELD_INTEGER,	"SpawnerState" ),
 	DEFINE_KEYFIELD( m_flDirectorLockTime,		FIELD_FLOAT,	"DirectorLockTime" ),
 	DEFINE_INPUT(    m_iAllowDirectorSpawns,	FIELD_INTEGER,	"AllowDirectorSpawns" ),
@@ -57,6 +59,7 @@ CASW_Spawner::CASW_Spawner()
 	m_iAllowDirectorSpawns = 0;
 	m_flDirectorLockTime = 4;
 	m_flLastDirectorSpawn = -FLT_MAX;
+	m_szAlienModelOverride = NULL_STRING;
 }
 
 CASW_Spawner::~CASW_Spawner()
@@ -103,6 +106,11 @@ void CASW_Spawner::Precache()
 	else
 	{
 		UTIL_PrecacheOther( pszNPCName );
+	}
+
+	if ( m_szAlienModelOverride != NULL_STRING )
+	{
+		PrecacheModel( STRING( m_szAlienModelOverride ) );
 	}
 }
 
@@ -158,6 +166,23 @@ bool CASW_Spawner::CanSpawn( const Vector &vecHullMins, const Vector &vecHullMax
 	return BaseClass::CanSpawn( vecHullMins, vecHullMaxs );
 }
 
+void CASW_Spawner::DoDispatchSpawn( CBaseEntity *pEntity, CASW_Spawn_NPC *pDirectorNPC )
+{
+	if ( pDirectorNPC )
+	{
+		if ( pDirectorNPC->m_iszModelOverride != NULL_STRING )
+		{
+			pEntity->SetModelName( pDirectorNPC->m_iszModelOverride );
+		}
+	}
+	else if ( m_szAlienModelOverride != NULL_STRING )
+	{
+		pEntity->SetModelName( m_szAlienModelOverride );
+	}
+
+	BaseClass::DoDispatchSpawn( pEntity, pDirectorNPC );
+}
+
 // called when we've spawned all the aliens we can,
 //  spawner should go to sleep
 void CASW_Spawner::SpawnedAllAliens()
@@ -192,6 +217,16 @@ void CASW_Spawner::AlienKilled( CBaseEntity *pVictim )
 	}
 }
 
+static bool IgnoreBasePropHelper( IHandleEntity *pHandleEntity, int contentsMask )
+{
+	if ( dynamic_cast< CBaseProp * >( pHandleEntity ) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
 // mission started
 void CASW_Spawner::MissionStart()
 {
@@ -214,15 +249,20 @@ void CASW_Spawner::MissionStart()
 
 	if ( developer.GetBool() )
 	{
-		int nHull = g_Aliens[m_AlienClassNum].m_nHullType;
-		const Vector &hullMins = NAI_Hull::Mins( nHull );
-		const Vector &hullMaxs = NAI_Hull::Maxs( nHull );
+		const Vector &hullMins = g_Aliens[m_AlienClassNum].m_vecRealHullMins;
+		const Vector &hullMaxs = g_Aliens[m_AlienClassNum].m_vecRealHullMaxs;
 		Vector traceStart = GetAbsOrigin() + Vector( 0, 0, 16.0f );
 		Vector traceEnd = GetAbsOrigin() + Vector( 0, 0, 1.0f / 16.0f );
+		CTraceFilterSimple filter( this, ASW_COLLISION_GROUP_ALIEN, &IgnoreBasePropHelper );
 		trace_t tr;
-		UTIL_TraceHull( traceStart, traceEnd, hullMins, hullMaxs, MASK_NPCSOLID, NULL, &tr );
+		UTIL_TraceHull( traceStart, traceEnd, hullMins, hullMaxs, MASK_NPCSOLID, &filter, &tr );
 		if ( tr.fraction < 1.0f )
 		{
+			if ( developer.GetInt() >= 3 )
+			{
+				debugoverlay->AddBoxOverlay2( GetAbsOrigin(), hullMins, hullMaxs, vec3_angle, Color{32, 64, 32, 64}, Color{128, 255, 128, 255}, 300.0f);
+				debugoverlay->AddBoxOverlay2( tr.endpos, hullMins, hullMaxs, vec3_angle, Color{ 64, 32, 32, 64 }, Color{ 255, 128, 128, 255 }, 300.0f );
+			}
 			DevWarning( "Spawner %s at %f %f %f will spawn %s inside floor (%s). Recommendation: Raise spawner by %d units.\n", GetEntityName() == NULL_STRING ? "(unnamed)" : GetEntityNameAsCStr(), VectorExpand( GetAbsOrigin() ), STRING( m_AlienClassName ), tr.m_pEnt ? tr.m_pEnt->GetDebugName() : "no ent", Ceil2Int( tr.endpos.z - traceEnd.z ) );
 		}
 	}
@@ -388,7 +428,7 @@ void ASW_ApplyCarnage_f(float fScaler)
 	while ((pEntity = gEntList.FindEntityByClassname( pEntity, "asw_spawner" )) != NULL)
 	{
 		CASW_Spawner* pSpawner = dynamic_cast<CASW_Spawner*>(pEntity);			
-		if (pSpawner)
+		if ( pSpawner && !pSpawner->HasSpawnFlags( ASW_SF_NO_CARNAGE ) )
 		{
 			if ( pSpawner->ApplyCarnageMode( fScaler, fInvScaler ) )
 			{

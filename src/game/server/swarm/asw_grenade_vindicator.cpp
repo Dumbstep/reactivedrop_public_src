@@ -37,7 +37,7 @@ LINK_ENTITY_TO_CLASS( asw_grenade_vindicator, CASW_Grenade_Vindicator );
 PRECACHE_REGISTER( asw_grenade_vindicator );
 
 BEGIN_DATADESC( CASW_Grenade_Vindicator )
-	DEFINE_FUNCTION( VGrenadeTouch ),
+	DEFINE_ENTITYFUNC( VGrenadeTouch ),
 	DEFINE_THINKFUNC( Detonate ),
 	DEFINE_FIELD( m_pMainGlow, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_pGlowTrail, FIELD_EHANDLE ),
@@ -55,6 +55,7 @@ CASW_Grenade_Vindicator::CASW_Grenade_Vindicator()
 {
 	g_aExplosiveProjectiles.AddToTail( this );
 	SetBloodColor( DONT_BLEED ); 
+	m_flDirectHitDamageMultiplier = 1.0f;
 }
 
 CASW_Grenade_Vindicator::~CASW_Grenade_Vindicator()
@@ -166,7 +167,14 @@ void CASW_Grenade_Vindicator::VGrenadeTouch( CBaseEntity *pOther )
 
 	if ( m_bExplodeOnWorldContact )
 	{
+		if ( pOther->m_takedamage != DAMAGE_NO && pOther->IsNPC() )
+		{
+			m_flDamage *= m_flDirectHitDamageMultiplier;
+			m_flDirectHitDamageMultiplier = 1.0f;
+		}
+
 		Detonate();
+		return;
 	}
 
 	if ( pOther->m_takedamage == DAMAGE_NO )
@@ -204,6 +212,11 @@ CASW_Grenade_Vindicator* CASW_Grenade_Vindicator::Vindicator_Grenade_Create( flo
 	UTIL_SetOrigin( pGrenade, position );
 	pGrenade->SetAbsVelocity( velocity );
 	pGrenade->m_hCreatorWeapon = pCreatorWeapon;
+
+	if ( pCreatorWeapon )
+	{
+		pGrenade->m_ProjectileData.GetForModify().SetFromWeapon( pCreatorWeapon );
+	}
 
 	return pGrenade;
 }

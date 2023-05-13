@@ -29,7 +29,7 @@ public:
 	virtual void		Spawn();
 	virtual void		Precache();
 
-	virtual void		SetHealthByDifficultyLevel();
+	virtual int			GetBaseHealth() override;
 
 	virtual float		MaxYawSpeed( void );
 
@@ -49,6 +49,7 @@ public:
 	virtual int			OnTakeDamage_Alive(const CTakeDamageInfo &info);
 
 	// sounds
+	virtual void PainSound( const CTakeDamageInfo &info );
 	virtual void DeathSound( const CTakeDamageInfo &info );
 
 private:

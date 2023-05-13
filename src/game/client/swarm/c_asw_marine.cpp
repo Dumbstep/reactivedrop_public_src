@@ -47,6 +47,8 @@
 #include <vgui_controls/Controls.h>
 #include <vgui/ISurface.h>
 #include <vgui/IScheme.h>
+#include "stats_report.h"
+#include "asw_weapon_night_vision.h"
 
 #include "asw_input.h"
 #include "view.h"
@@ -54,16 +56,10 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+
 //extern ConVar cl_predict;
 static ConVar	cl_asw_smooth		( "cl_asw_smooth", "1", 0, "Smooth marine's render origin after prediction errors" );
-static ConVar	cl_asw_smoothtime	( 
-	"cl_asw_smoothtime", 
-	"0.1", 
-	0, 
-	"Smooth marine's render origin after prediction error over this many seconds",
-	true, 0.01,	// min/max is 0.01/2.0
-	true, 2.0
-	 );
+static ConVar	cl_asw_smoothtime	( "cl_asw_smoothtime", "0.1", 0, "Smooth marine's render origin after prediction error over this many seconds", true, 0.01, true, 2.0 );
 ConVar asw_flashlight_dlight_radius("asw_flashlight_dlight_radius", "500", FCVAR_NONE, "Radius of the light around the marine.");
 ConVar asw_flashlight_dlight_offsetx("asw_flashlight_dlight_offsetx", "60", FCVAR_NONE, "Offset of the flashlight dlight");
 ConVar asw_flashlight_dlight_offsety("asw_flashlight_dlight_offsety", "0", FCVAR_CHEAT, "Offset of the flashlight dlight");
@@ -78,7 +74,6 @@ ConVar asw_flashlight_marine_ambient("asw_flashlight_marine_ambient", "0.1", FCV
 ConVar asw_flashlight_marine_lightscale("asw_flashlight_marine_lightscale", "1.0", FCVAR_CHEAT, "Light scale on the marine with flashlight on");
 ConVar asw_left_hand_ik("asw_left_hand_ik", "0", FCVAR_CHEAT, "IK the marine's left hand to his weapon");
 ConVar asw_marine_shoulderlight("asw_marine_shoulderlight", "2", 0, "Should marines have a shoulder light effect on them.");
-ConVar asw_hide_local_marine("asw_hide_local_marine", "0", FCVAR_CHEAT, "If enabled, your current marine will be invisible");
 ConVar asw_override_footstep_volume( "asw_override_footstep_volume", "0", FCVAR_CHEAT, "Overrides footstep volume instead of it being surface dependent" );
 ConVar asw_marine_object_motion_blur_scale( "asw_marine_object_motion_blur_scale", "0.0" );
 ConVar asw_damage_spark_rate( "asw_damage_spark_rate", "0.24", FCVAR_CHEAT, "Base number of seconds between spark sounds/effects at critical damage." );
@@ -104,10 +99,20 @@ ConVar dub_draw_grenades_in_range("dub_draw_grenades_in_range", "1", FCVAR_CLIEN
 ConVar dub_draw_grenades_range_color("dub_draw_grenades_range_color", "65 65 255 2", 0);
 ConVar dub_anim_setsequence("dub_anim_setsequence", "0", FCVAR_ARCHIVE);
 ConVar rd_buzzer_blur( "rd_buzzer_blur", "1", FCVAR_NONE, "Set to 0 to disable buzzer blur" );	// TODO: Remove this once the buzzer blur issue is fixed. See #76
+ConVar rd_marine_gib_spin( "rd_marine_gib_spin", "500", FCVAR_NONE, "how much do marine gibs spin?" );
 ConVar rd_client_marine_backpacks( "rd_client_marine_backpacks", "0", FCVAR_NONE, "Show marine's un-equipped weapon on their back." );
 
 extern ConVar asw_DebugAutoAim;
 extern ConVar rd_revive_duration;
+extern ConVar rd_aim_marines;
+extern ConVar rd_highlight_active_character;
+extern ConVar rd_marine_gear;
+extern ConVar rd_marine_gear_hide_backpack;
+extern ConVar asw_night_vision_fade_in_speed;
+extern ConVar asw_night_vision_fade_out_speed;
+extern ConVar asw_night_vision_flash_min;
+extern ConVar asw_night_vision_flash_max;
+extern ConVar asw_night_vision_flash_speed; 
 extern float g_fMarinePoisonDuration;
 extern ConVar rd_aim_marines;
 
@@ -136,7 +141,6 @@ BEGIN_NETWORK_TABLE( CASW_Marine, DT_ASW_Marine )
 	RecvPropFloat		( RECVINFO( m_vecVelocity[0] ), 0, RecvProxy_Marine_LocalVelocityX ),
 	RecvPropFloat		( RECVINFO( m_vecVelocity[1] ), 0, RecvProxy_Marine_LocalVelocityY ),
 	RecvPropFloat		( RECVINFO( m_vecVelocity[2] ), 0, RecvProxy_Marine_LocalVelocityZ ),
-	RecvPropVector		( RECVINFO( m_vecGroundVelocity ) ),
 
 	RecvPropFloat( RECVINFO_NAME( m_angNetworkAngles[0], m_angRotation[0] ) ),
 	RecvPropFloat( RECVINFO_NAME( m_angNetworkAngles[1], m_angRotation[1] ) ),
@@ -156,7 +160,7 @@ BEGIN_NETWORK_TABLE( CASW_Marine, DT_ASW_Marine )
 	RecvPropFloat		( RECVINFO( m_fFFGuardTime ) ),	
 	RecvPropEHandle		( RECVINFO( m_hGroundEntity ) ),	// , RecvProxy_Marine_GroundEnt
 	RecvPropEHandle		( RECVINFO( m_hMarineFollowTarget ) ),
-	
+
 	RecvPropTime		( RECVINFO(m_fStopMarineTime) ),
 	RecvPropTime		( RECVINFO(m_fNextMeleeTime) ),
 	RecvPropTime		( RECVINFO( m_flNextAttack ) ),
@@ -177,8 +181,8 @@ BEGIN_NETWORK_TABLE( CASW_Marine, DT_ASW_Marine )
 
 	// driving
 	RecvPropEHandle (RECVINFO(m_hASWVehicle)),
-	RecvPropBool	(RECVINFO(m_bDriving)),	
-	RecvPropBool	(RECVINFO(m_bIsInVehicle)),	
+	RecvPropInt		(RECVINFO(m_iVehicleSeat)),
+	RecvPropBool	(RECVINFO(m_bIsInVehicle)),
 
 	// falling over
 	RecvPropBool	(RECVINFO(m_bKnockedOut)),
@@ -199,6 +203,7 @@ BEGIN_NETWORK_TABLE( CASW_Marine, DT_ASW_Marine )
 	RecvPropBool	( RECVINFO( m_bReflectingProjectiles ) ),
 	RecvPropTime( RECVINFO( m_flDamageBuffEndTime ) ),
 	RecvPropTime( RECVINFO( m_flElectrifiedArmorEndTime ) ),
+	RecvPropDataTable( RECVINFO_DT( m_ElectrifiedArmorProjectileData ), 0, &REFERENCE_RECV_TABLE( DT_RD_ProjectileData ) ),
 
 	RecvPropInt		( RECVINFO( m_iPowerupType ) ),	
 	RecvPropTime		( RECVINFO( m_flPowerupExpireTime ) ),	
@@ -214,6 +219,9 @@ BEGIN_NETWORK_TABLE( CASW_Marine, DT_ASW_Marine )
 	RecvPropFloat   ( RECVINFO( m_fJumpJetDurationOverride )),
 	RecvPropFloat   ( RECVINFO( m_fJumpJetAnimationDurationOverride )),
 	RecvPropBool	( RECVINFO( m_bForceWalking )),
+	RecvPropBool	( RECVINFO( m_bRolls )),
+	RecvPropInt		( RECVINFO( m_nMarineProfile ) ),
+	RecvPropBool	( RECVINFO( m_bNightVision ) ),
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_ASW_Marine )
@@ -224,7 +232,6 @@ BEGIN_PREDICTION_DATA( C_ASW_Marine )
 	DEFINE_PRED_FIELD( m_nNewSequenceParity, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
 	DEFINE_PRED_FIELD( m_nResetEventsParity, FIELD_INTEGER, FTYPEDESC_OVERRIDE | FTYPEDESC_PRIVATE | FTYPEDESC_NOERRORCHECK ),
 	DEFINE_PRED_FIELD( m_hGroundEntity, FIELD_EHANDLE, FTYPEDESC_INSENDTABLE ),
-	DEFINE_PRED_FIELD_TOL( m_vecGroundVelocity, FIELD_VECTOR, FTYPEDESC_INSENDTABLE, 0.05 ),
 	DEFINE_PRED_FIELD_TOL( m_fStopMarineTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),	
 	DEFINE_PRED_FIELD_TOL( m_fNextMeleeTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),	
 	DEFINE_PRED_FIELD_TOL( m_flNextAttack, FIELD_FLOAT, FTYPEDESC_INSENDTABLE, TD_MSECTOLERANCE ),		
@@ -458,6 +465,9 @@ C_ASW_Marine::C_ASW_Marine() :
 	//m_fAmbientLight = asw_marine_ambient.GetFloat();
 	//m_fLightingScale = asw_marine_lightscale.GetFloat();
 	m_pFlashlight = NULL;
+	m_flVisionAlpha = 0.0f;
+	m_flFlashAlpha = 0.0f;
+	m_bOldVisionActive = false;
 	m_TouchingDoors.RemoveAll();
 	bPlayingFlamerSound = false;
 	bPlayingFireExtinguisherSound = false;
@@ -474,7 +484,6 @@ C_ASW_Marine::C_ASW_Marine() :
 	m_vecFacingPoint = vec3_origin;	
 	m_fStopFacingPointTime = 0;	
 	m_fStopMarineTime = 0;
-	m_bHasClientsideVehicle = false;
 	m_vecPredictionError.Init();
 	m_flPredictionErrorTime = 0;
 	m_pFlashlightBeam = NULL;
@@ -510,6 +519,9 @@ C_ASW_Marine::C_ASW_Marine() :
 	//PrecacheParticleSystem("ad_core_tailsfire");
 	if (strlen(dub_create_particle_follow.GetString()) > 0)
 		PrecacheParticleSystem(dub_create_particle_follow.GetString());
+
+	extern ConVar asw_marine_rolls;
+	m_bRolls = asw_marine_rolls.GetBool();
 }
 
 
@@ -600,7 +612,7 @@ void C_ASW_Marine::UpdateClientSideAnimation()
 
 	C_ASW_Player *pPlayer = GetCommander();
 		
-	if ( pPlayer && C_BasePlayer::IsLocalPlayer( pPlayer ) && pPlayer->GetNPC() == this && !IsControllingTurret() )
+	if ( pPlayer && !IsInVehicle() && C_BasePlayer::IsLocalPlayer(pPlayer) && pPlayer->GetNPC() == this && !IsControllingTurret() )
 	{
 		m_PlayerAnimState->Update( pPlayer->EyeAngles()[YAW], pPlayer->EyeAngles()[PITCH] );
 		m_fLastYawHack = pPlayer->EyeAngles()[YAW];
@@ -686,25 +698,6 @@ void C_ASW_Marine::GetPredictionErrorSmoothingVector( Vector &vOffset )
 	vOffset = m_vecPredictionError * errorAmount;
 }
 
-CBaseCombatWeapon* C_ASW_Marine::ASWAnim_GetActiveWeapon()
-{
-	return GetActiveWeapon();
-}
-
-CASW_Marine_Profile* C_ASW_Marine::GetMarineProfile()
-{
-	C_ASW_Marine_Resource* pMR = GetMarineResource();
-	if (!pMR)
-		return NULL;
-
-	return pMR->GetProfile();
-}
-
-bool C_ASW_Marine::ASWAnim_CanMove()
-{
-	return true;
-}
-
 const QAngle& C_ASW_Marine::GetRenderAngles()
 {
 	//if (ShouldPredict())
@@ -724,25 +717,42 @@ const QAngle& C_ASW_Marine::GetRenderAngles()
 	//}
 }
 
-C_ASW_Marine_Resource* C_ASW_Marine::GetMarineResource() 
-{	
-	if (m_hMarineResource.Get() != NULL)
+C_ASW_Marine_Resource *C_ASW_Marine::GetMarineResource()
+{
+	if ( m_hMarineResource.Get() != NULL )
+	{
 		return m_hMarineResource.Get();
+	}
+
+	if ( m_nMarineProfile != -1 )
+	{
+		return NULL;
+	}
 
 	// find our marine info
-	C_ASW_Game_Resource* pGameResource = ASWGameResource();
-	if (pGameResource != NULL)
+	C_ASW_Game_Resource *pGameResource = ASWGameResource();
+	if ( pGameResource != NULL )
 	{
-		for (int i=0;i<pGameResource->GetMaxMarineResources();i++)
+		for ( int i = 0; i < pGameResource->GetMaxMarineResources(); i++ )
 		{
-			C_ASW_Marine_Resource* pMR = pGameResource->GetMarineResource(i);
-			if (pMR != NULL && pMR->GetMarineEntity() == this)
+			C_ASW_Marine_Resource *pMR = pGameResource->GetMarineResource( i );
+			if ( pMR != NULL && pMR->GetMarineEntity() == this )
 			{
 				m_hMarineResource = pMR;
+
+				if ( i >= 0 && i < NELEMS( g_rgbaStatsReportPlayerColors ) )
+				{
+					m_vecMarineColor.Init(
+						g_rgbaStatsReportPlayerColors[i].r() / 255.0f,
+						g_rgbaStatsReportPlayerColors[i].g() / 255.0f,
+						g_rgbaStatsReportPlayerColors[i].b() / 255.0f
+					);
+				}
 				return pMR;
 			}
 		}
 	}
+
 	return NULL;
 }
 
@@ -776,18 +786,10 @@ void C_ASW_Marine::ClientThink()
 		C_EnvProjectedTexture::SetVisibleBBoxMinHeight( GetAbsOrigin().z - 64.0f );
 	}
 
-	if (IsInhabited())
-	{
-		//m_vecLastRenderedPos = GetRenderOrigin();
-	}
 	if (asw_DebugAutoAim.GetInt() == 3)
 	{
 		Msg("%f: Drawmodel render origin %s\n", gpGlobals->curtime, VecToString(GetRenderOrigin()));
 	}
-
-	//if (GetActiveWeapon() && GetActiveWeapon()->GetPrimaryAmmoType())
-	//Msg("Ammo = %d\n", GetAmmoCount(GetActiveWeapon()->GetPrimaryAmmoType()));
-	//Msg("Ammo = %d\n", GetAmmoCount("ASW_R"));
 
 	// tick up/down our minimap blip, reversing direction at the bounds
 	float deltatime = gpGlobals->curtime - m_LastThinkTime;	
@@ -809,21 +811,13 @@ void C_ASW_Marine::ClientThink()
 		// Predict
 		m_fInfestedTime -= deltatime;
 	}
-	
-	//Vector light_pos = engine->GetClosestLightLocation(GetAbsOrigin());
-	//m_ShadowDirection.x = RandomFloat( -1.0, 1.0 );
-	//m_ShadowDirection.y = RandomFloat( -1.0, 1.0 );
-	//m_ShadowDirection.z = RandomFloat( -1.0, 1.0 );
-	//VectorSubtract(GetAbsOrigin(), light_pos, m_ShadowDirection);
-	//m_ShadowDirection = engine->GetClosestLightPosition(GetAbsOrigin());
-	//m_ShadowDirection.NormalizeInPlace();
 
 	// turn the flame emitter on or off
-	C_ASW_Weapon *pWeapon = GetActiveASWWeapon();
+	C_ASW_Weapon *pActiveWeapon = GetActiveASWWeapon();
 	// flamethrower handles its own effects now
-	if ( pWeapon && IsAlive() )//m_hFlameEmitter.IsValid() && 
+	if ( pActiveWeapon && IsAlive() )//m_hFlameEmitter.IsValid() && 
 	{			
-		bool bFlameOn = pWeapon->ShouldMarineFlame();
+		bool bFlameOn = pActiveWeapon->ShouldMarineFlame();
 		if (bFlameOn && !bPlayingFlamerSound)
 		{
 			StartFlamerLoop();
@@ -833,32 +827,15 @@ void C_ASW_Marine::ClientThink()
 			StopFlamerLoop();
 		}			
 		bPlayingFlamerSound = bFlameOn;
-		/*
-		m_hFlameEmitter->SetActive(bFlameOn);
-		Vector vecMuzzle = GetAbsOrigin()+Vector(0,0,45);
-		QAngle angMuzzle;
-		
-		C_BaseAnimating::PushAllowBoneAccess( true, false, "ClientThink" );
-		pWeapon->GetAttachment( pWeapon->LookupAttachment("muzzle"), vecMuzzle, angMuzzle );
-
-		m_hFlameEmitter->Think(gpGlobals->frametime, vecMuzzle, angMuzzle);
-		if (m_hFlameStreamEmitter.IsValid())
-		{
-			m_hFlameStreamEmitter->SetActive(bFlameOn);
-			m_hFlameStreamEmitter->Think(gpGlobals->frametime, vecMuzzle, angMuzzle);		
-		}
-		C_BaseAnimating::PopBoneAccess( "ClientThink" );
-		*/
 	}
 	else
 	{
 		if (bPlayingFlamerSound)
 			StopFlamerLoop();
 	}
-	if ( pWeapon && IsAlive())
-	{			
-		//bool bFireExtinguisherOn = m_fFireExtinguisherTime >= gpGlobals->curtime;
-		bool bFireExtinguisherOn = pWeapon->ShouldMarineFireExtinguish();
+	if ( pActiveWeapon && IsAlive())
+	{
+		bool bFireExtinguisherOn = pActiveWeapon->ShouldMarineFireExtinguish();
 		if (bFireExtinguisherOn && !bPlayingFireExtinguisherSound)
 		{
 			StartFireExtinguisherLoop();
@@ -866,29 +843,8 @@ void C_ASW_Marine::ClientThink()
 		else if (!bFireExtinguisherOn && bPlayingFireExtinguisherSound)
 		{
 			StopFireExtinguisherLoop();
-		}			
+		}
 		bPlayingFireExtinguisherSound = bFireExtinguisherOn;
-		// extinguisher weapons now handle their own effects
-		/*
-		m_hFireExtinguisherEmitter->SetActive(bFireExtinguisherOn);	
-
-		Vector vecMuzzle = GetAbsOrigin()+Vector(0,0,45);
-		QAngle angMuzzle;
-		int iMuzzleAttach = pWeapon->LookupAttachment("muzzle");
-		//Msg("Firext muzzle attach = %d\n", iMuzzleAttach);
-		if (!pWeapon->GetAttachment(iMuzzleAttach , vecMuzzle, angMuzzle ))
-		{
-			vecMuzzle = GetAbsOrigin()+Vector(0,0,45);
-			angMuzzle = ASWEyeAngles();
-		}
-		else
-		{
-			//Msg("  from weapon %s vec = %s ang = %s\n", pWeapon->GetClassname(), VecToString(vecMuzzle), VecToString(angMuzzle));
-		}
-
-		m_hFireExtinguisherEmitter->Think(gpGlobals->frametime, vecMuzzle, angMuzzle);
-		//m_hFireExtinguisherEmitter->Think(gpGlobals->frametime, GetAbsOrigin()+Vector(0,0,45), ASWEyeAngles());
-		*/
 	}
 	else
 	{
@@ -896,9 +852,9 @@ void C_ASW_Marine::ClientThink()
 			StopFireExtinguisherLoop();
 	}
 
-	if ( pWeapon && IsAlive() )//m_hFlameEmitter.IsValid() && 
+	if ( pActiveWeapon && IsAlive() )//m_hFlameEmitter.IsValid() && 
 	{			
-		bool bMinigunOn = pWeapon->ShouldMarineMinigunShoot();
+		bool bMinigunOn = pActiveWeapon->ShouldMarineMinigunShoot();
 		if (bMinigunOn && !bPlayingMinigunSound)
 		{
 			StartMinigunLoop();
@@ -913,6 +869,16 @@ void C_ASW_Marine::ClientThink()
 	{
 		if (bPlayingMinigunSound)
 			StopMinigunLoop();
+	}
+
+	C_ASW_Weapon *pExtraWeapon = GetASWWeapon( ASW_INVENTORY_SLOT_EXTRA );
+	if ( pExtraWeapon && rd_marine_gear.GetBool() && rd_marine_gear_hide_backpack.GetBool() && pExtraWeapon->ViewModelHidesMarineBodyGroup1() )
+	{
+		SetBodygroup( 1, 0 );
+	}
+	else
+	{
+		SetBodygroup( 1, GetSkin() );
 	}
 
 	// if we're healing and we don't have an emitter, create a heal emitter
@@ -960,7 +926,9 @@ void C_ASW_Marine::ClientThink()
 		m_vecFacingPoint = vec3_origin;
 	}
 
-	if ( GetViewMarine() == this )
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	C_ASW_Marine *pViewMarine = pPlayer ? AsMarine( pPlayer->GetViewNPC() ) : NULL;
+	if ( pViewMarine == this )
 	{
 		g_fMarinePoisonDuration = m_fPoison;
 	}
@@ -973,11 +941,19 @@ void C_ASW_Marine::ClientThink()
 	UpdateJumpJetEffects();
 	UpdateElectrifiedArmor();
 
+	C_ASW_Player *pLocalPlayer = C_ASW_Player::GetLocalASWPlayer();
+	if ( rd_highlight_active_character.GetBool() && pLocalPlayer && pLocalPlayer->GetViewNPC() == this )
+	{
+		m_GlowObject.SetColor( m_vecMarineColor );
+	}
+
 	extern ConVar asw_allow_detach;
-	if ( GetViewMarine() == this && asw_hide_local_marine.GetBool() && !asw_allow_detach.GetBool() )
+	bool bVisibilityChanged = false;
+	if ( pViewMarine == this && pPlayer && pPlayer->GetASWControls() == ASWC_FIRSTPERSON && !asw_allow_detach.GetBool() )
 	{
 		if ( !m_bIsHiddenLocal || GetRenderAlpha() )
 		{
+			bVisibilityChanged = true;
 			m_PrevRenderAlpha = GetRenderAlpha();
 			m_bIsHiddenLocal = true;
 		}
@@ -987,8 +963,19 @@ void C_ASW_Marine::ClientThink()
 	}
 	else if ( m_bIsHiddenLocal )
 	{
+		bVisibilityChanged = true;
 		SetRenderAlpha( m_PrevRenderAlpha );
 		m_bIsHiddenLocal = false;
+	}
+
+	if ( bVisibilityChanged )
+	{
+		for ( int i = 0; i < ASW_MAX_EQUIP_SLOTS; i++ )
+		{
+			C_ASW_Weapon *pWeapon = GetASWWeapon( i );
+			if ( pWeapon )
+				pWeapon->UpdateVisibility();
+		}
 	}
 
 	if ( ASWDeathmatchMode() )
@@ -1005,7 +992,6 @@ void C_ASW_Marine::ClientThink()
 			}
 			case 1:
 			{
-				C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
 				int nTeam = pPlayer ? pPlayer->GetSpectatingNPC() ? pPlayer->GetSpectatingNPC()->GetTeamNumber() : pPlayer->GetTeamNumber() : TEAM_ALPHA;
 				if ( nTeam == GetTeamNumber() )
 				{
@@ -1036,7 +1022,6 @@ void C_ASW_Marine::ClientThink()
 	//SetNextClientThink( gpGlobals->curtime + 0.1f );
 	m_LastThinkTime = gpGlobals->curtime;
 
-	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
 	C_ASW_Marine *pMarine = GetLocalMarine();
 	if (!pPlayer || !pMarine)
 		return;
@@ -1342,13 +1327,6 @@ void C_ASW_Marine::DoWaterRipples()
 	}	
 }
 
-void C_ASW_Marine::SetClientsideVehicle(IASW_Client_Vehicle* pVehicle)
-{
-	m_pClientsideVehicle = pVehicle;
-
-	m_bHasClientsideVehicle = (m_pClientsideVehicle != NULL);
-}
-
 void C_ASW_Marine::CreateWeaponEmitters()
 {
 	// flamethrower weapon handles its own effects now
@@ -1524,20 +1502,11 @@ void C_ASW_Marine::ProcessMuzzleFlashEvent()
 
 
 	// attach muzzle flash particle system effect
-	int iAttachment = pWeapon->GetMuzzleAttachment();		
+	int iAttachment = pWeapon->GetMuzzleAttachment();
 	if ( iAttachment > 0 )
 	{
-#ifndef _DEBUG
-		float flScale = pWeapon->GetMuzzleFlashScale();				
-		if (pWeapon->GetMuzzleFlashRed())
-		{			
-			FX_ASW_RedMuzzleEffectAttached( flScale, pWeapon->GetRefEHandle(), iAttachment, NULL, false );
-		}
-		else
-		{
-			FX_ASW_MuzzleEffectAttached( flScale, pWeapon->GetRefEHandle(), iAttachment, NULL, false );
-		}
-#endif
+		float flScale = pWeapon->GetMuzzleFlashScale();
+		FX_ASW_MuzzleEffectAttached( flScale, pWeapon->GetRefEHandle(), iAttachment, NULL, false );
 	}
 }
 
@@ -1598,6 +1567,17 @@ void C_ASW_Marine::FireEvent( const Vector& origin, const QAngle& angles, int ev
 	{
 		// TODO: Fix
 		//ASW_ShakeAnimEvent( this, options );
+	}
+	else if ( event == AE_MELEE_SOUND )
+	{
+		const char *szSuffix = "";
+		if ( HasPowerFist() )
+		{
+			szSuffix = "PowerFist";
+		}
+
+		EmitSound( CFmtStr( "%s%s", options, szSuffix ) );
+		return;
 	}
 	BaseClass::FireEvent(origin, angles, event, options);
 }
@@ -2432,6 +2412,51 @@ void C_ASW_Marine::ReleaseFlashlightBeam( void )
 	}
 }
 
+bool C_ASW_Marine::IsVisionActive()
+{
+	if ( m_bNightVision )
+		return true;
+
+	C_ASW_Weapon *pExtra = GetASWWeapon( ASW_INVENTORY_SLOT_EXTRA );
+	if ( !pExtra || pExtra->Classify() != CLASS_ASW_NIGHT_VISION )
+		return false;
+
+	C_ASW_Weapon_Night_Vision *pNightVision = assert_cast< C_ASW_Weapon_Night_Vision * >( pExtra );
+	return pNightVision->IsVisionActive();
+}
+
+float C_ASW_Marine::UpdateVisionAlpha()
+{
+	if ( IsVisionActive() )
+	{
+		m_flVisionAlpha = MIN( 255.0f, m_flVisionAlpha + gpGlobals->frametime * asw_night_vision_fade_in_speed.GetFloat() );
+	}
+	else
+	{
+		m_flVisionAlpha = MAX( 0.0f, m_flVisionAlpha - gpGlobals->frametime * asw_night_vision_fade_out_speed.GetFloat() );
+	}
+	return m_flVisionAlpha;
+}
+
+float C_ASW_Marine::UpdateFlashAlpha()
+{
+	if ( IsVisionActive() != m_bOldVisionActive )
+	{
+		m_flFlashAlpha = asw_night_vision_flash_max.GetFloat();
+		m_bOldVisionActive = IsVisionActive();
+	}
+
+	float flMin = 0.0f;
+	if ( IsVisionActive() )
+	{
+		flMin = asw_night_vision_flash_min.GetFloat();
+	}
+
+	m_flFlashAlpha = MAX( flMin, m_flFlashAlpha - gpGlobals->frametime * asw_night_vision_flash_speed.GetFloat() );
+
+	return m_flFlashAlpha;
+}
+
 // EF_NODRAW isn't preventing the marine from being drawn, strangely.  So we do a visible check here before drawing.
 int C_ASW_Marine::DrawModel( int flags, const RenderableInstance_t &instance )
 {
@@ -2447,8 +2472,7 @@ int C_ASW_Marine::DrawModel( int flags, const RenderableInstance_t &instance )
 
 void C_ASW_Marine::SetPoisoned(float f)
 {
-	if ( rd_buzzer_blur.GetBool() )
-		m_fPoison = f;
+	m_fPoison = f;
 }
 
 // IK the left hand?
@@ -2933,16 +2957,59 @@ enum eRip_Type
 	RIP_EXPLOSION
 };
 
+static const char *const s_szGibNames[7] =
+{
+	"models/swarm/marine/gibs/marine_gib_head.mdl",
+	"models/swarm/marine/gibs/marine_gib_chest.mdl",
+	"models/swarm/marine/gibs/marine_gib_rightarm.mdl",
+	"models/swarm/marine/gibs/marine_gib_leftarm.mdl",
+	"models/swarm/marine/gibs/marine_gib_pelvis.mdl",
+	"models/swarm/marine/gibs/marine_gib_rightleg.mdl",
+	"models/swarm/marine/gibs/marine_gib_leftleg.mdl"
+};
+
+static const Vector s_vecVelocityBodyPart[7] =
+{
+	Vector( 0, 0, 400 ),
+	Vector( 0, 0, 400 ),
+	Vector( 0, 1500, 400 ),
+	Vector( 0, -1500, 400 ),
+	Vector( 0, 0, 400 ),
+	Vector( 0, 1500, 400 ),
+	Vector( 0, -1500, 400 )
+};
+
+static const Vector s_vecBodyPartOffset[7] =
+{
+	Vector( -2, 3, 70 ),
+	Vector( -5, 3, 55 ),
+	Vector( -6, -14, 46 ),
+	Vector( -6, 20, 46 ),
+	Vector( -4, 3, 41 ),
+	Vector( -4, -5, 17 ),
+	Vector( -4, 11, 17 ),
+};
+
 // rip the marine into pieces
 void __MsgFunc_ASWRipRagdoll( bf_read &msg )
 {
-	eRip_Type nDeathType = eRip_Type( msg.ReadByte() );
+	eRip_Type nDeathType = eRip_Type( msg.ReadUBitLong( 2 ) );
+	int nMarineProfile = msg.ReadUBitLong( 6 );
 
-	Vector origin, vecForce;
-	msg.ReadBitVec3Coord( origin );
-	msg.ReadBitVec3Coord( vecForce );
+	float flYaw = msg.ReadBitAngle( 8 );
+	QAngle angles( 0, flYaw, 0 );
 
-	int nMarineProfile = msg.ReadByte();
+	Vector vecOrigin, vecForce;
+	vecOrigin.x = msg.ReadFloat();
+	vecOrigin.y = msg.ReadFloat();
+	vecOrigin.z = msg.ReadFloat();
+	vecForce.x = msg.ReadFloat();
+	vecForce.y = msg.ReadFloat();
+	vecForce.z = msg.ReadFloat();
+
+	matrix3x4_t matOrigin;
+	AngleMatrix( angles, vecOrigin, matOrigin );
+
 	CASW_Marine_Profile *pProfile = MarineProfileList() ? MarineProfileList()->GetProfile( nMarineProfile ) : NULL;
 	if ( !pProfile )
 	{
@@ -2969,7 +3036,7 @@ void __MsgFunc_ASWRipRagdoll( bf_read &msg )
 				if ( !pMarine )
 					continue;
 
-				float flDistance = pMarine->GetAbsOrigin().DistToSqr( origin );
+				float flDistance = pMarine->GetAbsOrigin().DistToSqr( vecOrigin );
 				if ( !pClosest || flDistance < flClosestDistance )
 				{
 					pClosest = pMarine;
@@ -2983,6 +3050,7 @@ void __MsgFunc_ASWRipRagdoll( bf_read &msg )
 				if ( pRagdoll )
 				{
 					pRagdoll->ApplyAbsVelocityImpulse( vecForce );
+					ASWGameRules()->m_hMarineDeathRagdoll = pRagdoll;
 				}
 			}
 		}
@@ -2991,53 +3059,44 @@ void __MsgFunc_ASWRipRagdoll( bf_read &msg )
 	}
 
 	const float flLifetime = ASWDeathmatchMode() ? rd_marine_gib_lifetime_dm.GetFloat() : rd_marine_gib_lifetime.GetFloat();
-	const Vector velocity_explosion = vecForce / 35.0f;
+	const Vector vecExplosionVelocity = vecForce / 35.0f;
 
-	static const char *const s_szGibNames[7] =
+	AngularImpulse impulses[7];
+	for ( int i = 0; i < 7; i++ )
 	{
-		"models/swarm/marine/gibs/marine_gib_head.mdl",
-		"models/swarm/marine/gibs/marine_gib_chest.mdl",
-		"models/swarm/marine/gibs/marine_gib_rightarm.mdl",
-		"models/swarm/marine/gibs/marine_gib_leftarm.mdl",
-		"models/swarm/marine/gibs/marine_gib_pelvis.mdl",
-		"models/swarm/marine/gibs/marine_gib_rightleg.mdl",
-		"models/swarm/marine/gibs/marine_gib_leftleg.mdl"
-	};
-
-	static const Vector s_vecVelocityBodyPart[7] =
-	{
-		Vector( 0, 0, 400 ),
-		Vector( 0, 0, 400 ),
-		Vector( 0, 1500, 400 ),
-		Vector( 0, -1500, 400 ),
-		Vector( 0, 0, 400 ),
-		Vector( 0, 1500, 400 ),
-		Vector( 0, -1500, 400 )
-	};
+		// for some reason if this is done along with the clientside gib creation it doesn't actually randomize
+		impulses[i].Random( -rd_marine_gib_spin.GetFloat(), rd_marine_gib_spin.GetFloat() );
+	}
 
 	for ( int i = 0; i < 7; i++ )
 	{
-		const char *szGibName = i != 0 || !pProfile->IsFemale() ? s_szGibNames[i] : "models/swarm/marine/gibs/femalemarine_gib_head.mdl";
+		const char *szGibName = i != 0 || V_strcmp( pProfile->GetModelName(), "models/swarm/marine/femalemarine.mdl" ) ? s_szGibNames[i] : "models/swarm/marine/gibs/femalemarine_gib_head.mdl";
+
+		Vector vecGibOrigin;
+		VectorTransform( s_vecBodyPartOffset[i], matOrigin, vecGibOrigin );
 
 		C_Gib *pGib = NULL;
-
 		switch ( nDeathType )
 		{
 		case RIP_PARASITE:
-			pGib = C_Gib::CreateClientsideGib( szGibName, origin, s_vecVelocityBodyPart[i], RandomAngularImpulse( -500.0f, 500.0f ), flLifetime );
+			pGib = C_Gib::CreateClientsideGib( szGibName, vecGibOrigin, s_vecVelocityBodyPart[i], impulses[i], flLifetime );
 			break;
 		case RIP_EXPLOSION:
-			pGib = C_Gib::CreateClientsideGib( szGibName, origin, velocity_explosion, RandomAngularImpulse( -500.0f, 500.0f ), flLifetime );
+			pGib = C_Gib::CreateClientsideGib( szGibName, vecGibOrigin, vecExplosionVelocity, impulses[i], flLifetime );
 			break;
 		}
 
 		if ( !pGib )
 			continue;
 
+		if ( i == 0 )
+			ASWGameRules()->m_hMarineDeathRagdoll = pGib;
+
 		pGib->SetSkin( pProfile->GetSkinNum() );
+		pGib->SetAbsAngles( angles );
 
 		// vq: blood decals
-		Vector vecTraceStart = origin;
+		Vector vecTraceStart = vecGibOrigin;
 		vecTraceStart.z += 8.0f;
 
 		Vector vecDir( 0, 0, -1.0f );
@@ -3060,7 +3119,7 @@ void __MsgFunc_ASWRipRagdoll( bf_read &msg )
 		}
 	}
 
-	UTIL_ASW_BloodDrips( origin, vec3_origin, BLOOD_COLOR_RED, 10 );
+	UTIL_ASW_BloodDrips( vecOrigin, vec3_origin, BLOOD_COLOR_RED, 10 );
 }
 USER_MESSAGE_REGISTER( ASWRipRagdoll );
 

@@ -31,6 +31,7 @@ public:
 	virtual IASW_Spawnable_NPC*	SpawnAlien( const char *szAlienClassName, const Vector &vecHullMins, const Vector &vecHullMaxs, CASW_Spawn_NPC *pDirectorNPC = NULL );
 	void					RemoveObstructingProps( CBaseEntity *pChild );	
 	virtual bool			CanSpawn( const Vector &vecHullMins, const Vector &vecHullMaxs, CASW_Spawn_NPC *pDirectorNPC = NULL );
+	virtual void			DoDispatchSpawn( CBaseEntity *pEntity, CASW_Spawn_NPC *pDirectorNPC ) { DispatchSpawn(pEntity); }
 	CBaseEntity*			GetOrderTarget();
 	bool					MoveSpawnableTo(IASW_Spawnable_NPC* pAlien, CBaseEntity* pGoalEnt, bool bIgnoreMarines);
 
@@ -83,6 +84,7 @@ protected:
 	bool m_bFlammableSp;
 	bool m_bTeslableSp;
 	bool m_bFreezableSp;
+	float m_flFreezeResistanceSp;
 	bool m_bFlinchableSp;
 	bool m_bGrenadeReflectorSp;
 	int m_iHealthBonusSp;
@@ -104,5 +106,6 @@ protected:
 #define ASW_SF_ALWAYS_INFINITE 1
 #define ASW_SF_NO_UBER 2
 #define ASW_SF_NEVER_SLEEP 4
+#define ASW_SF_NO_CARNAGE 8
 
 #endif /* _INCLUDED_ASW_BASE_SPAWNER_H */

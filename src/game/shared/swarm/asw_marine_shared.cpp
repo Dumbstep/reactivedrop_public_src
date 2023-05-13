@@ -79,6 +79,7 @@ ConVar asw_marine_speed_scale_easy("asw_marine_speed_scale_easy", "0.96", FCVAR_
 ConVar asw_marine_speed_scale_normal("asw_marine_speed_scale_normal", "1.0", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_marine_speed_scale_hard("asw_marine_speed_scale_hard", "1.024", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_marine_speed_scale_insane("asw_marine_speed_scale_insane", "1.048", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar asw_marine_speed_scale_adrenaline( "asw_marine_speed_scale_adrenaline", "1.0", FCVAR_REPLICATED | FCVAR_CHEAT );
 ConVar asw_marine_box_collision("asw_marine_box_collision", "1", FCVAR_REPLICATED | FCVAR_CHEAT );
 // reactivedrop: setting to 0, this prevents killing shieldbug from front using shotguns 
 ConVar asw_allow_hull_shots("asw_allow_hull_shots", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
@@ -238,8 +239,8 @@ bool CASW_Marine::Weapon_CanSwitchTo( CBaseCombatWeapon *pWeapon )
 		return false;
 
 	// disallow selection of offhand item
-	const CASW_WeaponInfo* pWpnInfo = pASWWeapon->GetWeaponInfo();
-	if ( pWpnInfo && pWpnInfo->m_bExtra )
+	const CASW_EquipItem *pItem = pASWWeapon->GetEquipItem();
+	if ( pItem && pItem->m_bIsExtra )
 		return false;
 
 	if ( !pWeapon->CanDeploy() )
@@ -256,6 +257,14 @@ bool CASW_Marine::Weapon_CanSwitchTo( CBaseCombatWeapon *pWeapon )
 
 const QAngle& CASW_Marine::ASWEyeAngles( void )
 {
+	// if we're driving, return the angle
+	if ( IsInVehicle() && GetASWVehicle() )
+	{
+		Vector origin;
+		GetASWVehicle()->ASWGetSeatPosition( m_iVehicleSeat, origin, m_AIEyeAngles );
+		return m_AIEyeAngles;
+	}
+
 	if ( GetCommander() && IsInhabited() )
 		return GetCommander()->EyeAngles();
 
@@ -263,9 +272,9 @@ const QAngle& CASW_Marine::ASWEyeAngles( void )
 	m_AIEyeAngles = EyeAngles();
 	m_AIEyeAngles[PITCH] = m_fAIPitch;
 	return m_AIEyeAngles;
-#endif
-
+#else
 	return EyeAngles();
+#endif
 }
 
 bool CASW_Marine::IsInfested()
@@ -321,20 +330,6 @@ bool CASW_Marine::TickEmote(float d, bool bEmote, bool& bClientEmote, float& fEm
 // asw fixme to be + eye height (crouch/no)
 Vector CASW_Marine::EyePosition( void ) 
 {
-	// if we're driving, return the position of our vehicle
-	if (IsInVehicle())
-	{
-#ifdef CLIENT_DLL
-		if (GetClientsideVehicle() && GetClientsideVehicle()->GetEntity())
-			return GetClientsideVehicle()->GetEntity()->GetAbsOrigin();
-#endif
-		if (GetASWVehicle() && GetASWVehicle()->GetEntity())
-			return GetASWVehicle()->GetEntity()->GetAbsOrigin();
-	}
-	//if (IsControllingTurret())
-	//{
-		//return GetRemoteTurret()->GetTurretCamPosition();
-	//}
 #ifdef CLIENT_DLL
 	//if (m_bUseLastRenderedEyePosition)
 		//return m_vecLastRenderedPos + GetViewOffset();
@@ -368,15 +363,6 @@ Vector CASW_Marine::Weapon_ShootPosition( )
 
 	v = GetAbsOrigin();
 
-	if (IsInVehicle() && GetASWVehicle() && GetASWVehicle()->GetEntity())
-	{
-		v = GetASWVehicle()->GetEntity()->GetAbsOrigin();
-#ifdef CLIENT_DLL
-		if (gpGlobals->maxClients>1 && GetClientsideVehicle() && GetClientsideVehicle()->GetEntity())
-			v = GetClientsideVehicle()->GetEntity()->GetAbsOrigin();		
-#endif
-	}
-
 	QAngle ang = ASWEyeAngles();
 	ang.x = 0;	// clear out pitch, so we're matching the fixes point of our autoaim calcs
 	AngleVectors( ang, &forward, &right, &up );
@@ -395,7 +381,7 @@ Vector CASW_Marine::Weapon_ShootPosition( )
 
 float CASW_Marine::MaxSpeed()
 {
-	float speed = 300;
+	float speed = BaseClass::MaxSpeed();
 	if (GetMarineResource())
 	{
 		speed = MarineSkills()->GetSkillBasedValueByMarine(this, ASW_MARINE_SKILL_AGILITY);
@@ -448,15 +434,15 @@ float CASW_Marine::MaxSpeed()
 
 	// speed up as time slows down
 	float flTimeDifference = 0.0f;
-	
-	if ( gpGlobals->curtime > ASWGameRules()->GetStimEndTime() )
+
+	if ( gpGlobals->curtime < ASWGameRules()->GetStimEndTime() + 1.5f && asw_stim_time_scale.GetFloat() != 1.0f )
 	{
-		flTimeDifference = 1.0f - MAX( asw_stim_time_scale.GetFloat(), GameTimescale()->GetCurrentTimescale() );
+		flTimeDifference = MAX( 0.0f, ( 1.0f - GameTimescale()->GetCurrentTimescale() ) / ( 1.0f - asw_stim_time_scale.GetFloat() ) );
 	}
 
 	if ( flTimeDifference > 0.0f )
 	{
-		speedscale *= 1.0f + flTimeDifference * 0.75f;
+		speedscale *= 1.0f + flTimeDifference * ( asw_marine_speed_scale_adrenaline.GetFloat() - 1.0f );
 	}
 	
 	return speed * speedscale;
@@ -527,11 +513,33 @@ CASW_Remote_Turret* CASW_Marine::GetRemoteTurret()
 	return m_hRemoteTurret.Get();
 }
 
+CBaseCombatWeapon *CASW_Marine::ASWAnim_GetActiveWeapon()
+{
+	return GetActiveWeapon();
+}
+
+bool CASW_Marine::ASWAnim_CanMove()
+{
+	return true;
+}
+
 bool CASW_Marine::IsInhabited()
 {
 	if ( !GetMarineResource() )
 		return false;
+
 	return GetMarineResource()->IsInhabited();
+}
+
+CASW_Marine_Profile *CASW_Marine::GetMarineProfile()
+{
+	CASW_Marine_Resource *pMR = GetMarineResource();
+	if ( !pMR )
+	{
+		return m_nMarineProfile != -1 ? MarineProfileList()->GetProfile( m_nMarineProfile ) : NULL;
+	}
+
+	return pMR->GetProfile();
 }
 
 void CASW_Marine::DoDamagePowerupEffects( CBaseEntity *pTarget, CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr )
@@ -617,22 +625,6 @@ void CASW_Marine::DoDamagePowerupEffects( CBaseEntity *pTarget, CTakeDamageInfo 
 		IASW_Spawnable_NPC *pSpawnableNPC = dynamic_cast<IASW_Spawnable_NPC*>( pTarget );
 		if ( pSpawnableNPC )
 		{
-			//CASW_Weapon *pWeapon = GetActiveASWWeapon();
-			//int iLevel = 1; //GetMarineProfile()->GetLevel();
-			//if ( pWeapon && pWeapon->GetAttributeContainer() && pWeapon->GetAttributeContainer()->GetItem() )
-			//{
-			//	iLevel = pWeapon->GetAttributeContainer()->GetItem()->GetItemLevel();
-			//}
-			/*
-			static float flBaseFireDamage = 10.0f;
-			static float flDamageChangePerLevel = 0.15f;
-			static float flFireDuration = 3.0f;
-			float flDamagePerSecond = ( ( iLevel - 1 ) * flDamageChangePerLevel * flBaseFireDamage + flBaseFireDamage ) / flFireDuration;
-			
-
-			// TODO: merge over the new ASW_Ignite to account for DPS?
-			pSpawnableNPC->ASW_Ignite( flFireDuration, flDamagePerSecond, info.GetAttacker() );
-			*/
 			pSpawnableNPC->ASW_Ignite( 2.0f, 0, info.GetAttacker(), info.GetWeapon() );
 		}
 	}
@@ -1074,7 +1066,7 @@ void CASW_Marine::FireRegularBullets( const FireBulletsInfo_t &info )
 				Tracer = tr;
 				Tracer.endpos = vecTracerDest;
 
-				MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
+				MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType), nDamageType );
 			}
 			else
 			{
@@ -1519,19 +1511,20 @@ void CASW_Marine::FirePenetratingBullets( const FireBulletsInfo_t &info, int iMa
 						}
 					}
 
+					int iNextMaxPenetrate = iMaxPenetrate;
 					if ( !tr.DidHitWorld() )
 					{
 						behindNPCInfo.m_pAdditionalIgnoreEnt = tr.m_pEnt;
+						iNextMaxPenetrate--;
 					}
 					else
 					{
 						// Penetrate past the solid
 						behindNPCInfo.m_vecSrc = behindNPCInfo.m_vecSrc + behindNPCInfo.m_vecDirShooting * 28.0f;
-						iMaxPenetrate++;
 						behindNPCInfo.m_pAdditionalIgnoreEnt = NULL;
 					}
 
-					FirePenetratingBullets( behindNPCInfo, --iMaxPenetrate, fPenetrateChance, iSeedPlus, bAllowChange, &vecPiercingTracerEnd, bSegmentTracer );
+					FirePenetratingBullets( behindNPCInfo, iNextMaxPenetrate, fPenetrateChance, iSeedPlus, bAllowChange, &vecPiercingTracerEnd, bSegmentTracer );
 						// this function returns with vecPiercingTracerEnd set to the end of the tracer
 				}
 			}
@@ -1555,7 +1548,7 @@ void CASW_Marine::FirePenetratingBullets( const FireBulletsInfo_t &info, int iMa
 					{
 						Tracer.endpos += vecFinalDir * 2.9f;
 					}
-					MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
+					MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType), nDamageType );
 				}
 				else
 				{
@@ -1594,19 +1587,19 @@ void CASW_Marine::FirePenetratingBullets( const FireBulletsInfo_t &info, int iMa
 					if ( pPiercingTracerEnd == NULL )
 					{
 						if ( bSegmentTracer )
-							MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
+							MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType), nDamageType );
 						else
 						{
 							trace_t Tracer2;
 							Tracer = tr;
 							Tracer.endpos = vecPiercingTracerEnd;
-							MakeTracer( vecTracerSrc, Tracer2, pAmmoDef->TracerType(info.m_iAmmoType) );
+							MakeTracer( vecTracerSrc, Tracer2, pAmmoDef->TracerType(info.m_iAmmoType), nDamageType );
 						}
 					}
 					else
 					{
 						if ( bSegmentTracer )
-							MakeUnattachedTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
+							MakeUnattachedTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType), nDamageType );
 						QAngle	vecAngles;
 						VectorAngles( vecFinalDir, vecAngles );
 						DispatchParticleEffect( "drone_shot_exit", vecTracerSrc, vecAngles );
@@ -1631,9 +1624,9 @@ void CASW_Marine::FirePenetratingBullets( const FireBulletsInfo_t &info, int iMa
 #endif
 }
 
-void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBounce, int iSeedPlus/*=0 */ )
+void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBounce, int iSeedPlus, bool bAllowHittingAttacker )
 {
-	if (iMaxBounce < 0)
+	if ( iMaxBounce < 0 )
 		return;
 
 #ifdef GAME_DLL
@@ -1700,7 +1693,7 @@ void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBo
 	Vector vecEnd;
 	Vector vecFinalDir;	// bullet's final direction can be changed by passing through a portal
 	
-	CASWTraceFilterShot traceFilter( this, info.m_pAdditionalIgnoreEnt, COLLISION_GROUP_NONE );
+	CASWTraceFilterShot traceFilter( bAllowHittingAttacker ? NULL : this, info.m_pAdditionalIgnoreEnt, COLLISION_GROUP_NONE );
 	traceFilter.SetSkipMarines( false );
 	traceFilter.SetSkipRollingMarines( true );
 
@@ -1892,7 +1885,7 @@ void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBo
 		{
 			if ( bDoServerEffects == true )
 			{
-				if (iMaxBounce == 5) // bad hardcoded number for ricochet gun
+				if ( !bAllowHittingAttacker )
 				{
 					Vector vecTracerSrc = vec3_origin;
 					ComputeTracerStartPosition( info.m_vecSrc, &vecTracerSrc );
@@ -1901,7 +1894,7 @@ void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBo
 					Tracer = tr;
 					Tracer.endpos = vecTracerDest;
 
-					MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
+					MakeTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType( info.m_iAmmoType ), nDamageType );
 				}
 				else
 				{
@@ -1910,7 +1903,7 @@ void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBo
 					Tracer = tr;
 					Tracer.endpos = vecTracerDest;
 
-					MakeUnattachedTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType(info.m_iAmmoType) );
+					MakeUnattachedTracer( vecTracerSrc, Tracer, pAmmoDef->TracerType( info.m_iAmmoType ), nDamageType );
 				}
 			}
 			else
@@ -1945,8 +1938,8 @@ void CASW_Marine::FireBouncingBullets( const FireBulletsInfo_t &info, int iMaxBo
 #ifdef GAME_DLL
 			ApplyMultiDamage();		// apply the previous damage, since it'll get cleared when we refire
 			int iAliensKilledBeforeBounce = GetMarineResource() ? GetMarineResource()->m_iAliensKilled.Get() : 0;
-#endif			
-			FireBouncingBullets( BouncingShotInfo, --iMaxBounce );
+#endif
+			FireBouncingBullets( BouncingShotInfo, iMaxBounce - 1, 0, true );
 
 #ifdef GAME_DLL
 			if (GetMarineResource())
@@ -1988,124 +1981,63 @@ bool CASW_Marine::TestHitboxes( const Ray_t &ray, unsigned int fContentsMask, tr
 	return BaseClass::TestHitboxes(ray, fContentsMask, tr);
 }
 
-void CASW_Marine::MakeTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType )
-{
-	const char* tracer = "ASWUTracer";
-	if (GetActiveASWWeapon())
-		tracer = GetActiveASWWeapon()->GetUTracerType();
-#ifdef CLIENT_DLL
-	CEffectData data;
-	data.m_vOrigin = tr.endpos;
-	data.m_hEntity = this;
-	data.m_nMaterial = m_iDamageAttributeEffects;
-
-	DispatchEffect( tracer, data );
-#else
-	CRecipientFilter filter;
-	filter.AddAllPlayers();
-	if (gpGlobals->maxClients > 1 && IsInhabited() && GetCommander())
-	{ 
-		filter.RemoveRecipient(GetCommander());
-	}
-
-	UserMessageBegin( filter, tracer );
-		WRITE_SHORT( entindex() );
-		WRITE_FLOAT( tr.endpos.x );
-		WRITE_FLOAT( tr.endpos.y );
-		WRITE_FLOAT( tr.endpos.z );
-		WRITE_SHORT( m_iDamageAttributeEffects );
-	MessageEnd();
-#endif
-}
-
-void CASW_Marine::MakeUnattachedTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType )
-{
-	const char* tracer = "ASWUTracerUnattached";	
-#ifdef CLIENT_DLL
-
-	CEffectData data;
-	data.m_vOrigin = tr.endpos;
-	data.m_hEntity = this;
-	data.m_vStart = vecTracerSrc;
-
-	DispatchEffect( tracer, data );
-#else
-	CRecipientFilter filter;
-	filter.AddAllPlayers();
-	if (gpGlobals->maxClients > 1 && IsInhabited() && GetCommander())
-	{ 
-		filter.RemoveRecipient(GetCommander());
-	}
-
-	UserMessageBegin( filter, tracer );
-		WRITE_SHORT( entindex() );
-		WRITE_FLOAT( tr.endpos.x );
-		WRITE_FLOAT( tr.endpos.y );
-		WRITE_FLOAT( tr.endpos.z );
-		WRITE_FLOAT( vecTracerSrc.x );
-		WRITE_FLOAT( vecTracerSrc.y );
-		WRITE_FLOAT( vecTracerSrc.z );
-		WRITE_SHORT( m_iDamageAttributeEffects );
-	MessageEnd();
-#endif
-}
-
 // returns which slot in the m_hWeapons array this pickup should go in
-int CASW_Marine::GetWeaponPositionForPickup( const char* szWeaponClass, bool bIsTemporary )
-{	
-	if (!szWeaponClass || !ASWEquipmentList())
+int CASW_Marine::GetWeaponPositionForPickup( const char *szWeaponClass, bool bIsTemporary )
+{
+	Assert( szWeaponClass );
+	if ( !szWeaponClass )
 	{
-		Assert(0);
 		return 0;
 	}
 
-	CASW_WeaponInfo *pWeaponData = ASWEquipmentList()->GetWeaponDataFor( szWeaponClass );
+	CASW_EquipItem *pItem = g_ASWEquipmentList.GetEquipItemFor( szWeaponClass );
+	Assert( pItem || FStrEq( szWeaponClass, "rd_weapon_generic_object" ) );
 
 	// use the temporary slot unless we can put it in primary or secondary without dropping anything
-	if ( bIsTemporary && ( pWeaponData->m_bExtra || !V_stricmp( szWeaponClass, "rd_weapon_generic_object" ) || ( GetWeapon(0) && GetWeapon(1) ) ) )
+	if ( bIsTemporary && ( ( pItem && pItem->m_bIsExtra ) || FStrEq( szWeaponClass, "rd_weapon_generic_object" ) || ( GetWeapon( 0 ) && GetWeapon( 1 ) ) ) )
 	{
 		return ASW_TEMPORARY_WEAPON_SLOT;
 	}
 
 	// if it's an extra type item, return the 3rd slot as that's the only place it'll fit
-	if (pWeaponData && pWeaponData->m_bExtra)
+	if ( pItem && pItem->m_bIsExtra )
 		return 2;
 
 	// if item is unique, then check if we're already carrying one
-	if (pWeaponData && pWeaponData->m_bUnique)
+	if ( pItem && pItem->m_bIsUnique )
 	{
-		CBaseCombatWeapon *pWeapon = GetWeapon(0);
-		if (pWeapon && !Q_strcmp(szWeaponClass, pWeapon->GetClassname()))
+		CASW_Weapon *pWeapon = GetASWWeapon( 0 );
+		if ( pWeapon && FStrEq( szWeaponClass, pWeapon->GetClassname() ) )
 			return 0;
 
-		pWeapon = GetWeapon(1);
-		if (pWeapon && !Q_strcmp(szWeaponClass, pWeapon->GetClassname()))
+		pWeapon = GetASWWeapon( 1 );
+		if ( pWeapon && FStrEq( szWeaponClass, pWeapon->GetClassname() ) )
 			return 1;
 	}
 
-	if (GetWeapon(0) == NULL)		// primary slot is free
+	if ( GetASWWeapon( 0 ) == NULL )		// primary slot is free
 		return 0;
-	else if (GetWeapon(1) == NULL)	// secondary slot is free
+	else if ( GetASWWeapon( 1 ) == NULL )	// secondary slot is free
 		return 1;
 	// all slots are full
-	else if (GetActiveWeapon() == GetWeapon(0))		// we have primary currently selected, so exchange with that
+	else if ( GetActiveASWWeapon() == GetASWWeapon( 0 ) )		// we have primary currently selected, so exchange with that
 		return 0;
-	else if (GetActiveWeapon() == GetWeapon(1))		// we have primary currently selected, so exchange with that
+	else if ( GetActiveASWWeapon() == GetASWWeapon( 1 ) )		// we have primary currently selected, so exchange with that
 		return 1;
-	
+
 	return 0;		// otherwise, swap with the primary slot
 
-		/*
-	Potential better system?
+	/*
+		Potential better system?
 
-	for a weapon:  put in primary slot if free
-			if not, put in secondary slot, if free
-			if not, drop current weapon and put in that slot
+		for a weapon:  put in primary slot if free
+				if not, put in secondary slot, if free
+				if not, drop current weapon and put in that slot
 
-	for a pickup:  put in secondary slot, if free
-			if not, put in primary slot, if free
-			if not, drop secondary and put in secondary
-			*/
+		for a pickup:  put in secondary slot, if free
+				if not, put in primary slot, if free
+				if not, drop secondary and put in secondary
+	*/
 }
 
 int CASW_Marine::GetNumberOfWeaponsUsingAmmo(int iAmmoIndex)
@@ -2236,6 +2168,11 @@ void CASW_Marine::ApplyMeleeDamage( CBaseEntity *pHitEntity, CTakeDamageInfo dmg
 			}
 		}
 #endif
+		m_bPlayedMeleeHitSound = true;
+	}
+	else if ( !m_bPlayedMeleeHitSound && HasPowerFist() )
+	{
+		EmitSound( "ASW.MarinePowerFistHitWorld" );
 		m_bPlayedMeleeHitSound = true;
 	}
 	m_RecentMeleeHits.AddToTail( pHitEntity );
@@ -2566,7 +2503,7 @@ CBaseEntity *CASW_Marine::MeleeTraceHullAttack( const Vector &vecStart, const Ve
 
 	CTakeDamageInfo	dmgInfo( this, this, 0.0f, DMG_CLUB );
 	dmgInfo.SetDamage( MarineSkills()->GetSkillBasedValueByMarine( this, ASW_MARINE_SKILL_MELEE, ASW_MARINE_SUBSKILL_MELEE_DMG ) );
-	dmgInfo.ScaleDamage( GetCurrentMeleeAttack()->m_flDamageScale );
+	dmgInfo.ScaleDamage( GetCurrentMeleeAttack() ? GetCurrentMeleeAttack()->m_flDamageScale : 1.0f );
 
 	Vector vecAttackDir = vecEnd - vecStart;
 	VectorNormalize( vecAttackDir );
@@ -2850,6 +2787,22 @@ Vector CASW_Marine::GetOffhandThrowSource( const Vector *vecStandingPos )
 	return vecSrc;
 }
 
+const Vector &CASW_Marine::GetOffhandThrowDest()
+{
+#ifdef CLIENT_DLL
+	Assert( IsInhabited() && GetCommander() ); // this should only be called from prediction
+#else
+	if ( IsInhabited() && GetCommander() )
+#endif
+	{
+		return GetCommander()->GetCrosshairTracePos();
+	}
+
+#ifndef CLIENT_DLL
+	return GetOffhandItemSpot();
+#endif
+}
+
 bool CASW_Marine::IsFiring()
 {
 	return GetActiveASWWeapon() && GetActiveASWWeapon()->IsFiring();
@@ -2866,6 +2819,8 @@ void CASW_Marine::ApplyPassiveMeleeDamageEffects( CTakeDamageInfo &dmgInfo )
 			float flDamageScale = pWeapon->GetPassiveMeleeDamageScale();
 			if ( flDamageScale != 1.0f )
 			{
+				Assert( dmgInfo.GetWeapon() == NULL );
+				dmgInfo.SetWeapon( pWeapon );
 				dmgInfo.ScaleDamage( flDamageScale );
 			}
 		}

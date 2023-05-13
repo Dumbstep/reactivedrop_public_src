@@ -59,6 +59,8 @@ public:
 	int m_iSpeedrunTime;
 	int m_iJumpJetType;
 	CNetworkVar( bool, m_bDisallowCameraRotation );
+	string_t m_szStatsMusicSuccess;
+	string_t m_szStatsMusicFailure;
 
 #ifdef CLIENT_DLL
 	virtual void OnDataChanged( DataUpdateType_t updateType );
@@ -84,20 +86,14 @@ class CASW_Marine;
 class CASW_Pickup;
 class CASW_Powerup;
 
-// special game modes
-enum
-{
-	ASW_SM_CARNAGE	=				(1<<0),	// More aliens with less health
-	ASW_SM_UBER		=				(1<<1),	// Occasional large slow big health aliens
-	ASW_SM_HARDCORE	=				(1<<2),	// Instakill sites, no friendly fire damage reduction, etc.
-};
-
 // Faction defines
 #define FACTION_MARINES				( LAST_SHARED_FACTION + 1 )
 #define FACTION_ALIENS				( LAST_SHARED_FACTION + 2 )
 #define FACTION_BAIT				( LAST_SHARED_FACTION + 3 )
 #define FACTION_NEUTRAL				( LAST_SHARED_FACTION + 4 )
-#define LAST_ASW_FACTION			(FACTION_NEUTRAL)
+#define FACTION_COMBINE				( LAST_SHARED_FACTION + 5 )
+#define FACTION_ROBOTS				( LAST_SHARED_FACTION + 6 )
+#define LAST_ASW_FACTION			(FACTION_ROBOTS)
 #define NUM_ASW_FACTIONS			(LAST_ASW_FACTION + 1)
 
 class CAlienSwarm : public CSingleplayRules
@@ -152,7 +148,7 @@ public:
 	// loadout/equip
 	virtual void			LoadoutSelect( CASW_Player *pPlayer, int iRosterIndex, int iInvSlot, int iEquipIndex);
 	virtual bool			CanHaveAmmo( CBaseCombatCharacter *pPlayer, int iAmmoIndex );
-	void GiveStartingWeaponToMarine(CASW_Marine* pMarine, int iEquipIndex, int iSlot);	// gives the specified marine the specified starting gun and default ammo
+	void GiveStartingWeaponToMarine( CASW_Marine *pMarine, int iEquipIndex, int iSlot, int iDynamicItemSlot );	// gives the specified marine the specified starting gun and default ammo
 	void AddBonusChargesToPickups();
 	
 	// spawning/connecting
@@ -228,11 +224,12 @@ public:
 	virtual void MissionComplete(bool bSuccess);
 	virtual void RemoveAllAliens();
 	virtual void RemoveNoisyWeapons();
-	void ScheduleTechFailureRestart( float flRestartBeginTime ) { if ( m_flTechFailureRestartTime == 0 ) { m_flTechFailureRestartTime = flRestartBeginTime; } }
+	void ScheduleTechFailureRestart( float flRestartBeginTime, string_t szTechFailureSong );
 	void CheckTechFailure();
 	float m_fRemoveAliensTime;
 	bool m_bShouldStartMission;
 	float m_flTechFailureRestartTime;
+	string_t m_szTechFailureSong;
 
 	virtual void BroadcastMapLine(CASW_Player *pPlayer, int linetype, int world_x, int world_y);
 
@@ -257,7 +254,7 @@ public:
 	// custom version of radius damage to hurt marines a little less
 	virtual void RadiusDamage( const CTakeDamageInfo &info, const Vector &vecSrcIn, float flRadius, int iClassIgnore, CBaseEntity *pEntityIgnore );
 	virtual bool ShouldUseRobustRadiusDamage( CBaseEntity *pEntity );
-	void FreezeAliensInRadius( CBaseEntity *pInflictor, float flFreezeAmount, const Vector &vecSrcIn, float flRadius );
+	void FreezeAliensInRadius( CBaseEntity *pAttacker, CBaseEntity *pInflictor, float flFreezeAmount, const Vector &vecSrcIn, float flRadius );
 	void StumbleAliensInRadius( CBaseEntity *pInflictor, const Vector &vecSrcIn, float flRadius );
 	void ShockNearbyAliens( CASW_Marine *pMarine, CASW_Weapon *pWeaponSource );
 			
@@ -358,7 +355,7 @@ public:
 	CBaseEntity* m_pSpawningSpot;
 
 	// misc
-	void ExplodedLevel();
+	void ExplodedLevel( CBaseEntity *pExploder );
 	void GrubSpawned(CBaseEntity *pGrub) { m_iNumGrubs++; }	
 	float m_fLastFireTime;	// last time a marine fired a gun (used for avoiding casual chatter in a battle)
 	void BroadcastSound( const char *sound );
@@ -420,11 +417,13 @@ public:
 	Vector m_vMarineDeathPosDeathmatch;
 	int m_nMarineForDeathCamDeathmatch;
 #endif
+	CNetworkString( m_szDeathmatchWinnerName, MAX_PLAYER_NAME_LENGTH );
 
 	// voting
 	CNetworkString(m_szCurrentVoteDescription, 128);
 	CNetworkString(m_szCurrentVoteMapName, 128);
 	CNetworkString(m_szCurrentVoteCampaignName, 128);
+	CNetworkString( m_szCycleNextMap, MAX_MAP_NAME );
 	CNetworkVar(int, m_iCurrentVoteYes);
 	CNetworkVar(int, m_iCurrentVoteNo);
 	CNetworkVar(int, m_iCurrentVoteType);
@@ -475,6 +474,7 @@ public:
 	unsigned char m_iPreviousGameState;
 #endif
 	void FinishDeathmatchRound( CASW_Marine_Resource *winner );
+	CNetworkString( m_szStatsMusicOverride, 128 );
 
 	// misc
 	virtual void CreateStandardEntities( void );	
@@ -486,6 +486,7 @@ public:
 #ifdef GAME_DLL
 	// BenLubar: add game-specific vscript functions
 	virtual void RegisterScriptFunctions();
+	void RunScriptFunctionInListenerScopes( const char *szFunctionName, ScriptVariant_t *pReturn, int nArgs, ScriptVariant_t *pArgs );
 	CUtlMap<string_t, float> m_ActorSpeakingUntil;
 #endif
 
@@ -524,25 +525,13 @@ public:
 
 	// special game modes
 #ifndef CLIENT_DLL
-	void SetInitialGameMode();
-	void SetCarnageMode(bool bCarnageMode);
-	void SetUberMode(bool bUberMode);
-	void SetHardcoreMode(bool bHardcoreMode);
-
 	void StartTutorial(CASW_Player *pPlayer);
 
 	bool ShouldQuickStart() { return m_bQuickStart; }
 	bool m_bQuickStart;
-
 #endif
-	int ApplyWeaponSelectionRules( CASW_Marine_Resource *pMR, int iEquipSlot, int iWeaponIndex );
 
-	bool IsCarnageMode() { return (m_iSpecialMode & ASW_SM_CARNAGE) != 0; }	
-	bool IsUberMode() { return (m_iSpecialMode & ASW_SM_UBER) != 0; }	
-	bool IsHardcoreMode() { return (m_iSpecialMode & ASW_SM_HARDCORE) != 0; }	
-	int GetUnlockedModes() { return m_iUnlockedModes; }
-	CNetworkVar(int, m_iSpecialMode);
-	CNetworkVar(int, m_iUnlockedModes);
+	int ApplyWeaponSelectionRules( int iEquipSlot, int iWeaponIndex );
 
 	virtual bool IsTopDown() { return true; }
 	virtual const QAngle& GetTopDownMovementAxis();
@@ -564,6 +553,7 @@ public:
 	CNetworkVar( PublishedFileId_t, m_iMissionWorkshopID );
 #ifdef CLIENT_DLL
 	PublishedFileId_t m_iPreviousMissionWorkshopID;
+	bool m_bShouldSaveChangedLoadout;
 #endif
 
 	CNetworkVar( bool, m_bChallengeActiveThisCampaign );

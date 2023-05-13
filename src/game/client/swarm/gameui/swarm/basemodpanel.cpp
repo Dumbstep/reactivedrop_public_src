@@ -37,6 +37,7 @@
 #include "VControllerOptions.h"
 #include "VControllerOptionsButtons.h"
 #include "VControllerOptionsSticks.h"
+#include "VDemos.h"
 #include "VDownloads.h"
 #include "VFoundGames.h"
 #include "VFoundGroupGames.h"
@@ -52,6 +53,7 @@
 #include "VInGameMainMenu.h"
 #include "VInGameChapterSelect.h"
 #include "VInGameKickPlayerList.h"
+#include "vitemshowcase.h"
 #include "VKeyboardMouse.h"
 #include "vkeyboard.h"
 #include "VVoteOptions.h"
@@ -294,6 +296,9 @@ CBaseModFrame* CBaseModPanel::OpenWindow(const WINDOW_TYPE & wt, CBaseModFrame *
 		break;
 	case WT_TRANSITIONSCREEN:
 		nWindowPriority = WPRI_TOPMOST;
+		break;
+	case WT_ITEMSHOWCASE:
+		nWindowPriority = WPRI_MESSAGE;
 		break;
 	}
 
@@ -539,6 +544,14 @@ CBaseModFrame* CBaseModPanel::OpenWindow(const WINDOW_TYPE & wt, CBaseModFrame *
 
 		case WT_AUDIOADVANCEDMIXERS:
 			m_Frames[wt] = new AudioAdvancedMixers( this, "AudioAdvancedMixers" );
+			break;
+
+		case WT_DEMOS:
+			m_Frames[wt] = new Demos( this, "Demos" );
+			break;
+
+		case WT_ITEMSHOWCASE:
+			m_Frames[wt] = new ItemShowcase( this, "ItemShowcase" );
 			break;
 
 		default:
@@ -962,6 +975,7 @@ void CBaseModPanel::OnGameUIActivated()
 		case WT_NONE:
 		case WT_INGAMEMAINMENU:
 		case WT_GENERICCONFIRMATION:
+		case WT_ITEMSHOWCASE:
 			// bForceReturnToFrontScreen = !g_pMatchFramework->GetMatchmaking()->ShouldPreventOpenFrontScreen();
 			bForceReturnToFrontScreen = true; // this used to be some magic about mid-disconnecting-states on PC...
 			break;
@@ -1450,11 +1464,11 @@ void CBaseModPanel::OnLevelLoadingFinished( KeyValues *kvEvent )
 		if ( pMsg )
 		{
 			GenericConfirmation::Data_t data;
-			data.pWindowTitle = "#L4D360UI_MsgBx_DisconnectedFromServer";			
+			data.pWindowTitle = "#L4D360UI_MsgBx_DisconnectedFromServer";
 			data.bOkButtonEnabled = true;
 			data.pMessageText = failureReason;
 			pMsg->SetUsageData( data );
-		}		
+		}
 	}
 }
 
@@ -1958,7 +1972,7 @@ void CBaseModPanel::ApplySchemeSettings(IScheme *pScheme)
 	surface()->GetScreenSize( screenWide, screenTall );
 
 	char filename[MAX_PATH];
-	V_snprintf( filename, sizeof( filename ), "VGUI/swarm/loading/BGFX01" ); // TODO: engine->GetStartupImage( filename, sizeof( filename ), screenWide, screenTall );
+	V_snprintf( filename, sizeof( filename ), "VGUI/swarm/loading/RD_BGFX04_wide" ); // TODO: engine->GetStartupImage( filename, sizeof( filename ), screenWide, screenTall );
 	m_iBackgroundImageID = surface()->CreateNewTextureID();
 	surface()->DrawSetTextureFile( m_iBackgroundImageID, filename, true, false );
 

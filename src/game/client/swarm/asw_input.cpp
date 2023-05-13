@@ -23,11 +23,8 @@
 #include "asw_gamerules.h"
 #include "asw_melee_system.h"
 #include "asw_trace_filter.h"
-// commented as it is not needed to be included here
-//#ifdef _WIN32
-//#undef INVALID_HANDLE_VALUE
-//#include <windows.h>
-//#endif
+#include "rd_steam_input.h"
+#include "radialmenu.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -40,13 +37,15 @@ ConVar asw_marine_turn_firing_fraction("asw_marine_turn_firing_fraction", "0.6",
 ConVar asw_marine_turn_normal_fraction("asw_marine_turn_normal_fraction", "0.9", FCVAR_CHEAT, "Fractional turning value if using asw_marine_fraction_turn_scale");
 ConVar asw_marine_turn_y_pos("asw_marine_turn_y_pos", "0.55", FCVAR_ARCHIVE, "Normalized height position for where the cursor changes the player from looking north to south.");
 
-ConVar joy_autoattack( "joy_autoattack", "0", FCVAR_ARCHIVE, "If enabled, marine will fire when you push the right analogue stick" );
+ConVar joy_autoattack( "joy_autoattack", "0", FCVAR_ARCHIVE, "If enabled, marine will fire when you push the right analog stick" );
 ConVar joy_lock_firing_angle( "joy_lock_firing_angle", "0", FCVAR_ARCHIVE, "If enabled, your facing direction will be locked while firing instead of aiming to movement" );
 ConVar joy_autoattack_threshold( "joy_autoattack_threshold", "0.6", FCVAR_ARCHIVE, "Threshold for joy_autoattack" );
 ConVar joy_autoattack_angle( "joy_autoattack_angle", "10", FCVAR_ARCHIVE, "Facing has to be within this many degrees of aim for the marine to auto fire" );
 ConVar joy_cursor_speed( "joy_cursor_speed", "2.0f", FCVAR_ARCHIVE, "Cursor speed of joystick when used in targeting mode" );
 ConVar joy_cursor_scale( "joy_cursor_scale", "1.3f", FCVAR_ARCHIVE, "Cursor extent scale of joystick when used in targeting mode" );
 ConVar joy_radius_snap_factor( "joy_radius_snap_factor", "2.0f", FCVAR_ARCHIVE, "Rate at which joystick targeting radius tracks the current cursor radius" );
+ConVar joy_autowalk( "joy_autowalk", "0", FCVAR_ARCHIVE, "If enabled, marine will walk when you push the right analog stick" );
+ConVar joy_autowalk_threshold( "joy_autowalk_threshold", "0.3", FCVAR_ARCHIVE, "Threshold for joy_autowalk" );
 ConVar joy_aim_to_movement( "joy_aim_to_movement", "1", FCVAR_ARCHIVE, "Aim in the direction of movement if the aiming stick is not in use" );
 ConVar joy_aim_to_movement_time( "joy_aim_to_movement_time", "1.0f", FCVAR_ARCHIVE, "Time before the player automatically aims in the direction of movement." );
 ConVar joy_tilted_view( "joy_tilted_view", "0", FCVAR_ARCHIVE, "Set to 1 when using maps with tilted view to rotate player movement." );
@@ -59,6 +58,7 @@ ConVar dub_aimbot_auto_toggle("dub_aimbot_auto_toggle", "0", FCVAR_NONE);
 ConVar dub_better_chainsaw_turn_rate("dub_better_chainsaw_turn_rate", "1500", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 
 extern kbutton_t in_attack;
+extern kbutton_t in_walk;
 extern int g_asw_iPlayerListOpen;
 extern ConVar asw_DebugAutoAim;
 extern ConVar in_forceuser;
@@ -83,78 +83,62 @@ CASWInput *ASWInput()
 
 void GetVGUICursorPos( int& x, int& y );
 
-#define ASW_NUM_HUMAN_READABLE 5
-static char const *s_HumanKeynames[ASW_NUM_HUMAN_READABLE][2]={
-	{"MWHEELUP", "#asw_mouse_wheel_up"},
-	{"MWHEELDOWN", "#asw_mouse_wheel_down"},
-	{"MOUSE1", "#asw_mouse1"},
-	{"MOUSE2", "#asw_mouse2"},
-	{"MOUSE3", "#asw_mouse3"},
+static char const *s_HumanKeynames[][2] =
+{
+	{ "MWHEELUP", "#asw_mouse_wheel_up" },
+	{ "MWHEELDOWN", "#asw_mouse_wheel_down" },
+	{ "MOUSE1", "#asw_mouse1" },
+	{ "MOUSE2", "#asw_mouse2" },
+	{ "MOUSE3", "#asw_mouse3" },
+	{ "JOY1", "#asw_360_a" },
+	{ "JOY2", "#asw_360_b" },
+	{ "JOY3", "#asw_360_x" },
+	{ "JOY4", "#asw_360_y" },
+	{ "AUX5", "#asw_360_left_bumper" },
+	{ "AUX6", "#asw_360_right_bumper" },
+	{ "AUX7", "#asw_360_back" },
+	{ "AUX8", "#asw_360_start" },
+	{ "AUX9", "#asw_360_left_stick_in" },
+	{ "AUX10", "#asw_360_right_stick_in" },
+	{ "AUX29", "#asw_360_dpad_up" },
+	{ "AUX30", "#asw_360_dpad_right" },
+	{ "AUX31", "#asw_360_dpad_down" },
+	{ "AUX32", "#asw_360_dpad_left" },
+	{ "Z AXIS NEG", "#asw_360_right_trigger" },
+	{ "Z AXIS POS", "#asw_360_left_trigger" },
+	{ "X AXIS POS", "#asw_360_left_stick_right" },
+	{ "X AXIS NEG", "#asw_360_left_stick_left" },
+	{ "Y AXIS POS", "#asw_360_left_stick_down" },
+	{ "Y AXIS NEG", "#asw_360_left_stick_up" },
+	{ "U AXIS POS", "#asw_360_right_stick_right" },
+	{ "U AXIS NEG", "#asw_360_right_stick_left" },
+	{ "R AXIS POS", "#asw_360_right_stick_down" },
+	{ "R AXIS NEG", "#asw_360_right_stick_up" },
+	{ "A_BUTTON", "#asw_360_a" },
+	{ "B_BUTTON", "#asw_360_b" },
+	{ "X_BUTTON", "#asw_360_x" },
+	{ "Y_BUTTON", "#asw_360_y" },
+	{ "L_SHOULDER", "#asw_360_left_bumper" },
+	{ "R_SHOULDER", "#asw_360_right_bumper" },
+	{ "BACK", "#asw_360_back" },
+	{ "START", "#asw_360_start" },
+	{ "STICK1", "#asw_360_left_stick_in" },
+	{ "STICK2", "#asw_360_right_stick_in" },
+	{ "UP", "#asw_360_dpad_up" },
+	{ "RIGHT", "#asw_360_dpad_right" },
+	{ "DOWN", "#asw_360_dpad_down" },
+	{ "LEFT", "#asw_360_dpad_left" },
+	{ "R_TRIGGER", "#asw_360_right_trigger" },
+	{ "L_TRIGGER", "#asw_360_left_trigger" },
+	{ "S1_RIGHT", "#asw_360_left_stick_right" },
+	{ "S1_LEFT", "#asw_360_left_stick_left" },
+	{ "S1_DOWN", "#asw_360_left_stick_down" },
+	{ "S1_UP", "#asw_360_left_stick_up" },
+	{ "S2_RIGHT", "#asw_360_right_stick_right" },
+	{ "S2_LEFT", "#asw_360_right_stick_left" },
+	{ "S2_DOWN", "#asw_360_right_stick_down" },
+	{ "S2_UP", "#asw_360_right_stick_up" },
 };
-
-#ifdef _X360
-
-// human readable names for xbox 360 controller buttons on Xbox360
-#define ASW_NUM_360_READABLE 24
-static char const *s_360Keynames[ASW_NUM_360_READABLE][2]={
-	{"A_BUTTON", "#asw_360_a"},
-	{"B_BUTTON", "#asw_360_b"},
-	{"X_BUTTON", "#asw_360_x"},
-	{"Y_BUTTON", "#asw_360_y"},
-	{"L_SHOULDER", "#asw_360_left_bumper"},
-	{"R_SHOULDER", "#asw_360_right_bumper"},
-	{"BACK", "#asw_360_back"},
-	{"START", "#asw_360_start"},
-	{"STICK1", "#asw_360_left_stick_in"},
-	{"STICK2", "#asw_360_right_stick_in"},
-	{"UP", "#asw_360_dpad_up"},
-	{"RIGHT", "#asw_360_dpad_right"},
-	{"DOWN", "#asw_360_dpad_down"},
-	{"LEFT", "#asw_360_dpad_left"},
-	{"R_TRIGGER", "#asw_360_right_trigger"},
-	{"L_TRIGGER", "#asw_360_left_trigger"},
-	{"S1_RIGHT", "#asw_360_left_stick_right"},
-	{"S1_LEFT", "#asw_360_left_stick_left"},
-	{"S1_DOWN", "#asw_360_left_stick_down"},
-	{"S1_UP", "#asw_360_left_stick_up"},
-	{"S2_RIGHT", "#asw_360_right_stick_right"},
-	{"S2_LEFT", "#asw_360_right_stick_left"},
-	{"S2_DOWN", "#asw_360_right_stick_down"},
-	{"S2_UP", "#asw_360_right_stick_up"},
-};
-
-#else // !_X360
-
-// human readable names for xbox 360 controller buttons under windows
-#define ASW_NUM_360_READABLE 24
-static char const *s_360Keynames[ASW_NUM_360_READABLE][2]={
-	{"JOY1", "#asw_360_a"},
-	{"JOY2", "#asw_360_b"},
-	{"JOY3", "#asw_360_x"},
-	{"JOY4", "#asw_360_y"},
-	{"AUX5", "#asw_360_left_bumper"},
-	{"AUX6", "#asw_360_right_bumper"},
-	{"AUX7", "#asw_360_back"},
-	{"AUX8", "#asw_360_start"},
-	{"AUX9", "#asw_360_left_stick_in"},
-	{"AUX10", "#asw_360_right_stick_in"},
-	{"AUX29", "#asw_360_dpad_up"},
-	{"AUX30", "#asw_360_dpad_right"},
-	{"AUX31", "#asw_360_dpad_down"},
-	{"AUX32", "#asw_360_dpad_left"},
-	{"Z AXIS NEG", "#asw_360_right_trigger"},
-	{"Z AXIS POS", "#asw_360_left_trigger"},
-	{"X AXIS POS", "#asw_360_left_stick_right"},
-	{"X AXIS NEG", "#asw_360_left_stick_left"},
-	{"Y AXIS POS", "#asw_360_left_stick_down"},
-	{"Y AXIS NEG", "#asw_360_left_stick_up"},
-	{"U AXIS POS", "#asw_360_right_stick_right"},
-	{"U AXIS NEG", "#asw_360_right_stick_left"},
-	{"R AXIS POS", "#asw_360_right_stick_down"},
-	{"R AXIS NEG", "#asw_360_right_stick_up"},
-};
-
-#endif
 
 #define ASW_NUM_STORES 25
 static float StoreAlienPosX[ASW_NUM_STORES];
@@ -389,7 +373,7 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 	Vector vCameraLocation;
 	QAngle cameraAngle;
 	Vector vTraceEnd;
-	int nTraceMask = (CONTENTS_SOLID|CONTENTS_MOVEABLE|CONTENTS_WINDOW|CONTENTS_MONSTER|CONTENTS_GRATE);		// CONTENTS_PLAYERCLIP
+	int nTraceMask = (CONTENTS_SOLID|CONTENTS_MOVEABLE|CONTENTS_WINDOW|CONTENTS_MONSTER|CONTENTS_GRATE|CONTENTS_HITBOX);		// CONTENTS_PLAYERCLIP
 	trace_t tr;
 	int nDebugLine = 3;
 
@@ -398,14 +382,23 @@ C_BaseEntity* HUDToWorld(float screenx, float screeny,
 	Vector X, Y, Z;	
 	Vector CamResult;
 
-	float fRatio = float( ScreenHeight() ) / float( ScreenWidth() );
-	AngleVectors(cameraAngle, &X, &Y, &Z);
-	float FOVAngle = pPlayer->GetFOV();
-	vWorldSpaceCameraToCursor = X 
-		- tanf(FOVAngle*M_PI/180*0.5) * 2 * Y * (screenx) * ( 0.75f / fRatio )
-		+ tanf(FOVAngle*M_PI/180*0.5) * 2 * Z * (screeny) *  0.75f;
+	if ( pPlayer->GetASWControls() == ASWC_TOPDOWN )
+	{
+		float fRatio = float( ScreenHeight() ) / float( ScreenWidth() );
+		AngleVectors( cameraAngle, &X, &Y, &Z );
+		float FOVAngle = pPlayer->GetFOV();
+		vWorldSpaceCameraToCursor = X
+			- tanf( FOVAngle * M_PI / 180 * 0.5 ) * 2 * Y * ( screenx ) * ( 0.75f / fRatio )
+			+ tanf( FOVAngle * M_PI / 180 * 0.5 ) * 2 * Z * ( screeny ) * 0.75f;
+		vWorldSpaceCameraToCursor.NormalizeInPlace();
+	}
+	else
+	{
+		engine->GetViewAngles( cameraAngle );
+		AngleVectors( cameraAngle, &X, &Y, &Z );
+		vWorldSpaceCameraToCursor = X;
+	}
 
-	vWorldSpaceCameraToCursor.NormalizeInPlace();
 	vTraceEnd = vCameraLocation + vWorldSpaceCameraToCursor * ASW_MAX_AIM_TRACE;
 
 	// BenLubar(sd2-ceiling-ents): use CASW_Trace_Filter to handle *_asw_fade properly
@@ -853,6 +846,7 @@ m_fCamYawRotStartTime(0.0f)
 	m_vecCrosshairAimingPos = vec3_origin;
 	m_vecCrosshairTracePos = vec3_origin;
 	m_bAutoAttacking = false;
+	m_bAutoWalking = false;
 
 	cl_entitylist->AddListenerEntity( this );
 
@@ -1333,7 +1327,10 @@ void CASWInput::GetSimulatedFullscreenMousePosFromController( int *mx, int *my, 
 			joy_yaw = last_joy_yaw;
 
 		float lag = MAX( 1, 1 + asw_controller_lag.GetFloat() );
-		joy_yaw = MoveToward( last_joy_yaw, joy_yaw, lag );
+		if ( !IsRadialMenuOpen( NULL, false ) )
+		{
+			joy_yaw = MoveToward( last_joy_yaw, joy_yaw, lag );
+		}
 		last_joy_yaw = joy_yaw;
 		joy_yaw = ( 360.0f - joy_yaw ) + 90.0f;
 		if ( joy_yaw > 360 )
@@ -1344,11 +1341,12 @@ void CASWInput::GetSimulatedFullscreenMousePosFromController( int *mx, int *my, 
 			DevMsg( "joy yaw %f len %f p %f y %f last %f ", joy_yaw, length, m_fJoypadPitch, m_fJoypadYaw, last_joy_yaw );	
 			DevMsg( "cos %f sin %f\n", cos(DEG2RAD(joy_yaw)), sin(DEG2RAD(joy_yaw)) );
 		}
-		// float dist_fraction = 1.0f;	// always put crosshair a fixed distance from the marine
-		//float dist_fraction = length;
-		//if (dist_fraction < 0.9f)
-		//dist_fraction = 0.9f;
-		if ( rd_controller_analog_radius.GetBool() )
+
+		if ( IsRadialMenuOpen( NULL, false ) )
+		{
+			flForwardFraction *= length * 0.5f;
+		}
+		else if ( rd_controller_analog_radius.GetBool() )
 		{
 			flForwardFraction *= clamp( length, rd_controller_analog_radius_min.GetFloat(), 1.0 );
 		}
@@ -1444,38 +1442,33 @@ void ASW_UpdateControllerCodes()
 }
 
 
-const char* ASW_FindKeyBoundTo(const char *binding)
+const char *ASW_FindKeyBoundTo( const char *binding )
 {
-	const char* pKeyText = engine->Key_LookupBindingEx( binding, -1, 0, ASWInput()->ControllerModeActive() );
+	const char *pKeyText = g_RD_Steam_Input.Key_LookupBindingEx( binding, -1, 0, ASWInput()->ControllerModeActive() );
 	if ( !pKeyText )
 	{
-		return "<NOT BOUND>";
+		return "#GameUI_KeyNames_Not_Bound";
 	}
-	return MakeHumanReadable(pKeyText);
+
+	const char *szSteamName = g_RD_Steam_Input.NameForOrigin( pKeyText );
+	if ( szSteamName )
+	{
+		return szSteamName;
+	}
+
+	return MakeHumanReadable( pKeyText );
 }
 
-const char* MakeHumanReadable(const char *key)
+const char *MakeHumanReadable( const char *key )
 {
-	if ( ASWInput()->ControllerModeActive() )
+	for ( int i = 0; i < NELEMS( s_HumanKeynames ); i++ )
 	{
-		for (int i=0;i<ASW_NUM_360_READABLE;i++)
-		{
-			if (!Q_stricmp(s_360Keynames[i][0], key))
-			{
-				return s_360Keynames[i][1];
-			}
-		}
-	}	
-	for (int i=0;i<ASW_NUM_HUMAN_READABLE;i++)
-	{
-		if (!Q_stricmp(s_HumanKeynames[i][0], key))
+		if ( !V_stricmp( s_HumanKeynames[i][0], key ) )
 		{
 			return s_HumanKeynames[i][1];
 		}
 	}
-	char friendlyName[64];
-	Q_snprintf( friendlyName, sizeof(friendlyName), "#%s", key );
-	Q_strupr( friendlyName );
+
 	return key;
 }
 
@@ -1758,11 +1751,12 @@ void CASWInput::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float fra
 	}
 
 	// check for changing direction based on right analogue stick
-	bool bFiringThreshold = false;
-	if ( joy_autoattack.GetBool() )
+	bool bFiringThreshold = false, bWalkingThreshold = false;
+	if ( joy_autoattack.GetBool() || joy_autowalk.GetBool() )
 	{
 		float fDist = sqrt( yaw * yaw + pitch * pitch );
-		bFiringThreshold = ( fDist >= joy_autoattack_threshold.GetFloat() );
+		bFiringThreshold = joy_autoattack.GetBool() && ( fDist >= joy_autoattack_threshold.GetFloat() );
+		bWalkingThreshold = joy_autowalk.GetBool() && ( fDist >= joy_autowalk_threshold.GetFloat() );
 	}
 
 	float dt = MIN( 0.2, gpGlobals->frametime );
@@ -1821,6 +1815,11 @@ void CASWInput::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float fra
 		m_fJoypadYaw = yaw;
 	}
 
+	if ( IsRadialMenuOpen( NULL, false ) )
+	{
+		return;
+	}
+
 	// Get view angles from engine
 	QAngle	viewangles;
 	engine->GetViewAngles( viewangles );
@@ -1859,6 +1858,20 @@ void CASWInput::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float fra
 		}
 	}
 
+	if ( bWalkingThreshold )
+	{
+		if ( !m_bAutoWalking )
+		{
+			KeyDown( &in_walk, NULL );
+			m_bAutoWalking = true;
+		}
+	}
+	else if ( m_bAutoWalking )
+	{
+		KeyUp( &in_walk, NULL );
+		m_bAutoWalking = false;
+	}
+
 	if ( bAutoFire && !m_bCursorPlacement )
 	{
 		if ( !m_bAutoAttacking )
@@ -1878,7 +1891,7 @@ void CASWInput::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float fra
 bool CASWInput::JoyStickActive()
 {
 	// verify joystick is available and that the user wants to use it
-	if ( !in_joystick.GetInt() || 0 == inputsystem->GetJoystickCount() )
+	if ( !in_joystick.GetInt() || 0 == g_RD_Steam_Input.GetJoystickCount() )
 		return false; 
 	
 	return true;

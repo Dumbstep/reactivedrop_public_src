@@ -84,8 +84,8 @@ public:
 LINK_ENTITY_TO_CLASS( asw_aoegrenade_touch_trigger, CASW_AOEGrenade_TouchTrigger );
 
 BEGIN_DATADESC( CASW_AOEGrenade_Projectile )
-	DEFINE_FUNCTION( AOEGrenadeTouch ),
-	DEFINE_FUNCTION( AOEGrenadeThink ),
+	DEFINE_ENTITYFUNC( AOEGrenadeTouch ),
+	DEFINE_THINKFUNC( AOEGrenadeThink ),
 
 	// Fields
 	DEFINE_FIELD( m_pMainGlow, FIELD_EHANDLE ),
@@ -114,11 +114,10 @@ IMPLEMENT_SERVERCLASS_ST( CASW_AOEGrenade_Projectile, DT_ASW_AOEGrenade_Projecti
 	SendPropFloat( SENDINFO( m_flScale ), 0, SPROP_NOSCALE ),
 	SendPropBool( SENDINFO( m_bSettled ) ),
 	SendPropFloat( SENDINFO( m_flRadius ), 0, SPROP_NOSCALE ),
+	SendPropDataTable( SENDINFO_DT( m_ProjectileData ), &REFERENCE_SEND_TABLE( DT_RD_ProjectileData ) ),
 END_SEND_TABLE()
 
-
-// aoegrenades maintain a linked list of themselves, for quick checking for autoaim
-CASW_AOEGrenade_Projectile* g_pHeadAOEGrenade = NULL;
+IMPLEMENT_AUTO_LIST( IASW_AOEGrenade_Projectile_List );
 
 CASW_AOEGrenade_Projectile::CASW_AOEGrenade_Projectile()
 {

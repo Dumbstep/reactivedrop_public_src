@@ -85,7 +85,7 @@ ConVar sv_turbophysics( "sv_turbophysics", "0", FCVAR_REPLICATED, "Turns on turb
 
 
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	#define PROP_FLARE_LIFETIME 30.0f
 	#define PROP_FLARE_IGNITE_SUBSTRACT 5.0f
 	CBaseEntity *CreateFlare( Vector vOrigin, QAngle Angles, CBaseEntity *pOwner, float flDuration );
@@ -273,7 +273,7 @@ void CBaseProp::Precache( void )
 	PrecacheScriptSound( "Metal.SawbladeStick" );
 	PrecacheScriptSound( "PropaneTank.Burst" );
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	UTIL_PrecacheOther( "env_flare" );
 #endif
 
@@ -1038,7 +1038,7 @@ void CBreakableProp::BreakablePropTouch( CBaseEntity *pOther )
 		}
 	}
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	if ( m_hFlareEnt )
 	{
 		CAI_BaseNPC *pNPC = pOther->MyNPCPointer();
@@ -1518,7 +1518,7 @@ void CBreakableProp::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t
 	m_bOriginalBlockLOS = BlocksLOS();
 	SetBlocksLOS( false );
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 	if ( HasInteraction( PROPINTER_PHYSGUN_CREATE_FLARE ) )
 	{
 		CreateFlare( PROP_FLARE_LIFETIME );
@@ -1527,7 +1527,7 @@ void CBreakableProp::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t
 }
 
 
-#ifdef HL2_EPISODIC
+#if !defined( INFESTED_DLL ) && defined( HL2_EPISODIC )
 //-----------------------------------------------------------------------------
 // Purpose: Create a flare at the attachment point
 //-----------------------------------------------------------------------------
@@ -1556,7 +1556,9 @@ void CBreakableProp::CreateFlare( float flLifetime )
 
 		m_nSkin = 1;
 
+#ifndef INFESTED_DLL
 		AddEntityToDarknessCheck( pFlare );
+#endif
 
 		AddEffects( EF_NOSHADOW );
 	}
@@ -1905,6 +1907,7 @@ BEGIN_DATADESC( CDynamicProp )
 	DEFINE_KEYFIELD( m_bUpdateAttachedChildren, FIELD_BOOLEAN, "updatechildren" ),
 	DEFINE_KEYFIELD( m_bDisableBoneFollowers, FIELD_BOOLEAN, "DisableBoneFollowers" ),
 	DEFINE_KEYFIELD( m_bHoldAnimation, FIELD_BOOLEAN, "HoldAnimation" ),
+	DEFINE_KEYFIELD( m_bAlwaysTransmit, FIELD_BOOLEAN, "AlwaysTransmit" ),
 	
 	DEFINE_KEYFIELD( m_flGlowMaxDist, FIELD_FLOAT, "glowdist" ),
 	DEFINE_KEYFIELD( m_bShouldGlow, FIELD_BOOLEAN, "glowenabled" ),
@@ -1953,13 +1956,12 @@ END_SEND_TABLE()
 CDynamicProp::CDynamicProp()
 {
 	m_nPendingSequence = -1;
-#ifndef INFESTED_DLL
 	if ( g_pGameRules->IsMultiplayer() )
 	{
 		UseClientSideAnimation();
 	}
-#endif
 	m_iGoalSequence = -1;
+	m_bAlwaysTransmit = false;
 	m_bShouldGlow = false;
 	m_clrGlow.Init( 255, 255, 255, 0 );
 }
@@ -2188,6 +2190,22 @@ IPhysicsObject *CDynamicProp::GetRootPhysicsObjectForBreak()
 	}
 
 	return BaseClass::GetRootPhysicsObjectForBreak();
+}
+
+int CDynamicProp::UpdateTransmitState()
+{
+	if ( m_bAlwaysTransmit )
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	if ( FStrEq( STRING( GetModelName() ), "models/props/doors/slow_heavy_door/slow_heavy_door.mdl") )
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	if ( FStrEq( STRING( GetModelName() ), "models/props/doors/slow_heavy_door/slow_heavy_door_v2.mdl") )
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	if ( FStrEq( STRING( GetModelName() ), "models/props/machinery/elevators/elevator_landingbay_ramp.mdl" ) )
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	if ( FStrEq( STRING( GetModelName() ), "models/props/destructable_pipe_set/destroyed_pipe.mdl" ) )
+		return SetTransmitState( FL_EDICT_ALWAYS );
+
+	return BaseClass::UpdateTransmitState();
 }
 
 //-----------------------------------------------------------------------------

@@ -996,6 +996,7 @@ public:
 	// Remove this as ground entity for all object resting on this object
 	void					WakeRestingObjects();
 	bool					HasNPCsOnIt();
+	void					ScriptWake() { if ( IPhysicsObject *pPhys = VPhysicsGetObject() ) pPhys->Wake(); }
 
 	virtual void			UpdateOnRemove( void );
 	virtual void			StopLoopingSounds( void ) {}
@@ -1166,6 +1167,7 @@ public:
 	void			SetLocalVelocity( const Vector &vecVelocity );
 	void			ApplyLocalVelocityImpulse( const Vector &vecImpulse );
 	void			SetAbsVelocity( const Vector &vecVelocity );
+	void			ScriptSetAbsVelocity( const Vector &vecVelocity );
 	void			ApplyAbsVelocityImpulse( const Vector &vecImpulse );
 	void			ApplyLocalAngularVelocityImpulse( const AngularImpulse &angImpulse );
 	const Vector&	ScriptGetLocalAngularVelocity( void );
@@ -1899,8 +1901,7 @@ public:
 	}
 
 public:
-
-
+	virtual bool IsInhabitableNPC() const { return false; }
 };
 
 // Send tables exposed in this module.

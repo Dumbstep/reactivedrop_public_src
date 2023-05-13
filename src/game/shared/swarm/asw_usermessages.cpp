@@ -25,7 +25,7 @@ void RegisterUserMessages( void )
 	usermessages->Register( "GameTitle", 0 );
 	usermessages->Register( "ItemPickup", -1 );
 	usermessages->Register( "ShowMenu", -1 );
-	usermessages->Register( "Shake", 13 );
+	usermessages->Register( "Shake", 15 );
 	usermessages->Register( "ShakeDir", -1 ); // directional shake
 	usermessages->Register( "Tilt", 22 );
 	usermessages->Register( "Fade", 10 );
@@ -49,8 +49,8 @@ void RegisterUserMessages( void )
 	usermessages->Register( "DesiredTimescale", 13 );	// Send timescale and some blending vars
 
 	// asw
-	usermessages->Register( "ASWMapLine", 10 ); // send 2 bytes payload
-	usermessages->Register( "ASWBlur", 2 ); // send 2 bytes payload
+	usermessages->Register( "ASWMapLine", 10 );
+	usermessages->Register( "ASWBlur", 4 );
 	usermessages->Register( "ASWCampaignCompleted", 2 );
 	usermessages->Register( "ASWUTracer", -1 );
 	usermessages->Register( "ASWUTracerless", -1 );
@@ -78,7 +78,7 @@ void RegisterUserMessages( void )
 	usermessages->Register( "BroadcastStopPatchAudio", -1 );
 	usermessages->Register( "ASWMarineHitByMelee", -1 );
 	usermessages->Register( "ASWMarineHitByFF", -1 );
-	usermessages->Register("ASWRipRagdoll", -1);
+	usermessages->Register( "ASWRipRagdoll", 26 );
 	usermessages->Register( "ASWEnemyZappedByThorns", -1 );
 	usermessages->Register( "ASWEnemyZappedByTesla", -1 );
 	usermessages->Register( "ASWEnemyTeslaGunArcShock", -1 );
@@ -90,11 +90,15 @@ void RegisterUserMessages( void )
 	usermessages->Register( "ASWNewHoldoutWave", -1 );
 	usermessages->Register( "ASWShowHoldoutResupply", -1 );
 	usermessages->Register( "ASWShowHoldoutWaveEnd", -1 );
-	usermessages->Register( "ShowObjectives", -1 );
-	usermessages->Register( "ASWBuzzerDeath", -1 );	
+	usermessages->Register( "ShowObjectives", 4 );
+	usermessages->Register( "ASWBuzzerDeath", -1 );
 	usermessages->Register( "ASWEggEffects", -1 );	
 	usermessages->Register( "SavedConvar", -1 );
 	usermessages->Register( "RDPlayerPromoted", 1 );
 	usermessages->Register( "RDLeaderboardReady", 0 );
 	usermessages->Register( "RDAlienKillStat", 2 );
+	usermessages->Register( "RDCauseOfDeath", 2 );
+	usermessages->Register( "RDHitConfirm", -1 );
+	usermessages->Register( "RDEquippedItemsACK", 4 );
+	usermessages->Register( "SentryGib", 13 );
 }

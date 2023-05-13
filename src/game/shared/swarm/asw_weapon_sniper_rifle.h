@@ -37,6 +37,7 @@ public:
 	virtual bool IsZoomed() { return m_bZoomed.Get(); }
 
 	void	PrimaryAttack();
+	void	SecondaryAttack();
 	virtual float GetWeaponDamage();
 	virtual float GetZoomedDamageBonus();
 	virtual int AmmoClickPoint() { return 2; }
@@ -58,8 +59,6 @@ public:
 
 		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
 
-		virtual const char* GetPickupClass() { return "asw_pickup_sniper_rifle"; }
-
 		virtual bool IsRapidFire() { return false; }
 		virtual float GetMadFiringBias() { return 0.2f; }	// scales the rate at which the mad firing counter goes up when we shoot aliens with this weapon
 	#else
@@ -70,11 +69,13 @@ public:
 		virtual void ClientThink();
 		//virtual void UpdateDynamicLight();
 		virtual void OnMuzzleFlashed();
+		virtual const char *GetPartialReloadSound( int iPart );
 
 		//dlight_t* m_pSniperDynamicLight;
 		float m_flEjectBrassTime;
 		int m_nEjectBrassCount;
 	#endif
+	virtual const char *GetMagazineGibModelName() const override { return "models/weapons/empty_clips/sniperrifle_empty_clip.mdl"; }
 
 	CNetworkVar( bool, m_bZoomed );
 protected:

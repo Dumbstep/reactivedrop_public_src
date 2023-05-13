@@ -35,6 +35,15 @@ namespace RD_Swarmopedia
 		static void CopyUniqueVector( CUtlVectorAutoPurge<T *> &, const CUtlVectorAutoPurge<T *> & );
 	};
 
+	enum class Subset
+	{
+		Aliens = 1 << 0,
+		RegularWeapons = 1 << 1,
+		ExtraWeapons = 1 << 2,
+		Weapons = RegularWeapons | ExtraWeapons,
+		All = Aliens | Weapons,
+	};
+
 	struct Collection
 	{
 		Collection() = default;
@@ -43,11 +52,13 @@ namespace RD_Swarmopedia
 		CUtlVectorAutoPurge<Alien *> Aliens{};
 		CUtlVectorAutoPurge<Weapon *> Weapons{};
 
-		void ReadFromFiles();
+		void ReadFromFiles( Subset subset = Subset::All );
 	private:
 		friend struct Helpers;
 		static void ReadHelper( const char *, KeyValues *, void * );
 		void ReadFromFile( const char *, KeyValues * );
+
+		Subset ReadSubset{};
 	};
 
 	struct Alien
@@ -187,7 +198,7 @@ namespace RD_Swarmopedia
 		} Type{ Type_t::Paragraph };
 
 		CUtlString Text{};
-		Color Color{ 83, 148, 192, 255 };
+		Color Color{ 224, 224, 224, 255 };
 
 	private:
 		friend struct Helpers;
@@ -202,10 +213,19 @@ namespace RD_Swarmopedia
 		Weapon( const Weapon &copy );
 
 		CUtlString ClassName{};
+		int EquipIndex{ -1 };
+		CUtlString Name{};
 		CUtlString Icon{};
 		ASW_Marine_Class RequiredClass{ MARINE_CLASS_UNDEFINED };
 		int RequiredLevel{ 0 };
 		bool Builtin{ false };
+		bool Extra{ false };
+		bool Unique{ false };
+		bool Hidden{ false };
+		CUtlVectorAutoPurge<GlobalStat *> GlobalStats{};
+		CUtlVectorAutoPurge<Display *> Display{};
+		CUtlVectorAutoPurge<Ability *> Abilities{};
+		CUtlVectorAutoPurge<Content *> Content{};
 		CUtlVectorAutoPurge<WeaponFact *> Facts{};
 		CUtlVector<PublishedFileId_t> Sources{};
 
@@ -225,6 +245,7 @@ namespace RD_Swarmopedia
 		{
 			Generic,
 			Numeric,
+			HammerUnits,
 			ShotgunPellets,
 			DamagePerShot,
 			LargeAlienDamageScale,
@@ -232,8 +253,8 @@ namespace RD_Swarmopedia
 			Piercing,
 			FireRate,
 			Ammo,
-			Recharges,
 			Secondary,
+			Deployed,
 			RequirementLevel,
 			RequirementClass,
 		} Type{ Type_T::Generic };
@@ -244,8 +265,10 @@ namespace RD_Swarmopedia
 		CUtlString RequireCVar{};
 		CUtlString RequireValue{};
 		bool HaveRequireValue{ false };
+		bool UseWeaponInfo{ true };
 
 		// Numeric, etc.
+		int Precision{ 0 };
 		float Base{ 0.0f };
 		float MinimumValue{ -FLT_MAX };
 		float MaximumValue{ FLT_MAX };
@@ -255,20 +278,18 @@ namespace RD_Swarmopedia
 		CUtlStringList BaseDivisorCVar{};
 
 		ASW_Skill Skill{ ASW_MARINE_SKILL_INVALID };
-		int SubSkill{ -1 };
+		int SubSkill{ 0 };
 		float SkillMultiplier{ 1.0f };
 		CUtlStringList SkillMultiplierCVar{};
 		CUtlStringList SkillDivisorCVar{};
-
-		// ShotgunPellets
-		bool UseWeaponInfo{ true };
+		bool ShowReciprocal{ false };
 
 		// BulletSpread
-		float Degrees{ 0.0f };
 		bool Flattened{ false };
 
 		// Ammo
-		bool Damaging{ true };
+		bool SkillValueIsClipSize{ false };
+		int ClipSize{ 0 };
 
 		// RequirementClass
 		ASW_Marine_Class Class{ MARINE_CLASS_UNDEFINED };

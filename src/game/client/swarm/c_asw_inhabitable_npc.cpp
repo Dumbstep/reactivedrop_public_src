@@ -3,10 +3,18 @@
 #include "c_asw_player.h"
 #include "c_asw_weapon.h"
 #include "game_timescale_shared.h"
+#include "c_te_effect_dispatch.h"
+#include "c_asw_fx.h"
+#include "asw_util_shared.h"
+#include "asw_marine_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+
+ConVar rd_highlight_active_character( "rd_highlight_active_character", "0", FCVAR_ARCHIVE );
+extern ConVar glow_outline_color_alien;
+extern ConVar asw_controls;
 
 IMPLEMENT_CLIENTCLASS_DT( C_ASW_Inhabitable_NPC, DT_ASW_Inhabitable_NPC, CASW_Inhabitable_NPC )
 	RecvPropEHandle( RECVINFO( m_Commander ) ),
@@ -14,38 +22,59 @@ IMPLEMENT_CLIENTCLASS_DT( C_ASW_Inhabitable_NPC, DT_ASW_Inhabitable_NPC, CASW_In
 	RecvPropVector( RECVINFO( m_vecFacingPointFromServer ) ),
 	RecvPropBool( RECVINFO( m_bInhabited ) ),
 	RecvPropBool( RECVINFO( m_bWalking ) ),
+	RecvPropIntWithMinusOneFlag( RECVINFO( m_iControlsOverride ) ),
+	RecvPropInt( RECVINFO( m_iHealth ) ),
+	RecvPropVector( RECVINFO( m_vecBaseVelocity ) ),
+	RecvPropBool( RECVINFO( m_bElectroStunned ) ),
+	RecvPropBool( RECVINFO( m_bOnFire ) ),
+	RecvPropFloat( RECVINFO( m_fSpeedScale ) ),
+	RecvPropTime( RECVINFO( m_fHurtSlowMoveTime ) ),
+	RecvPropVector( RECVINFO( m_vecGlowColor ) ),
+	RecvPropFloat( RECVINFO( m_flGlowAlpha ) ),
+	RecvPropBool( RECVINFO( m_bGlowWhenOccluded ) ),
+	RecvPropBool( RECVINFO( m_bGlowWhenUnoccluded ) ),
+	RecvPropBool( RECVINFO( m_bGlowFullBloom ) ),
+	RecvPropInt( RECVINFO( m_iAlienClassIndex ) ),
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_ASW_Inhabitable_NPC )
 	DEFINE_FIELD( m_nOldButtons, FIELD_INTEGER ),
+	DEFINE_PRED_FIELD_TOL( m_vecBaseVelocity, FIELD_VECTOR, FTYPEDESC_INSENDTABLE, 0.05 ),
 END_PREDICTION_DATA()
 
-C_ASW_Inhabitable_NPC::C_ASW_Inhabitable_NPC()
+C_ASW_Inhabitable_NPC::C_ASW_Inhabitable_NPC() :
+	m_GlowObject( this ),
+	m_MotionBlurObject( this, 0.0f )
 {
 	m_fRedNamePulse = 0;
 	m_bRedNamePulseUp = true;
 
 	m_nOldButtons = 0;
 	m_bInhabited = false;
+	m_iControlsOverride = -1;
 
 	m_surfaceProps = 0;
 	m_pSurfaceData = NULL;
 	m_surfaceFriction = 1.0f;
 	m_chTextureType = m_chPreviousTextureType = 0;
+
+	m_vecGlowColor.Init( 1, 1, 1 );
+	m_flGlowAlpha = 1;
+	m_bGlowWhenOccluded = false;
+	m_bGlowWhenUnoccluded = false;
+	m_bGlowFullBloom = false;
+
+	m_bOnFire = false;
+	m_bElectroStunned = false;
+	m_fNextElectroStunEffect = 0;
+	m_pBurningEffect = NULL;
+	m_iAlienClassIndex = -1;
 }
 
 C_ASW_Inhabitable_NPC::~C_ASW_Inhabitable_NPC()
 {
-}
-
-bool C_ASW_Inhabitable_NPC::IsInhabited()
-{
-	return m_bInhabited;
-}
-
-C_ASW_Player *C_ASW_Inhabitable_NPC::GetCommander() const
-{
-	return m_Commander.Get();
+	m_bOnFire = false;
+	UpdateFireEmitters();
 }
 
 const char *C_ASW_Inhabitable_NPC::GetPlayerName() const
@@ -60,6 +89,13 @@ const char *C_ASW_Inhabitable_NPC::GetPlayerName() const
 
 void C_ASW_Inhabitable_NPC::PostDataUpdate( DataUpdateType_t updateType )
 {
+	// If this entity was new, then latch in various values no matter what.
+	if ( updateType == DATA_UPDATE_CREATED )
+	{
+		// We want to think every frame.
+		SetNextClientThink( CLIENT_THINK_ALWAYS );
+	}
+
 	bool bPredict = ShouldPredict();
 	if ( bPredict )
 	{
@@ -100,6 +136,13 @@ void C_ASW_Inhabitable_NPC::PostDataUpdate( DataUpdateType_t updateType )
 	}
 }
 
+void C_ASW_Inhabitable_NPC::UpdateOnRemove()
+{
+	BaseClass::UpdateOnRemove();
+	m_bOnFire = false;
+	UpdateFireEmitters();
+}
+
 bool C_ASW_Inhabitable_NPC::ShouldPredict()
 {
 	return C_BasePlayer::IsLocalPlayer( GetCommander() ) && IsInhabited();
@@ -114,6 +157,42 @@ void C_ASW_Inhabitable_NPC::InitPredictable( C_BasePlayer *pOwner )
 {
 	SetLocalVelocity( vec3_origin );
 	BaseClass::InitPredictable( pOwner );
+}
+
+void C_ASW_Inhabitable_NPC::ClientThink()
+{
+	BaseClass::ClientThink();
+
+	m_vecLastRenderedPos = WorldSpaceCenter();
+	m_vecAutoTargetRadiusPos = GetLocalAutoTargetRadiusPos();
+
+	UpdateGlowObject();
+
+	if ( GetHealth() > 0 && m_bElectroStunned && m_fNextElectroStunEffect <= gpGlobals->curtime )
+	{
+		// apply electro stun effect
+		HACK_GETLOCALPLAYER_GUARD( "C_ASW_Alien::ClientThink FX_ElectroStun" );
+		FX_ElectroStun( this );
+		m_fNextElectroStunEffect = gpGlobals->curtime + RandomFloat( 0.3, 1.0 );
+		//Msg( "%f - ElectroStunEffect\n", gpGlobals->curtime );
+	}
+
+	UpdateFireEmitters();
+}
+
+void C_ASW_Inhabitable_NPC::PhysicsSimulate()
+{
+	if ( ShouldPredict() )
+	{
+		Assert( GetMoveType() == MOVETYPE_WALK );
+		SetMoveType( MOVETYPE_STEP );
+		BaseClass::PhysicsSimulate();
+		SetMoveType( MOVETYPE_WALK );
+
+		return;
+	}
+
+	BaseClass::PhysicsSimulate();
 }
 
 const Vector &C_ASW_Inhabitable_NPC::GetFacingPoint()
@@ -132,14 +211,13 @@ void C_ASW_Inhabitable_NPC::SetFacingPoint( const Vector & vec, float fDuration 
 	m_fStopFacingPointTime = gpGlobals->curtime + fDuration;
 }
 
-C_ASW_Weapon *C_ASW_Inhabitable_NPC::GetActiveASWWeapon( void ) const
+Vector C_ASW_Inhabitable_NPC::Weapon_ShootPosition()
 {
-	return assert_cast< C_ASW_Weapon * >( GetActiveWeapon() );
-}
+	Vector right;
+	GetVectors( NULL, &right, NULL );
 
-C_ASW_Weapon *C_ASW_Inhabitable_NPC::GetASWWeapon( int i ) const
-{
-	return assert_cast< C_ASW_Weapon * >( GetWeapon( i ) );
+	// TODO
+	return GetAbsOrigin() + Vector( 0, 0, 34 ) + 8 * right;
 }
 
 // when marine's health falls below this, name starts to blink red
@@ -184,13 +262,95 @@ void C_ASW_Inhabitable_NPC::TickRedName( float delta )
 	}
 }
 
-float C_ASW_Inhabitable_NPC::MaxSpeed()
-{
-	return 300;
-}
-
 float C_ASW_Inhabitable_NPC::GetBasePlayerYawRate()
 {
 	extern ConVar asw_marine_linear_turn_rate;
 	return asw_marine_linear_turn_rate.GetFloat();
+}
+
+void C_ASW_Inhabitable_NPC::UpdateGlowObject()
+{
+	C_ASW_Player *pPlayer = C_ASW_Player::GetLocalASWPlayer();
+	if ( rd_highlight_active_character.GetBool() && pPlayer && pPlayer->GetViewNPC() == this )
+	{
+		m_GlowObject.SetColor( Vector{ 1, 1, 1 } );
+		m_GlowObject.SetAlpha( 1.0f );
+		m_GlowObject.SetRenderFlags( true, true );
+		m_GlowObject.SetFullBloomRender( false );
+	}
+	else if ( IsAlien() && pPlayer && pPlayer->IsSniperScopeActive() )
+	{
+		m_GlowObject.SetColor( glow_outline_color_alien.GetColorAsVector() );
+		m_GlowObject.SetAlpha( 0.55f );
+		m_GlowObject.SetRenderFlags( true, true );
+		m_GlowObject.SetFullBloomRender( true );
+	}
+	else
+	{
+		m_GlowObject.SetColor( m_vecGlowColor );
+		m_GlowObject.SetAlpha( m_flGlowAlpha );
+		m_GlowObject.SetRenderFlags( m_bGlowWhenOccluded, m_bGlowWhenUnoccluded );
+		m_GlowObject.SetFullBloomRender( m_bGlowFullBloom );
+	}
+}
+
+void C_ASW_Inhabitable_NPC::MakeTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType, int iDamageType )
+{
+	const char *tracer = "ASWUTracer";
+	if ( GetActiveASWWeapon() )
+		tracer = GetActiveASWWeapon()->GetUTracerType();
+
+	CEffectData data;
+	data.m_vOrigin = tr.endpos;
+	data.m_hEntity = this;
+	data.m_nMaterial = m_iDamageAttributeEffects;
+
+	if ( iDamageType & DMG_BUCKSHOT )
+		data.m_nMaterial |= BULLET_ATT_TRACER_BUCKSHOT;
+
+	DispatchEffect( tracer, data );
+}
+
+void C_ASW_Inhabitable_NPC::MakeUnattachedTracer( const Vector &vecTracerSrc, const trace_t &tr, int iTracerType, int iDamageType )
+{
+	const char *tracer = "ASWUTracerUnattached";
+
+	CEffectData data;
+	data.m_vOrigin = tr.endpos;
+	data.m_hEntity = this;
+	data.m_vStart = vecTracerSrc;
+	data.m_nMaterial = m_iDamageAttributeEffects;
+
+	if ( iDamageType & DMG_BUCKSHOT )
+		data.m_nMaterial |= BULLET_ATT_TRACER_BUCKSHOT;
+
+	DispatchEffect( tracer, data );
+}
+
+void C_ASW_Inhabitable_NPC::UpdateFireEmitters( void )
+{
+	bool bOnFire = ( m_bOnFire.Get() && !IsEffectActive( EF_NODRAW ) );
+	if ( bOnFire != m_bClientOnFire )
+	{
+		m_bClientOnFire = bOnFire;
+		if ( m_bClientOnFire )
+		{
+			if ( !m_pBurningEffect )
+			{
+				m_pBurningEffect = UTIL_ASW_CreateFireEffect( this );
+			}
+			EmitSound( "ASWFire.BurningFlesh" );
+		}
+		else
+		{
+			if ( m_pBurningEffect )
+			{
+				ParticleProp()->StopEmission( m_pBurningEffect );
+				m_pBurningEffect = NULL;
+			}
+			StopSound( "ASWFire.BurningFlesh" );
+			if ( C_BaseEntity::IsAbsQueriesValid() )
+				EmitSound( "ASWFire.StopBurning" );
+		}
+	}
 }

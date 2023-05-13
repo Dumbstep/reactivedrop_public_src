@@ -35,6 +35,7 @@
 #include "asw_gamerules.h"
 #include "particle_parse.h"
 #include "asw_movedata.h"
+#include "util_shared.h"
 #ifdef GAME_DLL
 #include "te_effect_dispatch.h"
 #else
@@ -71,6 +72,7 @@ static ConVar asw_sv_maxspeed( "asw_sv_maxspeed", "500", FCVAR_CHEAT | FCVAR_NOT
 static ConVar asw_debug_steps("asw_debug_steps", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Gives debug info on moving up/down steps");
 static ConVar asw_debug_air_move("asw_debug_air_move", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Gives debug info on air moving");
 static ConVar rd_marine_jump_height( "rd_marine_jump_height", "70.0", FCVAR_CHEAT | FCVAR_REPLICATED, "Sets marine jump height." );
+static ConVar rd_marine_stuck_in_extinguisher_pellets( "rd_marine_stuck_in_extinguisher_pellets", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "If set, marines get stuck in extinguisher pellets and slightly teleport up." );
 ConVar sv_autobunnyhopping( "sv_autobunnyhopping", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Marines automatically re-jump while holding jump button" );
 ConVar sv_enablebunnyhopping( "sv_enablebunnyhopping", "0", FCVAR_CHEAT | FCVAR_REPLICATED, "Allow marine speed to exceed maximum running speed" );
 
@@ -425,11 +427,28 @@ inline void CASW_MarineGameMovement::TraceMarineBBox( const Vector& start, const
 }
 #endif
 
+static bool CanMarineGetStuckInEntity( IHandleEntity *pHandleEntity, int contentsMask )
+{
+	CBaseEntity *pEntity = EntityFromEntityHandle( pHandleEntity );
+	// If it's a static prop, etc, we can get stuck on it.
+	if ( !pEntity )
+		return true;
+
+	// These die if they touch something, so it's impossible for us to be stuck in them.
+	if ( pEntity->GetCollisionGroup() == ASW_COLLISION_GROUP_EXTINGUISHER_PELLETS && !rd_marine_stuck_in_extinguisher_pellets.GetBool() )
+		return false;
+
+	return true;
+}
+
 inline CBaseHandle CASW_MarineGameMovement::TestPlayerPosition( const Vector& pos, int collisionGroup, trace_t& pm )
 {
 	Ray_t ray;
-	ray.Init( pos, pos, GetPlayerMins(), GetPlayerMaxs() );
-	UTIL_TraceRay( ray, MASK_PLAYERSOLID, marine, collisionGroup, &pm );
+	ray.Init( pos, pos + Vector( 0, 0, 1 ), GetPlayerMins(), GetPlayerMaxs() );
+
+	CTraceFilterSimple filter( marine, collisionGroup, &CanMarineGetStuckInEntity );
+	UTIL_TraceRay( ray, MASK_PLAYERSOLID, &filter, &pm );
+
 #ifdef GAME_DLL
 
 	if ( asw_debug_steps.GetInt() == 2 )
@@ -443,8 +462,8 @@ inline CBaseHandle CASW_MarineGameMovement::TestPlayerPosition( const Vector& po
 	}
 
 #endif
-	if ( (pm.contents & MASK_PLAYERSOLID) && pm.m_pEnt )
-	{				
+	if ( pm.startsolid && ( pm.contents & MASK_PLAYERSOLID ) && pm.m_pEnt )
+	{
 		return pm.m_pEnt->GetRefEHandle();
 	}
 	else
@@ -752,7 +771,8 @@ void CASW_MarineGameMovement::CheckParameters( void )
 	marine->m_bWalking = ( mv->m_nButtons & IN_WALK ) != 0;
 
 	if ( marine->GetFlags() & FL_FROZEN ||
-		 marine->GetFlags() & FL_ONTRAIN || 
+		 marine->IsMovementFrozen() ||
+		 marine->GetFlags() & FL_ONTRAIN ||
 		 IsDead() )
 	{
 		mv->m_flForwardMove = 0;
@@ -2696,7 +2716,7 @@ bool CASW_MarineGameMovement::CheckJumpButton( void )
 	if ( !truemarine || truemarine->IsHacking() )
 		return false;
 
-	if ( asw_marine_rolls.GetBool() )
+	if ( truemarine->m_bRolls )
 		return false;
 
 	// If we are in the water most of the way...
@@ -2736,7 +2756,7 @@ bool CASW_MarineGameMovement::CheckJumpButton( void )
 	if ( mv->m_nOldButtons & IN_JUMP && !sv_autobunnyhopping.GetBool() )
 		return false;		// don't pogo stick
 
-	if (marine->GetFlags() & FL_FROZEN)	// no jumping when frozen
+	if ( marine->GetFlags() & FL_FROZEN || marine->IsMovementFrozen() )	// no jumping when frozen
 		return false;
 
 	// Cannot jump will in the unduck transition.
@@ -4376,7 +4396,7 @@ void CASW_MarineGameMovement::FinishUnDuck( void )
 //-----------------------------------------------------------------------------
 void CASW_MarineGameMovement::UpdateDuckJumpEyeOffset( void )
 {
-	if ( player->m_Local.m_nDuckJumpTimeMsecs != 0 )
+	if ( player && player->m_Local.m_nDuckJumpTimeMsecs != 0 )
 	{
 		int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_nDuckJumpTimeMsecs );
 		if ( nDuckMilliseconds > TIME_TO_UNDUCK_MSECS )

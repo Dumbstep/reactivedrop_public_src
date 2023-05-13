@@ -45,7 +45,7 @@ CASW_Hack_Computer::CASW_Hack_Computer()
 	m_bLastHalfCorrect = false;
 }
 
-bool CASW_Hack_Computer::InitHack(CASW_Player* pHackingPlayer, CASW_Marine* pHackingMarine, CBaseEntity* pHackTarget)
+bool CASW_Hack_Computer::InitHack( CASW_Player *pHackingPlayer, CASW_Marine *pHackingMarine, CBaseEntity *pHackTarget )
 {
 	if ( !pHackTarget )
 		return false;
@@ -56,48 +56,48 @@ bool CASW_Hack_Computer::InitHack(CASW_Player* pHackingPlayer, CASW_Marine* pHac
 	if ( !pHackingPlayer || !pHackingMarine || !pHackingMarine->GetMarineResource() )
 		return false;
 
-	CASW_Computer_Area* pComputer = assert_cast<CASW_Computer_Area*>(pHackTarget);
+	CASW_Computer_Area *pComputer = assert_cast< CASW_Computer_Area * >( pHackTarget );
 
-	if (!m_bSetupComputer)
+	if ( !m_bSetupComputer )
 	{
 		m_bSetupComputer = true;
 		m_iNumTumblers = pComputer->m_iHackLevel;	// hack level controls how many tumblers there should be
-		if (m_iNumTumblers <= 1)
+		if ( m_iNumTumblers <= 1 )
 			m_iNumTumblers = 5;
-		if (m_iNumTumblers > ASW_HACK_COMPUTER_MAX_TUMBLERS)
+		if ( m_iNumTumblers > ASW_HACK_COMPUTER_MAX_TUMBLERS )
 			m_iNumTumblers = ASW_HACK_COMPUTER_MAX_TUMBLERS;
 		m_iEntriesPerTumbler = pComputer->m_iNumEntriesPerTumbler;	// temp for now
-		if (m_iEntriesPerTumbler <= ASW_MIN_ENTRIES_PER_TUMBLER)
+		if ( m_iEntriesPerTumbler <= ASW_MIN_ENTRIES_PER_TUMBLER )
 			m_iEntriesPerTumbler = ASW_MIN_ENTRIES_PER_TUMBLER;
-		if (m_iEntriesPerTumbler >= ASW_MAX_ENTRIES_PER_TUMBLER)
-			m_iEntriesPerTumbler= ASW_MAX_ENTRIES_PER_TUMBLER;
+		if ( m_iEntriesPerTumbler >= ASW_MAX_ENTRIES_PER_TUMBLER )
+			m_iEntriesPerTumbler = ASW_MAX_ENTRIES_PER_TUMBLER;
 		// check it's an odd number
 		int r = m_iEntriesPerTumbler % 2;
-		if (r != 1)
-			r -=1;
+		if ( r != 1 )
+			r -= 1;
 		m_fMoveInterval = pComputer->m_fMoveInterval;	// idle gap between slides (slides are 0.5f seconds long themselves)
-		if (m_fMoveInterval <= 0.3)
+		if ( m_fMoveInterval <= 0.3 )
 			m_fMoveInterval = 0.3f;
-		if (m_fMoveInterval > 2.0f)
-			m_fMoveInterval= 2.0f;
+		if ( m_fMoveInterval > 2.0f )
+			m_fMoveInterval = 2.0f;
 
 		if ( m_iEntriesPerTumbler % 2 > 0 )
 		{
 			m_iEntriesPerTumbler++;
 		}
-		if (m_iNumTumblers <= 3)
+		if ( m_iNumTumblers <= 3 )
 			m_iNumTumblers = 3;
 
-		int k=0;
+		int k = 0;
 		bool bIncomplete = false;
-		for (int i=0;i<ASW_HACK_COMPUTER_MAX_TUMBLERS;i++)
+		for ( int i = 0; i < ASW_HACK_COMPUTER_MAX_TUMBLERS; i++ )
 		{
-			if (random->RandomFloat() > 0.5f)
-				m_iTumblerDirection.Set(i, -1);
+			if ( random->RandomFloat() > 0.5f )
+				m_iTumblerDirection.Set( i, -1 );
 			else
-				m_iTumblerDirection.Set(i, 1);
-			m_iTumblerPosition.Set(i, random->RandomInt(0, m_iEntriesPerTumbler-1));
-			m_iTumblerCorrectNumber.Set(i, random->RandomInt(0, m_iEntriesPerTumbler-1));
+				m_iTumblerDirection.Set( i, 1 );
+			m_iTumblerPosition.Set( i, random->RandomInt( 0, m_iEntriesPerTumbler - 1 ) );
+			m_iTumblerCorrectNumber.Set( i, random->RandomInt( 0, m_iEntriesPerTumbler - 1 ) );
 
 			if ( m_iTumblerPosition.Get( i ) % 2 > 0 )
 			{
@@ -112,14 +112,14 @@ bool CASW_Hack_Computer::InitHack(CASW_Player* pHackingPlayer, CASW_Marine* pHac
 			m_iNewTumblerDirection[i] = 0;
 		}
 		k++;
-		bIncomplete = (GetTumblerProgress() < 1.0f);
+		bIncomplete = ( GetTumblerProgress() < 1.0f );
 
 		// if the generated puzzle is already solved, then flip every other tumbler
 		if ( !bIncomplete )
 		{
-			for (int i=0;i<ASW_HACK_COMPUTER_MAX_TUMBLERS;i+=2)
+			for ( int i = 0; i < ASW_HACK_COMPUTER_MAX_TUMBLERS; i += 2 )
 			{
-				m_iTumblerDirection.Set(i, m_iTumblerDirection[i] );
+				m_iTumblerDirection.Set( i, -m_iTumblerDirection[i] );
 			}
 		}
 
@@ -138,7 +138,7 @@ bool CASW_Hack_Computer::InitHack(CASW_Player* pHackingPlayer, CASW_Marine* pHac
 		SetDefaultHackOption();
 	}
 
-	return BaseClass::InitHack(pHackingPlayer, pHackingMarine, pHackTarget);
+	return BaseClass::InitHack( pHackingPlayer, pHackingMarine, pHackTarget );
 }
 
 void CASW_Hack_Computer::SelectHackOption(int i)
@@ -178,9 +178,26 @@ void CASW_Hack_Computer::SelectHackOption(int i)
 				Msg("Fast hack time is %f, starting at %f\n", ideal_time, gpGlobals->curtime);
 			m_fFastFinishTime = gpGlobals->curtime + ideal_time;
 		}
-	}
-	else if (i == ASW_HACK_OPTION_OVERRIDE)	// can't do an override if the computer isn't locked
+
+		m_iShowOption = i;
+		pArea->m_bLoggedIn = true;
+
 		return;
+	}
+	
+	if ( i == ASW_HACK_OPTION_OVERRIDE )
+	{
+		pArea->m_bLoggedIn = true;
+
+		return;
+	}
+
+	if ( i == 0 && GetOptionTypeForEntry( 1 ) == ASW_COMPUTER_OPTION_TYPE_SECURITY_CAM_1 && GetOptionTypeForEntry( 2 ) == ASW_COMPUTER_OPTION_TYPE_NONE )
+	{
+		pArea->m_flStopUsingTime = gpGlobals->curtime;
+
+		return;
+	}
 
 	m_iShowOption = i;
 
@@ -294,16 +311,28 @@ int CASW_Hack_Computer::GetMailOption()
 
 void CASW_Hack_Computer::SetDefaultHackOption()
 {
-	if (IsPDA())
+	if ( IsPDA() )
 	{
 		int iMailOption = GetMailOption();
-		if (iMailOption != -1)
+		if ( iMailOption != -1 )
 			m_iShowOption = iMailOption;
 		else
 			m_iShowOption = 0;
 	}
 	else
-		m_iShowOption = 0;	// put us on the main menu
+	{
+		CASW_Computer_Area *pArea = GetComputerArea();
+		if ( pArea && !pArea->IsLocked() && GetOptionTypeForEntry( 1 ) == ASW_COMPUTER_OPTION_TYPE_SECURITY_CAM_1 && GetOptionTypeForEntry( 2 ) == ASW_COMPUTER_OPTION_TYPE_NONE )
+		{
+			pArea->m_bLoggedIn = true;
+			m_iShowOption = 1; // boot directly into camera
+			pArea->m_iActiveCam = 1;
+		}
+		else
+		{
+			m_iShowOption = 0;	// put us on the main menu
+		}
+	}
 }
 
 void CASW_Hack_Computer::MarineStoppedUsing(CASW_Marine* pMarine)

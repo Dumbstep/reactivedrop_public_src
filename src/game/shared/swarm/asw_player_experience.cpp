@@ -226,9 +226,6 @@ void CASW_Player::CalculateEarnedXP()
 #ifdef CLIENT_DLL
 	if ( engine->IsPlayingDemo() )
 		return;
-
-	//if ( GetClientModeASW() && !GetClientModeASW()->IsOfficialMap() )
-		//return;
 #endif
 
 	int iNumObjectives = 0;
@@ -297,11 +294,11 @@ void CASW_Player::CalculateEarnedXP()
 				m_iStatNumXP[ ASW_XP_HEALING ] = pDebrief->GetHealthHealed( iMarineIndex );
 
 				// hacking
-				if ( pDebrief->GetFastHacks( iMarineIndex ) >= 2 )
+				if ( pDebrief->GetFastHacksWire( iMarineIndex ) + pDebrief->GetFastHacksComputer( iMarineIndex ) >= 2 )
 				{
 					m_iEarnedXP[ ASW_XP_HACKING ] = g_iXPAward[ ASW_XP_HACKING ];
 				}
-				else if ( pDebrief->GetFastHacks( iMarineIndex ) >= 1 )
+				else if ( pDebrief->GetFastHacksWire( iMarineIndex ) + pDebrief->GetFastHacksComputer( iMarineIndex ) >= 1 )
 				{
 					m_iEarnedXP[ ASW_XP_HACKING ] = g_iXPAward[ ASW_XP_HACKING ] / 2;
 				}
@@ -309,7 +306,7 @@ void CASW_Player::CalculateEarnedXP()
 				{
 					m_iEarnedXP[ ASW_XP_HACKING ] = 0;
 				}
-				m_iStatNumXP[ ASW_XP_HACKING ] = pDebrief->GetFastHacks( iMarineIndex );
+				m_iStatNumXP[ ASW_XP_HACKING ] = pDebrief->GetFastHacksWire( iMarineIndex ) + pDebrief->GetFastHacksComputer( iMarineIndex );
 			}
 
 			if ( ASWGameRules()->GetMissionSuccess() )
@@ -426,6 +423,18 @@ void CASW_Player::RequestExperience()
 #if !defined(NO_STEAM)
 
 #ifdef CLIENT_DLL
+
+	if ( engine->IsPlayingDemo() && SteamFriends() )
+	{
+		player_info_t pi;
+		if ( engine->GetPlayerInfo( entindex(), &pi ) && pi.friendsID )
+		{
+			CSteamID steamID( pi.friendsID, 1, SteamUtils()->GetConnectedUniverse(), k_EAccountTypeIndividual );
+
+			// grab the player's avatar (otherwise we'll only have it if they're friends with us)
+			SteamFriends()->RequestUserInformation( steamID, false );
+		}
+	}
 
 #if !defined(USE_XP_FROM_STEAM)
 	// if we're not pulling XP from Steam stats, then we don't request it for other players
@@ -725,75 +734,6 @@ void CASW_Player::Steam_OnUserStatsReceived( UserStatsReceived_t *pUserStatsRece
 		return;
 	}
 
-	// Loop through and clear achievements if earned before 2019.01.01, to account for previously removed achievement IDs 1517/4 through 1517/11.
-	const char *pAchievementNames[] =
-	{
-		"RD_GAS_GRENADE_KILLS", // 1517/4
-		"RD_HEAVY_RIFLE_KILLS", // 1517/5
-		"RD_MEDICAL_SMG_KILLS", // 1517/6
-		"RD_EASY_CAMPAIGN_NH", // 1517/7
-		"RD_NORMAL_CAMPAIGN_NH", // 1517/8
-		"RD_HARD_CAMPAIGN_NH", // 1517/9
-		"RD_INSANE_CAMPAIGN_NH", // 1517/10
-		"RD_IMBA_CAMPAIGN_NH", // 1517/11
-	};
-	for ( int i = 0; i < ARRAYSIZE( pAchievementNames ); i++ )
-	{
-		bool achievementEarned;
-		uint32 achievementUnlockTime;
-		SteamUserStats()->GetAchievementAndUnlockTime( pAchievementNames[i], &achievementEarned, &achievementUnlockTime );
-
-		if ( achievementEarned && achievementUnlockTime < 1546300800 )
-			SteamUserStats()->ClearAchievement( pAchievementNames[i] );
-	}
-
-	// These achievements had inconsistent state at some point.
-	const char *pAchievementsInconsistent[] =
-	{
-		"RD_EASY_CAMPAIGN_NH",
-		"RD_NORMAL_CAMPAIGN_NH",
-		"RD_HARD_CAMPAIGN_NH",
-		"RD_INSANE_CAMPAIGN_NH",
-		"RD_IMBA_CAMPAIGN_NH",
-	};
-	for ( int i = 0; i < ARRAYSIZE( pAchievementsInconsistent ); i++ )
-	{
-		char szComp[k_cchStatNameMax];
-		char szStat[k_cchStatNameMax];
-
-		V_snprintf( szComp, sizeof( szComp ), "%s_COMP", pAchievementsInconsistent[i] );
-		V_snprintf( szStat, sizeof( szStat ), "%s_STAT", pAchievementsInconsistent[i] );
-
-		int32_t nComp;
-		int32_t nStat;
-
-		if ( !SteamUserStats()->GetStat( szComp, &nComp ) )
-		{
-			continue;
-		}
-
-		if ( !SteamUserStats()->GetStat( szStat, &nStat ) )
-		{
-			continue;
-		}
-
-		int32_t nPop = 0;
-		for ( int32_t j = nComp; j > 0; j >>= 1 )
-		{
-			if ( j & 1 )
-			{
-				nPop++;
-			}
-		}
-
-		if ( nPop != nStat )
-		{
-			Warning( "Resetting progress for achievement %s: progress counter is inconsistent\n", pAchievementsInconsistent[i] );
-			SteamUserStats()->SetStat( szComp, 0 );
-			SteamUserStats()->SetStat( szStat, 0 );
-		}
-	}
-
 	CSteamID steamID;
 	if ( IsLocalPlayer() )
 	{
@@ -962,7 +902,7 @@ void CASW_Player::AcceptPromotion()
 	engine->ClientCmd( VarArgs( "cl_promoted %d", m_iPromotion ) );
 
 	// reset the player's selected equipment
-	if ( !ASWGameResource() || !ASWEquipmentList() )
+	if ( !ASWGameResource() )
 		return;
 
 	C_ASW_Marine_Resource *pMR = ASWGameResource()->GetFirstMarineResourceForPlayer( this );
@@ -976,7 +916,7 @@ void CASW_Player::AcceptPromotion()
 	for ( int i = 0; i < ASW_NUM_INVENTORY_SLOTS; i++ )
 	{
 		const char *szWeaponClass = pProfile->m_DefaultWeaponsInSlots[ i ];
-		int nWeaponIndex = ASWEquipmentList()->GetIndexForSlot( i, szWeaponClass );
+		int nWeaponIndex = g_ASWEquipmentList.GetIndexForSlot( i, szWeaponClass );
 		engine->ClientCmd( VarArgs( "cl_loadout %d %d %d", pProfile->m_ProfileIndex, i, nWeaponIndex ) );
 	}
 }

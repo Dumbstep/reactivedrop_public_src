@@ -700,7 +700,7 @@
 		501: "Roller: Cleanup Spot"
 
 		700: "Crow: Fly to point"
-		701: "Crow: Perch point"
+//		701: "Crow: Perch point"
 
 		900: "Follower: Wait point"
 		901: "Override jump permission"
@@ -1226,7 +1226,10 @@
 	input SetAutoExposureMin(float) : "Set a custom tonemap auto exposure minimum."
 	input SetAutoExposureMax(float) : "Set a custom tonemap auto exposure maximum."
 	input SetBloomScale(float) : "Set a custom bloom scale."
+	//input SetBloomScaleRange(string) : "Set a custom bloom scale range. Syntax: <max> <min>"
 	input SetTonemapRate(float) : "Set the rate for autoexposure adjustment."
+	//input SetBloomExponent(float) : "Set a custom bloom exponent."
+	//input SetBloomSaturation(float) : "Set a custom bloom saturation."
 ]
 
 @PointClass base(Targetname, Parentname) sweptplayerhull() = func_useableladder : 
@@ -2004,6 +2007,8 @@
 		16: "Ropes" : 0		// shakes ropes too.
 		32: "DON'T shake view (for shaking ropes or physics only)" : 0
 		64: "DON'T Rumble Controller" : 0
+		128: "Screen tilt: Ease In/Ease Out" : 0
+		256: "Force shake on client (bypasses asw_camera_shake 0)" : 0
 	]
 
 	amplitude(float) : "Amplitude (0-16)" : "4" : "The amount of noise in the screen shake. Should be a range between 0 and 16."
@@ -2216,6 +2221,7 @@
 	[
 		1: "Start on" : 0
 		2: "Play Once" : 0
+		4: "Always transmit to client (ignore PVS)" : 0
 	]
 
 	GlowProxySize(float) : "Size of Glow Proxy Geometry." : "2.0" : "Size of the glow to be rendered for visibility testing. Must be larger than the distance from the sprite center to empty space.  So if this glow is inside geometry (like a light bulb), set this value to be bigger than the bulb's radius. Any time a sphere of this radius would be visible (poking through any nearby geometry), the glow will be rendered."
@@ -5443,6 +5449,7 @@
 	DisableBoneFollowers(boolean) : "Disable Bone Followers" : 0 : "If set, the prop will not use bone followers, even if it has them defined."
 
 	HoldAnimation(boolean) : "Hold Animation" : 0 : "If set, the prop will not loop its animation, but hold the last frame."
+	AlwaysTransmit(boolean) : "Always Transmit" : 0 : "Always send this prop to clients, even if it is far away. This is automatically enabled by the game for certain model names. Use this for props that do gameplay-relevant animations, especially one-time, one-way animations."
 
 	MinAnimTime(float) : "Min Random Anim Time" : "5" : "Minimum time between random animations."
 	MaxAnimTime(float) : "Max Random Anim Time" : "10" : "Maximum time between random animations."
@@ -5576,7 +5583,7 @@
 	output OnOutOfWorld(void) : "Fired whenever the prop is out of the allowed world bounds."
 ]
 
-@PointClass base(BasePropPhysics) studioprop() sphere(fademindist) sphere(fademaxdist) = prop_physics_override :
+@PointClass base(BasePropPhysics, Parentname) studioprop() sphere(fademindist) sphere(fademaxdist) = prop_physics_override :
 	"A prop that physically simulates as a single rigid body. It can be constrained to other physics objects using hinges "+
 	"or other constraints. It can also be configured to break when it takes enough damage. Health can be overridden on this version."
 [

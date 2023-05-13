@@ -5,6 +5,7 @@
 #include "asw_gamerules.h"
 #include "asw_objective.h"
 #include "asw_spawner.h"
+#include "asw_util_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -12,33 +13,13 @@
 extern ConVar rd_challenge;
 ConVar rd_override_alien_selection_challenge( "rd_override_alien_selection_challenge", "", FCVAR_CHEAT | FCVAR_NOTIFY );
 
-static void CmdMsg( const char *pszFormat, ... )
-{
-	char szString[1024];
-
-	va_list args;
-	va_start( args, pszFormat );
-	Q_vsnprintf( szString, sizeof( szString ), pszFormat, args );
-	va_end( args );
-
-	CBasePlayer *pPlayer = UTIL_GetCommandClient();
-	if ( pPlayer )
-	{
-		ClientPrint( pPlayer, HUD_PRINTCONSOLE, szString );
-	}
-	else
-	{
-		Msg( szString );
-	}
-}
-
 static CASW_Spawn_Selection g_ASW_Spawn_Selection;
 CASW_Spawn_Selection *ASWSpawnSelection() { return &g_ASW_Spawn_Selection; }
 
 void CASW_Spawn_Selection::LevelInitPreEntity()
 {
 	KeyValues *pKV = new KeyValues( "SpawnSet" );
-	if ( pKV->LoadFromFile( filesystem, "resource/alien_selection.txt", "GAME" ) )
+	if ( UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, "resource/alien_selection.txt", "GAME" ) )
 	{
 		DevMsg( "Loading global spawn selection data\n" );
 		PopulateSpawnSets( pKV );
@@ -53,7 +34,7 @@ void CASW_Spawn_Selection::LevelInitPreEntity()
 	Q_snprintf( szFilename, sizeof( szFilename ), "resource/alien_selection_%s.txt", STRING( gpGlobals->mapname ) );
 
 	pKV = new KeyValues( "SpawnSet" );
-	if ( pKV->LoadFromFile( filesystem, szFilename, "GAME" ) )
+	if ( UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szFilename, "GAME" ) )
 	{
 		DevMsg( "Loading map-specific spawn selection data for %s\n", STRING( gpGlobals->mapname ) );
 		PopulateSpawnSets( pKV );
@@ -87,7 +68,7 @@ void CASW_Spawn_Selection::OnMissionStarted()
 		Q_snprintf( szFilename, sizeof( szFilename ), "resource/alien_selection_%s.txt", pszChallenge );
 
 		KeyValues *pKV = new KeyValues( "SpawnSet" );
-		if ( pKV->LoadFromFile( filesystem, szFilename, "GAME" ) )
+		if ( UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szFilename, "GAME" ) )
 		{
 			DevMsg( "Loading challenge-specific spawn selection data for %s\n", pszChallenge );
 			PopulateSpawnSets( pKV );
@@ -101,7 +82,7 @@ void CASW_Spawn_Selection::OnMissionStarted()
 		Q_snprintf( szFilename, sizeof( szFilename ), "resource/alien_selection_%s_%s.txt", STRING( gpGlobals->mapname ), pszChallenge );
 
 		pKV = new KeyValues( "SpawnSet" );
-		if ( pKV->LoadFromFile( filesystem, szFilename, "GAME" ) )
+		if ( UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szFilename, "GAME" ) )
 		{
 			DevMsg( "Loading map+challenge-specific spawn selection data for %s+%s\n", STRING( gpGlobals->mapname ), pszChallenge );
 			PopulateSpawnSets( pKV );
@@ -138,6 +119,7 @@ void CASW_Spawn_Selection::OnMissionStarted()
 		{
 			overlays[j]->ApplyOverlay( pSpawnSet );
 		}
+		pSpawnSet->Precache();
 		return;
 	}
 
@@ -418,6 +400,22 @@ void CASW_Spawn_Set::ApplyOverlay( CASW_Spawn_Set *pTarget )
 	COPY_OVER( Packs, ASW_SPAWN_TYPE_PACK );
 
 #undef COPY_OVER
+}
+
+void CASW_Spawn_Set::Precache()
+{
+	bool bAllowPrecache = CBaseEntity::IsPrecacheAllowed();
+	CBaseEntity::SetAllowPrecache( true );
+
+	for ( int i = 0; i < NUM_ASW_SPAWN_TYPES; i++ )
+	{
+		FOR_EACH_VEC( m_SpawnDefinitions[i], j )
+		{
+			m_SpawnDefinitions[i][j]->Precache();
+		}
+	}
+
+	CBaseEntity::SetAllowPrecache( bAllowPrecache );
 }
 
 void CASW_Spawn_Set::Dump()
@@ -817,6 +815,14 @@ CASW_Spawn_Definition::CASW_Spawn_Definition( const CASW_Spawn_Definition & def 
 	}
 }
 
+void CASW_Spawn_Definition::Precache()
+{
+	FOR_EACH_VEC( m_NPCs, i )
+	{
+		m_NPCs[i]->Precache();
+	}
+}
+
 void CASW_Spawn_Definition::Dump( float flTotalWeight )
 {
 	CmdMsg( "  %f%% chance (weight %f):\n", m_flSelectionWeight / flTotalWeight * 100, m_flSelectionWeight );
@@ -829,12 +835,53 @@ void CASW_Spawn_Definition::Dump( float flTotalWeight )
 	}
 }
 
+const char *CASW_Spawn_Definition::GetHordeSoundName() const
+{
+	if ( m_NPCs.Count() > 0 )
+	{
+		return m_NPCs[0]->m_pAlienClass->m_szHordeSound;
+	}
+
+	return "Spawner.Horde";
+}
+
+CASW_Spawn_NPC::CASW_Spawn_NPC( const char *szAlienClass ) : m_Requirement( NULL )
+{
+	m_pAlienClass = NULL;
+	for ( int i = 0; i < ASWSpawnManager()->GetNumAlienClasses(); i++ )
+	{
+		const ASW_Alien_Class_Entry *pAlienClass = ASWSpawnManager()->GetAlienClass( i );
+		if ( !Q_stricmp( szAlienClass, pAlienClass->m_pszAlienClass ) )
+		{
+			m_pAlienClass = pAlienClass;
+			break;
+		}
+	}
+	if ( !m_pAlienClass )
+	{
+		Warning( "Invalid alien class in spawn definitions: %s\n", szAlienClass );
+	}
+
+	m_iHealthBonus = 0;
+	m_flSpeedScale = 1;
+	m_flSizeScale = 1;
+	m_bFlammable = true;
+	m_bFreezable = true;
+	m_flFreezeResistance = 0.0f;
+	m_bTeslable = true;
+	m_bFlinches = true;
+	m_bGrenadeReflector = false;
+	m_iszVScript = NULL_STRING;
+	m_iszModelOverride = NULL_STRING;
+	m_flSpawnChance = 1;
+}
+
 CASW_Spawn_NPC::CASW_Spawn_NPC( KeyValues *pKV ) : m_Requirement( pKV )
 {
 	m_pAlienClass = NULL;
 	for ( int i = 0; i < ASWSpawnManager()->GetNumAlienClasses(); i++ )
 	{
-		ASW_Alien_Class_Entry *pAlienClass = ASWSpawnManager()->GetAlienClass( i );
+		const ASW_Alien_Class_Entry *pAlienClass = ASWSpawnManager()->GetAlienClass( i );
 		if ( !Q_stricmp( pKV->GetString( "AlienClass" ), pAlienClass->m_pszAlienClass ) )
 		{
 			m_pAlienClass = pAlienClass;
@@ -863,6 +910,7 @@ CASW_Spawn_NPC::CASW_Spawn_NPC( KeyValues *pKV ) : m_Requirement( pKV )
 	}
 	m_bFlammable = pKV->GetBool( "Flammable", true );
 	m_bFreezable = pKV->GetBool( "Freezable", true );
+	m_flFreezeResistance = pKV->GetFloat( "FreezeResistance", 0.0f );
 	m_bTeslable = pKV->GetBool( "Teslable", true );
 	m_bFlinches = pKV->GetBool( "Flinches", true );
 	m_bGrenadeReflector = pKV->GetBool("Reflector", false);
@@ -874,6 +922,15 @@ CASW_Spawn_NPC::CASW_Spawn_NPC( KeyValues *pKV ) : m_Requirement( pKV )
 	else
 	{
 		m_iszVScript = AllocPooledString( pKV->GetString( "VScript" ) );
+	}
+
+	if ( pKV->GetString( "ModelOverride", NULL ) == NULL )
+	{
+		m_iszModelOverride = NULL_STRING;
+	}
+	else
+	{
+		m_iszModelOverride = AllocPooledString( pKV->GetString( "ModelOverride" ) );
 	}
 
 	m_flSpawnChance = pKV->GetFloat( "SpawnChance", 1.0f );
@@ -891,11 +948,21 @@ CASW_Spawn_NPC::CASW_Spawn_NPC( const CASW_Spawn_NPC & npc ) : m_Requirement( np
 	m_flSizeScale = npc.m_flSizeScale;
 	m_bFlammable = npc.m_bFlammable;
 	m_bFreezable = npc.m_bFreezable;
+	m_flFreezeResistance = npc.m_flFreezeResistance;
 	m_bTeslable = npc.m_bTeslable;
 	m_bFlinches = npc.m_bFlinches;
 	m_bGrenadeReflector = npc.m_bGrenadeReflector;
 	m_iszVScript = npc.m_iszVScript;
+	m_iszModelOverride = npc.m_iszModelOverride;
 	m_flSpawnChance = npc.m_flSpawnChance;
+}
+
+void CASW_Spawn_NPC::Precache()
+{
+	if ( m_iszModelOverride != NULL_STRING )
+	{
+		CBaseEntity::PrecacheModel( STRING( m_iszModelOverride ) );
+	}
 }
 
 void CASW_Spawn_NPC::Dump()
@@ -917,6 +984,10 @@ void CASW_Spawn_NPC::Dump()
 	{
 		CmdMsg( "      Size: %+f%%", ( m_flSizeScale - 1 ) * 100 );
 	}
+	if ( m_flFreezeResistance != 0.0f )
+	{
+		CmdMsg( "      Freeze resistance: %f\n", m_flFreezeResistance );
+	}
 	if ( !m_bFlammable )
 	{
 		CmdMsg( "      Not flammable\n" );
@@ -936,6 +1007,10 @@ void CASW_Spawn_NPC::Dump()
 	if ( m_iszVScript != NULL_STRING )
 	{
 		CmdMsg( "      Run VScript: scripts/vscripts/%s.nut\n", STRING( m_iszVScript ) );
+	}
+	if ( m_iszModelOverride != NULL_STRING )
+	{
+		CmdMsg( "      Model Override: %s\n", STRING( m_iszModelOverride ) );
 	}
 	m_Requirement.Dump( "      " );
 }

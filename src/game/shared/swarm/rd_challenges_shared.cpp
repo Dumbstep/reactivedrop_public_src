@@ -8,6 +8,7 @@
 #include "networkstringtable_clientdll.h"
 #endif
 #include "rd_workshop.h"
+#include "asw_util_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -16,23 +17,50 @@
 
 INetworkStringTable *g_StringTableReactiveDropChallenges = NULL;
 
-static bool FillChallengeSummary( RD_Challenge_t & summary, const char *szKVFileName )
+static bool FillChallengeSummary( RD_Challenge_t &summary, const char *szKVFileName )
 {
-	summary.ForceOnslaught = false;
-	summary.IsOnslaught = false;
-	summary.ForceHardcore = false;
-	summary.IsHardcore = false;
-	V_memset( summary.Title, 0, sizeof( summary.Title ) );
+	V_memset( &summary, 0, sizeof( summary ) );
+	summary.AllowCoop = true;
 
 	summary.WorkshopID = g_ReactiveDropWorkshop.FindAddonProvidingFile( szKVFileName );
 
 	KeyValues::AutoDelete pKV( "CHALLENGE" );
-	if ( !pKV->LoadFromFile( filesystem, szKVFileName, "GAME" ) )
+	if ( !UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szKVFileName, "GAME" ) )
 	{
 		return false;
 	}
 
 	V_strncpy( summary.Title, pKV->GetString( "name" ), sizeof( summary.Title ) );
+
+	bool bAnyAllowedModes = false;
+	FOR_EACH_VALUE( pKV, pValue )
+	{
+		if ( V_stricmp( pValue->GetName(), "allowed_mode" ) )
+		{
+			continue;
+		}
+
+		if ( !bAnyAllowedModes )
+		{
+			bAnyAllowedModes = true;
+			summary.AllowCoop = false;
+		}
+
+		if ( !V_stricmp( pValue->GetString(), "coop" ) )
+		{
+			summary.AllowCoop = true;
+		}
+		else if ( !V_stricmp( pValue->GetString(), "deathmatch" ) )
+		{
+			summary.AllowDeathmatch = true;
+		}
+		else
+		{
+			DevWarning( "unhandled allowed_mode '%s' in challenge '%s'\n", pValue->GetString(), szKVFileName );
+		}
+	}
+
+	summary.RequiredOnClient = pKV->GetBool( "required_on_client" );
 
 	if ( KeyValues *pConVars = pKV->FindKey( "convars" ) )
 	{
@@ -51,11 +79,24 @@ static bool FillChallengeSummary( RD_Challenge_t & summary, const char *szKVFile
 }
 
 #ifdef GAME_DLL
+extern ConVar rd_debug_string_tables;
+
 void ReactiveDropChallenges::CreateNetworkStringTables()
 {
 	g_StringTableReactiveDropChallenges = networkstringtable->CreateStringTable( RD_CHALLENGES_STRINGTABLE_NAME, RD_MAX_CHALLENGES );
-
 	Assert( g_StringTableReactiveDropChallenges );
+
+	ClearServerCache();
+}
+void ReactiveDropChallenges::ClearServerCache()
+{
+	if ( !g_StringTableReactiveDropChallenges )
+	{
+		// not initialized yet
+		return;
+	}
+
+	// TODO: purge old data
 
 	RD_Challenge_t summary;
 	char szKVFileName[MAX_PATH];
@@ -75,7 +116,10 @@ void ReactiveDropChallenges::CreateNetworkStringTables()
 		int nDataSize = offsetof( RD_Challenge_t, Title ) + V_strlen( summary.Title ) + 1;
 
 		int index = g_StringTableReactiveDropChallenges->AddString( true, szChallengeName, nDataSize, &summary );
-		DevMsg( 2, "Adding challenge %d to string table: %s, payload size %d\n", index, szChallengeName, nDataSize );
+		if ( rd_debug_string_tables.GetBool() )
+		{
+			Msg( "Adding challenge %d to string table: %s, payload size %d\n", index, szChallengeName, nDataSize );
+		}
 	}
 	filesystem->FindClose( hFind );
 }
@@ -234,7 +278,7 @@ bool ReactiveDropChallenges::ReadData( KeyValues *pKV, const char *pszChallengeN
 	char szPath[MAX_PATH];
 	Q_snprintf( szPath, sizeof( szPath ), "resource/challenges/%s.txt", pszChallengeName );
 
-	if ( pKV->LoadFromFile( filesystem, szPath, "GAME" ) )
+	if ( UTIL_RD_LoadKeyValuesFromFile( pKV, filesystem, szPath, "GAME" ) )
 	{
 		pKV->SetUint64( "workshop", g_ReactiveDropWorkshop.FindAddonProvidingFile( szPath ) );
 		return true;
@@ -332,6 +376,7 @@ static const char *s_szOfficialChallenges[] =
 	"one_hit",
 	"riflemod_classic",
 	"rd_first_person",
+	"rd_third_person",
 };
 
 bool ReactiveDropChallenges::IsOfficial( const char *pszChallengeName )

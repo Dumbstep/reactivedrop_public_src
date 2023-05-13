@@ -1,6 +1,7 @@
 #include "cbase.h"
 #include "asw_gamerules.h"
 #include "asw_spawn_manager.h"
+#include "asw_spawn_selection.h"
 #include "asw_director.h"
 #include "asw_grenade_cluster.h"
 #include "asw_grenade_freeze.h"
@@ -19,6 +20,9 @@
 #include "asw_campaign_save.h"
 #include "rd_challenges_shared.h"
 #include "rd_missions_shared.h"
+#include "asw_achievements.h"
+#include "asw_player.h"
+#include "ScriptGameEventListener.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -27,6 +31,7 @@ extern ConVar rd_challenge;
 
 static ScriptVariant_t s_newArrayFunc;
 static ScriptVariant_t s_arrayPushFunc;
+static ScriptVariant_t s_arrayGetFunc;
 static void CreateArray( ScriptVariant_t &array )
 {
 	if ( !g_pScriptVM ) return;
@@ -39,6 +44,13 @@ static void ArrayPush( ScriptVariant_t &array, ScriptVariant_t item )
 {
 	if ( !g_pScriptVM ) return;
 	ScriptStatus_t status = g_pScriptVM->Call( s_arrayPushFunc, NULL, false, &array, array, item );
+	Assert( status == SCRIPT_DONE );
+	( void )status;
+}
+static void ArrayGet( ScriptVariant_t &result, ScriptVariant_t array, ScriptVariant_t index )
+{
+	if ( !g_pScriptVM ) return;
+	ScriptStatus_t status = g_pScriptVM->Call( s_arrayGetFunc, NULL, false, &result, array, index );
 	Assert( status == SCRIPT_DONE );
 	( void )status;
 }
@@ -56,8 +68,9 @@ public:
 		}
 
 		QAngle angle( VectorExpand( vecAngle ) );
+		CASW_Spawn_NPC npc( szAlienClass );
 
-		return ToHScript( ASWSpawnManager()->SpawnAlienAt( szAlienClass, vecPos, angle ) );
+		return ToHScript( ASWSpawnManager()->SpawnAlienAt( &npc, vecPos, angle ) );
 	}
 
 	int SpawnAlienBatch( const char *szAlienClass, int iNumAliens, const Vector & vecPos, const Vector & vecAngle )
@@ -719,13 +732,13 @@ HSCRIPT Script_DropFreezeGrenade( float flDamage, float flFreezeAmount, float fl
 
 HSCRIPT Script_PlaceHealBeacon( float flHealAmount, float flHealthPerSecond, float flInfestationCureAmount, float flDuration, float flGrenadeRadius, const Vector origin )
 {
-	CASW_AOEGrenade_Projectile *pHeal = CASW_HealGrenade_Projectile::Grenade_Projectile_Create( origin, QAngle(0,0,0), Vector(0,0,0), AngularImpulse(0,0,0), NULL, flHealthPerSecond, flInfestationCureAmount, flGrenadeRadius, flDuration, flHealAmount );
+	CASW_AOEGrenade_Projectile *pHeal = CASW_HealGrenade_Projectile::Grenade_Projectile_Create( origin, QAngle(0,0,0), Vector(0,0,0), AngularImpulse(0,0,0), NULL, NULL, flHealthPerSecond, flInfestationCureAmount, flGrenadeRadius, flDuration, flHealAmount );
 	return ToHScript( pHeal );
 }
 
 HSCRIPT Script_PlaceDamageAmplifier( float flDuration, float flGrenadeRadius, const Vector origin )
 {
-	CASW_BuffGrenade_Projectile *pBuff = CASW_BuffGrenade_Projectile::Grenade_Projectile_Create( origin, QAngle(0,0,0), Vector(0,0,0), AngularImpulse(0,0,0), NULL, flGrenadeRadius, flDuration );
+	CASW_BuffGrenade_Projectile *pBuff = CASW_BuffGrenade_Projectile::Grenade_Projectile_Create( origin, QAngle(0,0,0), Vector(0,0,0), AngularImpulse(0,0,0), NULL, NULL, flGrenadeRadius, flDuration );
 	return ToHScript( pBuff );
 }
 
@@ -761,7 +774,7 @@ HSCRIPT Script_DropFragGrenade( float flDamage, float fRadius, const Vector posi
 
 HSCRIPT Script_DropGasGrenade( float flDamage, float fInterval, float fDuration, float fFuse, const Vector position )
 {
-	CASW_Gas_Grenade_Projectile *pGas_Grenade = CASW_Gas_Grenade_Projectile::Gas_Grenade_Projectile_Create( position, QAngle(0,0,0), Vector(0,0,0), AngularImpulse(0,0,0), NULL, flDamage, fInterval, fDuration, fFuse );
+	CASW_Gas_Grenade_Projectile *pGas_Grenade = CASW_Gas_Grenade_Projectile::Gas_Grenade_Projectile_Create( position, QAngle(0,0,0), Vector(0,0,0), AngularImpulse(0,0,0), NULL, NULL, flDamage, fInterval, fDuration, fFuse );
 	return ToHScript( pGas_Grenade );
 }
 
@@ -793,6 +806,122 @@ HSCRIPT Script_StartFire( const Vector position, float duration, int flags )
 {
 	CFire *pFire = FireSystem_StartFire( position, 64, 4, duration, flags, NULL, FIRE_NATURAL, 0, NULL );
 	return ToHScript( pFire );
+}
+
+void Script_CheckSpecialAchievementEligibility()
+{
+	CAlienSwarm *pAlienSwarm = ASWGameRules();
+	CASW_Game_Resource *pGameResource = ASWGameResource();
+	if ( !pAlienSwarm || !pGameResource || pAlienSwarm->m_iMissionWorkshopID.Get() || pAlienSwarm->m_bChallengeActiveThisMission )
+	{
+		return;
+	}
+
+	if ( FStrEq( STRING( gpGlobals->mapname ), "rd-acc6_labruins" ) )
+	{
+		CBaseEntity *pScriptEnt = gEntList.FindEntityByName( NULL, "script_doorlogic" );
+		if ( !pScriptEnt || !pScriptEnt->GetScriptScope() )
+			return;
+
+		ScriptVariant_t bBossBattleEnded, iHitCount;
+		if ( !g_pScriptVM->GetValue( pScriptEnt->GetScriptScope(), "bBossBattleEnded", &bBossBattleEnded ) )
+			return;
+		if ( !g_pScriptVM->GetValue( pScriptEnt->GetScriptScope(), "iHitCount", &iHitCount ) )
+			return;
+
+		if ( bBossBattleEnded.Get<bool>() && iHitCount.Get<int>() == 3 )
+		{
+			for ( int iMR = 0; iMR < pGameResource->GetMaxMarineResources(); iMR++ )
+			{
+				CASW_Marine_Resource *pMR = pGameResource->GetMarineResource( iMR );
+				if ( !pMR )
+					continue;
+
+				if ( pMR->GetHealthPercent() > 0 && pMR->IsInhabited() && pMR->GetCommander() )
+				{
+					pMR->GetCommander()->AwardAchievement( ACHIEVEMENT_RD_ACC_MUONGEM_KILL );
+				}
+			}
+		}
+	}
+
+	if ( FStrEq( STRING( gpGlobals->mapname ), "rd-ht-marine_academy" ) )
+	{
+		CBaseEntity *pRulesProxy = gEntList.FindEntityByClassname( NULL, "asw_gamerules" );
+		if ( !pRulesProxy || !pRulesProxy->GetScriptScope() )
+			return;
+
+		ScriptVariant_t element, CurrentArea, AreaVisitCount;
+		if ( !g_pScriptVM->GetValue( pRulesProxy->GetScriptScope(), "g_current_area", &CurrentArea ) )
+			return;
+		if ( !g_pScriptVM->GetValue( pRulesProxy->GetScriptScope(), "g_area_scores_t", &AreaVisitCount ) )
+			return;
+
+		// entering volcano
+		if ( CurrentArea.Get<int>() == 6 )
+		{
+			for ( int i = 1; i < 6; i++ )
+			{
+				ArrayGet( element, AreaVisitCount, i );
+
+				if ( element.Get<int>() != 1 )
+				{
+					return;
+				}
+			}
+
+			for ( int iMR = 0; iMR < pGameResource->GetMaxMarineResources(); iMR++ )
+			{
+				CASW_Marine_Resource *pMR = pGameResource->GetMarineResource( iMR );
+				if ( !pMR )
+					continue;
+
+				if ( pMR->GetHealthPercent() > 0 && pMR->IsInhabited() && pMR->GetCommander() )
+				{
+					pMR->GetCommander()->AwardAchievement( ACHIEVEMENT_RD_MA_VISIT_EACH_ZONE );
+				}
+			}
+
+			return;
+		}
+
+		// entering lobby
+		if ( CurrentArea.Get<int>() == 0 )
+		{
+			ArrayGet( element, AreaVisitCount, 6 );
+			if ( element.Get<int>() != 1 )
+			{
+				return;
+			}
+
+			for ( int iMR = 0; iMR < pGameResource->GetMaxMarineResources(); iMR++ )
+			{
+				CASW_Marine_Resource *pMR = pGameResource->GetMarineResource( iMR );
+				if ( !pMR )
+					continue;
+
+				if ( pMR->GetHealthPercent() <= 0 )
+					return;
+			}
+
+
+			for ( int iMR = 0; iMR < pGameResource->GetMaxMarineResources(); iMR++ )
+			{
+				CASW_Marine_Resource *pMR = pGameResource->GetMarineResource( iMR );
+				if ( !pMR )
+					continue;
+
+				if ( pMR->IsInhabited() && pMR->GetCommander() )
+				{
+					pMR->GetCommander()->AwardAchievement( ACHIEVEMENT_RD_MA_REACH_VOLCANO_ALIVE );
+				}
+			}
+
+			return;
+		}
+
+		return;
+	}
 }
 
 const Vector &Script_GetHullMins( int hull )
@@ -884,7 +1013,7 @@ void CAlienSwarm::RegisterScriptFunctions()
 	if ( !g_pScriptVM ) return;
 
 	// The VScript API doesn't support arrays, but Squirrel does, and we want to use them. Make some helper functions that we can call later:
-	HSCRIPT arrayHelperScript = g_pScriptVM->CompileScript( "function newArray() { return [] }\nfunction arrayPush(a, v) { a.push(v); return a }\n" );
+	HSCRIPT arrayHelperScript = g_pScriptVM->CompileScript( "function newArray() { return [] }\nfunction arrayPush(a, v) { a.push(v); return a }\nfunction arrayGet(a, i) { return a[i] }\n" );
 	HSCRIPT arrayHelperScope = g_pScriptVM->CreateScope( "arrayhelpers" );
 	ScriptStatus_t status = g_pScriptVM->Run( arrayHelperScript, arrayHelperScope, false );
 	Assert( status == SCRIPT_DONE );
@@ -894,6 +1023,9 @@ void CAlienSwarm::RegisterScriptFunctions()
 	Assert( bSuccess );
 	( void )bSuccess;
 	bSuccess = g_pScriptVM->GetValue( arrayHelperScope, "arrayPush", &s_arrayPushFunc );
+	Assert( bSuccess );
+	( void )bSuccess;
+	bSuccess = g_pScriptVM->GetValue( arrayHelperScope, "arrayGet", &s_arrayGetFunc );
 	Assert( bSuccess );
 	( void )bSuccess;
 	g_pScriptVM->ReleaseScope( arrayHelperScope );
@@ -914,9 +1046,97 @@ void CAlienSwarm::RegisterScriptFunctions()
 	ScriptRegisterFunctionNamed( g_pScriptVM, ScriptStartStim, "StartStim", "Activates a stim pack for desired duration" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, ScriptStopStim, "StopStim", "Stops any active stim pack" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, Script_StartFire, "StartFire", "Starts a fire (position, duration, flags)" );
+	ScriptRegisterFunctionNamed( g_pScriptVM, Script_CheckSpecialAchievementEligibility, "CheckSpecialAchievementEligibility", "Internal function for official missions with complex mid-mission achievement requirements" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, Script_GetHullMins, "GetHullMins", "Returns a Vector for the hull mins (hullType)" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, Script_GetHullMaxs, "GetHullMaxs", "Returns a Vector for the hull maxs (hullType)" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, Script_FindNearestNPC, "FindNearestNPC", "Find nearest NPC to position (position, ZcoordCheck, radius)" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, Script_GamePause, "GamePause", "Pause or unpause the game" );
 	ScriptRegisterFunctionNamed( g_pScriptVM, Script_IsAnniversaryWeek, "IsAnniversaryWeek", "Returns true if it is the anniversary week of Alien Swarm: Reactive Drop" );
+}
+
+class CASW_Challenge_Thinker : public CLogicalEntity
+{
+public:
+	DECLARE_CLASS( CASW_Challenge_Thinker, CLogicalEntity );
+
+	static CUtlVector<CASW_Challenge_Thinker *> s_Thinkers;
+
+	CASW_Challenge_Thinker()
+	{
+		m_iszScriptThinkFunction = AllocPooledString( "Update" );
+	}
+
+	virtual void RunVScripts()
+	{
+		if ( ValidateScriptScope() )
+		{
+			// https://github.com/ReactiveDrop/reactivedrop_public_src/issues/138
+			// We need to make sure our scope includes every value that might be looked up from it.
+			// If we don't, global variables will be inherited by our scope and functions will be run twice.
+
+			HSCRIPT hScope = GetScriptScope();
+			Assert( hScope );
+			for ( int i = 0; i < NUM_SCRIPT_GAME_EVENTS; i++ )
+			{
+				g_pScriptVM->SetValue( hScope, CFmtStr( "OnGameEvent_%s", g_ScriptGameEventList[i] ), SCRIPT_VARIANT_NULL );
+			}
+			g_pScriptVM->SetValue( hScope, "OnTakeDamage_Alive_Any", SCRIPT_VARIANT_NULL );
+			g_pScriptVM->SetValue( hScope, "UserConsoleCommand", SCRIPT_VARIANT_NULL );
+			g_pScriptVM->SetValue( hScope, "OnMissionStart", SCRIPT_VARIANT_NULL );
+			g_pScriptVM->SetValue( hScope, "OnGameplayStart", SCRIPT_VARIANT_NULL );
+
+			s_Thinkers.AddToTail( this );
+		}
+
+		BaseClass::RunVScripts();
+	}
+
+	virtual void UpdateOnRemove()
+	{
+		ScriptVariant_t value;
+		if ( GetScriptScope() && g_pScriptVM->GetValue( "g_ModeScript", &value ) && value == GetScriptScope() )
+		{
+			g_pScriptVM->SetValue( "g_ModeScript", SCRIPT_VARIANT_NULL );
+		}
+
+		s_Thinkers.FindAndRemove( this );
+
+		BaseClass::UpdateOnRemove();
+	}
+};
+
+CUtlVector<CASW_Challenge_Thinker *> CASW_Challenge_Thinker::s_Thinkers;
+
+LINK_ENTITY_TO_CLASS( asw_challenge_thinker, CASW_Challenge_Thinker );
+
+void CAlienSwarm::RunScriptFunctionInListenerScopes( const char *szFunctionName, ScriptVariant_t *pReturn, int nArgs, ScriptVariant_t *pArgs )
+{
+	HSCRIPT hFunc = g_pScriptVM->LookupFunction( szFunctionName );
+	if ( hFunc )
+	{
+		ScriptStatus_t nStatus = g_pScriptVM->ExecuteFunction( hFunc, pArgs, nArgs, pReturn, NULL, false );
+		if ( nStatus != SCRIPT_DONE )
+		{
+			DevWarning( "%s VScript function did not finish!\n", szFunctionName );
+		}
+		g_pScriptVM->ReleaseFunction( hFunc );
+	}
+
+	FOR_EACH_VEC( CASW_Challenge_Thinker::s_Thinkers, i )
+	{
+		CASW_Challenge_Thinker *pThinker = CASW_Challenge_Thinker::s_Thinkers[i];
+		if ( HSCRIPT hScope = pThinker->GetScriptScope() )
+		{
+			if ( HSCRIPT hFunc = g_pScriptVM->LookupFunction( szFunctionName, hScope ) )
+			{
+				ScriptStatus_t nStatus = g_pScriptVM->ExecuteFunction( hFunc, pArgs, nArgs, pReturn, hScope, false );
+				if ( nStatus != SCRIPT_DONE )
+				{
+					DevWarning( "%s VScript function for thinker #%d:%s did not finish!\n", szFunctionName, pThinker->entindex(), pThinker->GetDebugName() );
+				}
+
+				g_pScriptVM->ReleaseFunction( hFunc );
+			}
+		}
+	}
 }

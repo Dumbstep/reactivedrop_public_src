@@ -7,7 +7,6 @@
 #include "asw_hudelement.h"
 #include "asw_shareddefs.h"
 #include <vgui_controls/Panel.h>
-#include "asw_video.h"
 #include "vgui_avatarimage.h"
 
 class C_ASW_Marine;
@@ -104,9 +103,6 @@ protected:
 
 	virtual bool LookupElementBounds( const char *elementName, int &x, int &y, int &wide, int &tall );
 
-
-	void UpdatePortraitVideo();
-
 	void PaintLocalMarinePortrait();
 	void PaintSquadMemberStatus( int nPosition );
 	void PaintLocalMarineInventory();
@@ -150,6 +146,7 @@ protected:
 		DECLARE_HUD_SHEET_UV( hud_ammo_clip_full ),
 		DECLARE_HUD_SHEET_UV( hud_ammo_grenade ),
 		DECLARE_HUD_SHEET_UV( team_ammo_bar ),
+		DECLARE_HUD_SHEET_UV( hud_ammo_clip_double ),
 	END_HUD_SHEET( Sheet_Stencil );
 
 	// positioning
@@ -191,7 +188,7 @@ protected:
 	CPanelAnimationVarAliasType( int, m_nMarinePortrait_clips_y, "MarinePortrait_clips_y", "0", "proportional_ypos" );	
 	CPanelAnimationVarAliasType( int, m_nMarinePortrait_clips_w, "MarinePortrait_clips_w", "0", "proportional_int" );	// width+height of one clip icon
 	CPanelAnimationVarAliasType( int, m_nMarinePortrait_clips_t, "MarinePortrait_clips_t", "0", "proportional_int" );
-	CPanelAnimationVarAliasType( int, m_nMarinePortrait_spacing, "MarinePortrait_clips_spacing", "0", "proportional_int" );
+	CPanelAnimationVarAliasType( int, m_nMarinePortrait_clips_spacing, "MarinePortrait_clips_spacing", "0", "proportional_int" );
 
 	CPanelAnimationVarAliasType( int, m_nMarinePortrait_health_counter_x, "MarinePortrait_health_counter_x", "0", "proportional_xpos" );
 	CPanelAnimationVarAliasType( int, m_nMarinePortrait_health_counter_y, "MarinePortrait_health_counter_y", "0", "proportional_ypos" );
@@ -242,12 +239,12 @@ protected:
 	CPanelAnimationVarAliasType( int, m_nSquadMate_bullets_x, "SquadMate_bullets_x", "0", "proportional_xpos" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_bullets_y, "SquadMate_bullets_y", "0", "proportional_ypos" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_bullets_w, "SquadMate_bullets_w", "0", "proportional_int" );
-	CPanelAnimationVarAliasType( int, m_nSquadMate_bullets_t, "SquadMate_bullets_t", "0", "proportional_int" );	
+	CPanelAnimationVarAliasType( int, m_nSquadMate_bullets_t, "SquadMate_bullets_t", "0", "proportional_int" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_clips_x, "SquadMate_clips_x", "0", "proportional_xpos" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_clips_y, "SquadMate_clips_y", "0", "proportional_ypos" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_clips_spacing, "SquadMate_clips_spacing", "0", "proportional_int" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_clips_w, "SquadMate_clips_w", "0", "proportional_int" );
-	CPanelAnimationVarAliasType( int, m_nSquadMate_clips_t, "SquadMate_clips_t", "0", "proportional_int" );	
+	CPanelAnimationVarAliasType( int, m_nSquadMate_clips_t, "SquadMate_clips_t", "0", "proportional_int" );
 
 	CPanelAnimationVarAliasType( int, m_nSquadMate_class_icon_x, "SquadMate_class_icon_x", "0", "proportional_xpos" );
 	CPanelAnimationVarAliasType( int, m_nSquadMate_class_icon_y, "SquadMate_class_icon_y", "0", "proportional_ypos" );
@@ -291,9 +288,6 @@ protected:
 	int m_nMarinePortrait_bar_y;
 	int m_nMarinePortrait_bar_y2;
 
-	CASW_Video m_LocalMarineVideo;
-	int m_nLocalMarineVideoTextureID;
-
 	int m_nMostFrags[8];
 	int m_hMostFragsImage[8];
 	CAvatarImage *m_pMostFragsAvatar[8];
@@ -304,6 +298,7 @@ protected:
 	CPanelAnimationVar( vgui::HFont, m_hDefaultSmallFont, "DefaultSmallFont", "DefaultSmall" );
 	CPanelAnimationVar( vgui::HFont, m_hDefaultFont, "DefaultFont", "Default" );
 	CPanelAnimationVar( vgui::HFont, m_hDefaultLargeFont, "DefaultLargeFont", "DefaultLarge" );
+	CPanelAnimationVar( vgui::HFont, m_hButtonFont, "DefaultButtonFont", "GameUIButtonsTiny" );
 	
 	CUtlVector<HudSheet_t> m_HudSheets;
 
@@ -320,6 +315,7 @@ protected:
 	int m_nLocalMarineSecondaryBullets;
 	int m_nLocalMarineHealth;
 	int m_nLastLocalMarineHealth;
+	bool m_bLocalMarineClipsDoubled;
 
 	// health bar
 	float m_flLastHealthChangeTime;
@@ -341,6 +337,7 @@ protected:
 	struct SquadMateInfo_t
 	{
 		bool bPositionActive;
+		bool bClipsDoubled;
 		ASW_Marine_Class MarineClass;
 		float flHealthFraction;
 		bool bInhabited;

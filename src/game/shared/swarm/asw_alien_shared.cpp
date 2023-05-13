@@ -86,8 +86,6 @@ void CASW_Alien::TraceAttack( const CTakeDamageInfo &info, const Vector &vecDir,
 		event->SetInt( "amount", subInfo.GetDamage() );
 		gameeventmanager->FireEventClientSide( event );
 	}
-
-	UTIL_ASW_ClientFloatingDamageNumber( subInfo );
 #endif
 }
 
@@ -181,5 +179,10 @@ float CASW_Alien::MaxSpeed()
 
 float CASW_Alien::GetBasePlayerYawRate()
 {
-	return 1000;
+	if ( m_bInhabitedMovementAllowed )
+	{
+		return 1000.0f;
+	}
+
+	return FLT_EPSILON;
 }

@@ -86,12 +86,19 @@
 #include "asw_triggers.h"
 #include "triggers.h"
 #include "EnvLaser.h"
+#include "iservervehicle.h"
+#include "rd_cause_of_death.h"
+#include "npc_zombine.h"
+#include "asw_weapon_revive_tool_shared.h"
+#include "asw_tech_marine_req.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 #define ASW_DEFAULT_MARINE_MODEL "models/swarm/marine/marine.mdl"
 
+extern ConVar asw_stats_verbose;
+extern ConVar asw_stun_grenade_time;
 ConVar rd_frags_limit( "rd_frags_limit", "20",  FCVAR_REPLICATED, "Number of frags a player must reach to win the round");
 ConVar rd_chatter_about_ff( "rd_chatter_about_ff", "1",  FCVAR_REPLICATED, "If 1 marines will shout about friendly fire done to them");
 ConVar rd_chatter_about_marine_death( "rd_chatter_about_marine_death", "1",  FCVAR_REPLICATED, "If 1 marines will shout Marine Down if marine dies");
@@ -100,6 +107,7 @@ ConVar rd_pvp_marine_take_damage_from_bots("rd_pvp_marine_take_damage_from_bots"
 ConVar rd_bot_strong( "rd_bot_strong", "1", FCVAR_CHEAT, "If 1, bots take only 25% of damage in a co-op game" );
 ConVar rd_medgun_medkit_refill_amount( "rd_medgun_medkit_refill_amount", "0", FCVAR_CHEAT, "Amount of ammo given to refill a healgun from a medkit" );
 ConVar rd_marine_take_damage_from_ai_grenade( "rd_marine_take_damage_from_ai_grenade", "1", FCVAR_CHEAT, "Players take damage from bots' grenade launchers" );
+ConVar rd_stuck_teleport_distance( "rd_stuck_teleport_distance", "256", FCVAR_CHEAT, "Maximum distance to teleport a stuck marine to a node" );
 static ConVar rd_notify_about_out_of_ammo( "rd_notify_about_out_of_ammo", "1", FCVAR_CHEAT, "Chatter and print a yellow message when marine is out of ammo" );
 static ConVar rd_gas_grenade_ff_dmg( "rd_gas_grenade_ff_dmg", "10", FCVAR_CHEAT, "Fixed friendly fire damage of gas grenade, marine to marine, done in asw_gas_grenade_damage_interval. " );
 
@@ -112,7 +120,6 @@ ConVar rda_marine_strafe_push_vert_velocity("rda_marine_strafe_push_vert_velocit
 #define ADD_STAT( field, amount ) \
 		if ( CASW_Marine_Resource *pMR = GetMarineResource() ) \
 		{ \
-			ConVarRef asw_stats_verbose( "asw_stats_verbose" );\
 			if ( asw_stats_verbose.GetBool() ) \
 			{ \
 				DevMsg( "marine %d (%s %d+%d)\n", ASWGameResource()->GetMarineResourceIndex( pMR ), #field, pMR->field, amount ); \
@@ -180,12 +187,6 @@ IMPLEMENT_SERVERCLASS_ST(CASW_Marine, DT_ASW_Marine)
 	SendPropFloat		( SENDINFO_VECTORELEM(m_vecVelocity, 1), 32, SPROP_NOSCALE|SPROP_CHANGES_OFTEN ),
 	SendPropFloat		( SENDINFO_VECTORELEM(m_vecVelocity, 2), 32, SPROP_NOSCALE|SPROP_CHANGES_OFTEN ),
 
-#if PREDICTION_ERROR_CHECK_LEVEL > 1
-	SendPropVector		( SENDINFO( m_vecGroundVelocity ), -1, SPROP_COORD ),
-#else
-	SendPropVector		( SENDINFO( m_vecGroundVelocity ), 20, 0, -1000, 1000 ),
-#endif
-
 #if PREDICTION_ERROR_CHECK_LEVEL > 1 
 	SendPropAngle( SENDINFO_VECTORELEM(m_angRotation, 0), 13, SPROP_NOSCALE|SPROP_CHANGES_OFTEN, CBaseEntity::SendProxy_AnglesX ),
 	SendPropAngle( SENDINFO_VECTORELEM(m_angRotation, 1), 13, SPROP_NOSCALE|SPROP_CHANGES_OFTEN, CBaseEntity::SendProxy_AnglesY ),
@@ -229,13 +230,13 @@ IMPLEMENT_SERVERCLASS_ST(CASW_Marine, DT_ASW_Marine)
 	SendPropBool	(SENDINFO(bEmoteStop)),
 	SendPropBool	(SENDINFO(bEmoteGo)),
 	SendPropBool	(SENDINFO(bEmoteExclaim)),
-	SendPropBool	(SENDINFO(bEmoteAnimeSmile)),	
-	SendPropBool	(SENDINFO(bEmoteQuestion)),	
+	SendPropBool	(SENDINFO(bEmoteAnimeSmile)),
+	SendPropBool	(SENDINFO(bEmoteQuestion)),
 
 	// driving
 	SendPropEHandle( SENDINFO ( m_hASWVehicle ) ),
-	SendPropBool	(SENDINFO(m_bDriving)),	
-	SendPropBool	(SENDINFO(m_bIsInVehicle)),	
+	SendPropInt		(SENDINFO(m_iVehicleSeat)),
+	SendPropBool	(SENDINFO(m_bIsInVehicle)),
 
 	// knocked out
 	SendPropBool	(SENDINFO(m_bKnockedOut)),
@@ -256,6 +257,7 @@ IMPLEMENT_SERVERCLASS_ST(CASW_Marine, DT_ASW_Marine)
 	SendPropBool	( SENDINFO( m_bReflectingProjectiles ) ),
 	SendPropTime	( SENDINFO( m_flDamageBuffEndTime ) ),
 	SendPropTime	( SENDINFO( m_flElectrifiedArmorEndTime ) ),
+	SendPropDataTable( SENDINFO_DT( m_ElectrifiedArmorProjectileData ), &REFERENCE_SEND_TABLE( DT_RD_ProjectileData ) ),
 	SendPropInt		( SENDINFO( m_iPowerupType ) ),
 	SendPropTime	( SENDINFO( m_flPowerupExpireTime ) ),
 	SendPropBool	( SENDINFO( m_bPowerupExpires ) ),
@@ -269,6 +271,9 @@ IMPLEMENT_SERVERCLASS_ST(CASW_Marine, DT_ASW_Marine)
 	SendPropFloat	( SENDINFO( m_fJumpJetDurationOverride ) ),
 	SendPropFloat	( SENDINFO( m_fJumpJetAnimationDurationOverride ) ),
 	SendPropBool	( SENDINFO( m_bForceWalking ) ),
+	SendPropBool	( SENDINFO( m_bRolls ) ),
+	SendPropInt		( SENDINFO( m_nMarineProfile ) ),
+	SendPropBool	( SENDINFO( m_bNightVision ) ),
 END_SEND_TABLE()
 
 //---------------------------------------------------------
@@ -279,7 +284,7 @@ BEGIN_DATADESC( CASW_Marine )
 	DEFINE_FIELD( m_iSlowHealAmount, FIELD_INTEGER ),
 	DEFINE_FIELD( m_hRemoteTurret, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_hASWVehicle, FIELD_EHANDLE ),
-	DEFINE_FIELD( m_bDriving, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_iVehicleSeat, FIELD_INTEGER ),
 	DEFINE_FIELD( m_bIsInVehicle, FIELD_BOOLEAN ),
 	DEFINE_FIELD( bEmoteMedic, FIELD_BOOLEAN ),
 	DEFINE_FIELD( bEmoteAmmo, FIELD_BOOLEAN ),
@@ -332,6 +337,7 @@ BEGIN_DATADESC( CASW_Marine )
 	DEFINE_FIELD( m_fLastMobDamageTime, FIELD_TIME ),
 	DEFINE_FIELD( m_bHasBeenMobAttacked, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_hInfestationCurer, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_hInfestationCureWeapon, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_bOnFire, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_fLastShotAlienTime, FIELD_TIME ),
 	DEFINE_FIELD( m_fLastShotJunkTime, FIELD_TIME ),
@@ -375,12 +381,15 @@ BEGIN_DATADESC( CASW_Marine )
 	DEFINE_FIELD( m_iPowerupType, FIELD_INTEGER ),
 	DEFINE_FIELD( m_flPowerupExpireTime, FIELD_FLOAT ),
 	DEFINE_FIELD( m_bPowerupExpires, FIELD_BOOLEAN ),
+	DEFINE_KEYFIELD( m_nMarineProfile, FIELD_INTEGER, "MarineProfile" ),
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "AddPoints", InputAddPoints ),
+	DEFINE_OUTPUT( m_TotalPoints, "TotalPoints" ),
 END_DATADESC()
 
-BEGIN_ENT_SCRIPTDESC( CASW_Marine, CBaseCombatCharacter, "Marine" )
+BEGIN_ENT_SCRIPTDESC( CASW_Marine, CASW_Inhabitable_NPC, "Marine" )
 	DEFINE_SCRIPTFUNC( IsInhabited, "true if the marine is a player, false if the marine is a bot" )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptGetCommander, "GetCommander", "get the player that owns the marine" )
-	DEFINE_SCRIPTFUNC( Extinguish, "Extinguish a burning marine." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptExtinguish, "Extinguish", "Extinguish a burning marine.")
 	DEFINE_SCRIPTFUNC_NAMED( ScriptIgnite, "Ignite", "Ignites the marine into flames." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptBecomeInfested, "BecomeInfested", "Infests the marine." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptCureInfestation, "CureInfestation", "Cures an infestation." )
@@ -393,8 +402,18 @@ BEGIN_ENT_SCRIPTDESC( CASW_Marine, CBaseCombatCharacter, "Marine" )
 	DEFINE_SCRIPTFUNC_NAMED( Script_GetInventoryTable, "GetInventoryTable", "Fills the passed table with the marine's inventory." )
 	DEFINE_SCRIPTFUNC_NAMED( Script_GetMarineName, "GetMarineName", "Returns the marine's name." )
 	DEFINE_SCRIPTFUNC_NAMED( Script_Speak, "Speak", "Makes the marine speak a response rules concept." )
+	DEFINE_SCRIPTFUNC( IsInfested, "Returns true if the marine is infested." )
+	DEFINE_SCRIPTFUNC( IsElectrifiedArmorActive, "Returns true if the marine currently has electrified armor (the effect, not the item)." )
+	DEFINE_SCRIPTFUNC( SetMarineRolls, "Send true to make marine roll, send false to make marine jump" )
 	DEFINE_SCRIPTFUNC( SetKnockedOut, "Used to knock out and incapacitate a marine, or revive them." )
+	DEFINE_SCRIPTFUNC( SetSpawnZombineOnDeath, "Used to spawn a zombine in the place of a marine after death." )
+	DEFINE_SCRIPTFUNC( SetNightVision, "Activate night vision on a marine without needing the equipment." )
 	DEFINE_SCRIPTFUNC_NAMED( ScriptKnockdown, "Knockdown", "Knocks down the marine with desired velocity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptOrderHackArea,"OrderHackArea", "Order the marine to hack a computer or button area." )
+	DEFINE_SCRIPTFUNC_NAMED( OrderUseOffhandItem, "OrderUseItem", "Order the marine to use an item (welder, ammo satchel, etc)")
+	DEFINE_SCRIPTFUNC_NAMED( ScriptOrderFollowSquadLeader, "OrderFollowSquadLeader", "Order the marine to follow the squad leader" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptOrderHoldPosition, "OrderHoldPosition", "Order the marine to stop moving" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptOrderMoveTo, "OrderMoveTo", "Order the marine to move to a specified position" )
 END_SCRIPTDESC()
 
 extern ConVar weapon_showproficiency;
@@ -439,6 +458,8 @@ ConVar asw_marine_special_idle_chatter_chance( "asw_marine_special_idle_chatter_
 ConVar asw_force_ai_fire("asw_force_ai_fire", "0", FCVAR_CHEAT, "Forces all AI marines to fire constantly");
 ConVar asw_realistic_death_chatter( "asw_realistic_death_chatter", "0", FCVAR_CHEAT, "If true, only 1 nearby marine will shout about marine deaths" );
 ConVar asw_god( "asw_god", "0", FCVAR_CHEAT, "Set to 1 to make marines invulnerable" );
+ConVar asw_god_effects( "asw_god_effects", "0", FCVAR_CHEAT, "If 1, marine health will not be affected by damage, but they will still take other effects" );
+ConVar asw_marine_damage_force_scale( "asw_marine_damage_force_scale", "0", FCVAR_CHEAT, "Damage force in marine damage is applied as a velocity impulse scaled by this factor" );
 ConVar rd_infinite_ammo( "rd_infinite_ammo", "0", FCVAR_CHEAT, "Marine's active weapon will never run out of ammo" );
 extern ConVar asw_sentry_friendly_fire_scale;
 extern ConVar asw_marine_ff_absorption;
@@ -448,6 +469,8 @@ extern ConVar rd_allow_revive;
 extern ConVar rd_revive_health;
 ConVar rd_marine_poison_recover_delay( "rd_marine_poison_recover_delay", "2", FCVAR_CHEAT, "time after being poisoned before suit antitoxin begins to act" );
 ConVar rd_marine_poison_recover_tick( "rd_marine_poison_recover_tick", "0.5", FCVAR_CHEAT, "time between hitpoints restored by antitoxin" );
+ConVar asw_leadership_resist_scale( "asw_leadership_resist_scale", "0.5", FCVAR_CHEAT, "Incoming damage scale for leadership bonus." );
+ConVar rd_marine_spawn_zombine_on_death_chance( "rd_marine_spawn_zombine_on_death_chance", "0.0", FCVAR_CHEAT, "Chance to spawn a zombine when a marine dies from an alien" );
 
 float CASW_Marine::s_fNextMadFiringChatter = 0;
 float CASW_Marine::s_fNextIdleChatterTime = 0;
@@ -464,7 +487,8 @@ void CASW_Marine::DoAnimationEvent( PlayerAnimEvent_t event )
 				(event == PLAYERANIMEVENT_RELOAD || event == PLAYERANIMEVENT_JUMP || event == PLAYERANIMEVENT_WEAPON_SWITCH
 				|| event == PLAYERANIMEVENT_HEAL || event == PLAYERANIMEVENT_KICK || event == PLAYERANIMEVENT_THROW_GRENADE
 				|| event == PLAYERANIMEVENT_BAYONET || event == PLAYERANIMEVENT_PICKUP
-				|| ( event >= PLAYERANIMEVENT_MELEE && event <= PLAYERANIMEVENT_MELEE_LAST ) ) )
+				|| ( event >= PLAYERANIMEVENT_MELEE && event <= PLAYERANIMEVENT_MELEE_LAST )
+				|| event == PLAYERANIMEVENT_DROP_MAGAZINE_GIB ) )
 	{
 		TE_MarineAnimEventExceptCommander( this, event );	// Send to any clients other than my commander who can see this guy.
 	}
@@ -634,6 +658,14 @@ CASW_Marine::CASW_Marine() : m_RecentMeleeHits( 16, 16 )
 
 	m_iPoisonHeal = 0;
 	m_flNextPoisonHeal = -1;
+
+	extern ConVar asw_marine_rolls;
+	m_bRolls = asw_marine_rolls.GetBool();
+
+	m_nMarineProfile = -1;
+
+	m_bSpawnZombineOnDeath = false;
+	m_bNightVision = false;
 }
 
 
@@ -769,6 +801,13 @@ void CASW_Marine::SetHeightLook( float flHeightLook )
 //-----------------------------------------------------------------------------
 void CASW_Marine::SelectModel()
 {
+	Assert( !ASWGameRules() || ASWGameRules()->GetGameState() == ASW_GS_NONE || ( m_MarineResource == NULL ) != ( m_nMarineProfile == -1 ) );
+	if ( m_MarineResource == NULL && m_nMarineProfile == -1 )
+	{
+		// use sarge so we don't crash if ent_create spawns a marine
+		m_nMarineProfile = 0;
+	}
+
 	SelectModelFromProfile();
 }
 
@@ -791,6 +830,7 @@ void CASW_Marine::Spawn( void )
 	SetModel( STRING( GetModelName() ) );
 	SetHullType(HULL_HUMAN);
 	SetHullSizeNormal();
+	SetBodygroup( 1, m_nSkin );
 
 	SetSolid( SOLID_BBOX );
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
@@ -826,9 +866,9 @@ void CASW_Marine::Spawn( void )
 	{
 		SetInhabited( false );
 	}
-	
-	m_ASWOrders = ASW_ORDER_FOLLOW;
-	m_bWasFollowing = true;
+
+	m_bWasFollowing = m_nMarineProfile == -1;
+	m_ASWOrders = m_bWasFollowing ? ASW_ORDER_FOLLOW : ASW_ORDER_HOLD_POSITION;
 	m_flFieldOfView = ASW_HOLD_POSITION_FOV_DOT;
 
 	SetDistLook( ASW_HOLD_POSITION_SIGHT_RANGE );
@@ -854,13 +894,8 @@ void CASW_Marine::Spawn( void )
 
 		gameeventmanager->FireEvent( event );
 	}
-}
 
-void CASW_Marine::NPCInit()
-{
-	BaseClass::NPCInit();
-
-	m_LagCompensation.Init(this);
+	UTIL_SetSize( this, GetHullMins(), GetHullMaxs() );
 }
 
 unsigned int CASW_Marine::PhysicsSolidMaskForEntity( void ) const 
@@ -887,11 +922,15 @@ void CASW_Marine::Precache()
 	PrecacheModel("models/swarm/marine/gibs/marine_gib_rightleg.mdl");
 	PrecacheModel("models/swarm/marine/gibs/marine_gib_pelvis.mdl");
 
+	PrecacheModel( "models/zombie/fallen_marine.mdl" );
+	UTIL_PrecacheOther( "npc_zombine" );
+
 	PrecacheModel( "cable/cable.vmt" );
 	PrecacheScriptSound( "ASW.MarineMeleeAttack" );
 	PrecacheScriptSound( "ASW.MarineMeleeAttackFP" );
 	PrecacheScriptSound( "ASW.MarinePowerFistAttack" );
 	PrecacheScriptSound( "ASW.MarinePowerFistAttackFP" );
+	PrecacheScriptSound( "ASW.MarinePowerFistHitWorld" );
 	PrecacheScriptSound( "ASW_Weapon_Flamer.FlameLoop" );
 	PrecacheScriptSound( "ASW_Weapon_Flamer.FlameStop" );
 	PrecacheScriptSound( "ASW_Weapon_Minigun.MinigunLoop" );
@@ -942,6 +981,8 @@ void CASW_Marine::Precache()
 	PrecacheScriptSound( "ASW_Blink.Blink" );
 	PrecacheScriptSound( "ASW_Blink.Teleport" );
 	PrecacheScriptSound( "ASW_XP.LevelUp" );
+	PrecacheScriptSound( "ASW_Leadership.Accuracy" );
+	PrecacheScriptSound( "ASW_Leadership.Resist" );
 
 	PrecacheScriptSound( "ASW_Weapon.InvalidDestination" );
 	PrecacheParticleSystem( "smallsplat" );						// shot
@@ -957,41 +998,14 @@ void CASW_Marine::Precache()
 	PrecacheParticleSystem( "jj_ground_pound" );
 	PrecacheParticleSystem( "invalid_destination" );
 	PrecacheParticleSystem( "Blink" );
+	PrecacheParticleSystem( "leadership_proc_accuracy" );
+	PrecacheParticleSystem( "leadership_proc_resist" );
 }
 
 void CASW_Marine::PrecacheSpeech()
 {
 	if (m_MarineSpeech && GetMarineResource())
 		m_MarineSpeech->Precache();
-}
-
-void CASW_Marine::PhysicsSimulate( void )
-{
-	m_vecGroundVelocity = GetGroundEntity() ? GetGroundEntity()->GetAbsVelocity() : vec3_origin;
-
-	for ( int i = 1; i <= gpGlobals->maxClients; i++ )
-	{
-		CASW_Player *player = ToASW_Player( UTIL_PlayerByIndex( i ) );
-
-		if ( player && player->GetNPC() == this)
-		{
-			InhabitedPhysicsSimulate();
-			return;
-		}
-	}
-	
-	BaseClass::PhysicsSimulate();
-
-	CASW_Weapon *pWeapon = GetActiveASWWeapon();
-	if (pWeapon)
-		pWeapon->ItemPostFrame();
-
-	// check if offhand weapon needs postframe
-	CASW_Weapon *pExtra = GetASWWeapon(2);
-	if (pExtra && pExtra != pWeapon && pExtra->m_bShotDelayed)
-	{
-		pExtra->ItemPostFrame();
-	}
 }
 
 #define ASW_BREADCRUMB_INTERVAL 4.0f
@@ -1040,22 +1054,6 @@ void CASW_Marine::Think( void )
 	}
 }
 
-CBaseCombatWeapon* CASW_Marine::ASWAnim_GetActiveWeapon()
-{
-	return GetActiveWeapon();
-}
-
-CASW_Marine_Profile* CASW_Marine::GetMarineProfile()
-{
-	CASW_Marine_Resource* pMR = GetMarineResource();
-	if ( !pMR )
-	{
-		return NULL;
-	}
-
-	return pMR->GetProfile();
-}
-
 bool CASW_Marine::IsCurTaskContinuousMove()
 {
 	const Task_t* pTask = GetTask();
@@ -1075,11 +1073,6 @@ bool CASW_Marine::IsCurTaskContinuousMove()
 		return BaseClass::IsCurTaskContinuousMove();
 		break;
 	}
-}
-
-bool CASW_Marine::ASWAnim_CanMove()
-{
-	return true;
 }
 
 // called when a player takes direct control of this marine
@@ -1110,7 +1103,19 @@ void CASW_Marine::InhabitedBy( CASW_Player *player )
 	SetPoseParameter( "move_x", 0.0f );
 	SetPoseParameter( "move_y", 0.0f );
 	SetMoveType( MOVETYPE_WALK );
-	Teleport( &GetAbsOrigin(), NULL, &m_vecSmoothedVelocity );
+	if ( IsInVehicle() )
+	{
+		Vector origin;
+		QAngle angles;
+		GetASWVehicle()->ASWGetSeatPosition( m_iVehicleSeat, origin, angles );
+		SetParent( NULL );
+		Teleport( &origin, &angles, &vec3_origin );
+		SetParent( m_hASWVehicle );
+	}
+	else
+	{
+		Teleport( &GetAbsOrigin(), NULL, &m_vecSmoothedVelocity );
+	}
 
 	m_iLightLevel = 255;	// reset light level - will get set correctly by first usercmd after this marine is inhabited
 }
@@ -1191,33 +1196,6 @@ void CASW_Marine::SetMarineResource(CASW_Marine_Resource *pMR)
 	}
 }
 
-
-void CASW_Marine::DoImpactEffect( trace_t &tr, int nDamageType )
-{
-	// don't do impact effects, they're simulated clientside by the tracer usermessage
-	return;
-	BaseClass::DoImpactEffect(tr, nDamageType);
-}
-
-void CASW_Marine::DoMuzzleFlash()
-{
-	return;	 // asw - muzzle flashes are triggered by tracer usermessages instead to save bandwidth
-
-	// Our weapon takes our muzzle flash command
-	CBaseCombatWeapon *pWeapon = GetActiveWeapon();
-	if ( pWeapon )
-	{
-		pWeapon->DoMuzzleFlash();
-		//NOTENOTE: We do not chain to the base here
-		//m_nMuzzleFlashParity = (m_nMuzzleFlashParity+1) & ((1 << EF_MUZZLEFLASH_BITS) - 1);
-		BaseClass::BaseClass::DoMuzzleFlash();
-	}
-	else
-	{
-		BaseClass::DoMuzzleFlash();
-	}
-}
-
 extern ConVar rd_marine_ff_fist;
 int CASW_Marine::OnTakeDamage( const CTakeDamageInfo &info )
 {
@@ -1241,7 +1219,7 @@ int CASW_Marine::OnTakeDamage( const CTakeDamageInfo &info )
 		retVal = OnTakeDamage_Alive( info );
 		if ( m_iHealth <= 0 )
 		{
-			// reactivedrop: make sure marines die from asw_trigger_fall, trigger_hurt or env_laser immediately, withoug being incapacitated
+			// reactivedrop: make sure marines die from asw_trigger_fall, trigger_hurt or env_laser immediately, without being incapacitated
 			CBaseEntity* pAttacker = info.GetAttacker();
 			bool bIsLethalDanger =	dynamic_cast< CASW_Trigger_Fall* >( pAttacker ) ||
 									dynamic_cast< CTriggerHurt* >( pAttacker )		||
@@ -1306,6 +1284,12 @@ int CASW_Marine::OnTakeDamage( const CTakeDamageInfo &info )
 						}
 					}
 
+					CSingleUserRecipientFilter filter( GetCommander() );
+					filter.MakeReliable();
+					UserMessageBegin( filter, "RDCauseOfDeath" );
+						WRITE_SHORT( GetCauseOfDeath( this, info ) );
+					MessageEnd();
+
 					return retVal;
 				}
 				else 
@@ -1329,6 +1313,10 @@ int CASW_Marine::OnTakeDamage( const CTakeDamageInfo &info )
 			{
 				bGibbed = Event_Gibbed( info );
 			}
+
+#ifdef RD_7A_WEAPONS
+			CASW_Revive_Tombstone::MaybeCreateTombstone( this, info, bGibbed );
+#endif
 
 			if ( bGibbed == false )
 			{
@@ -1361,7 +1349,7 @@ void CASW_Marine::Event_Dying( void )
 int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 {
 	// make marines immune to crush damage
-	if ( info.GetDamageType() & DMG_CRUSH || asw_god.GetBool() )
+	if ( ( ( info.GetDamageType() & DMG_CRUSH ) && !( info.GetDamageType() & DMG_VEHICLE ) ) || asw_god.GetBool() )
 	{
 		return 0;
 	}
@@ -1394,7 +1382,7 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 	}
 	
 	// don't allow FF from melee attacks
-	bool bFriendlyFire = pAttacker && pAttacker->Classify() == CLASS_ASW_MARINE;
+	bool bFriendlyFire = pAttacker && pAttacker->Classify() == CLASS_ASW_MARINE && IRelationType( pAttacker ) == D_LI;
 	if ( bFriendlyFire )
 	{
 		CASW_Marine *pOtherMarine = assert_cast<CASW_Marine*>(pAttacker);
@@ -1445,8 +1433,7 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 			bool bFlamerDot = !!(newInfo.GetDamageType() & ( DMG_BURN | DMG_DIRECT ) );
 			if ( newInfo.GetDamage() > 0 && pAttacker != this && !bFlamerDot )
 			{
-				bool bHardcoreMode = ASWGameRules() && ASWGameRules()->IsHardcoreMode();
-				if ( !bHardcoreMode && asw_marine_ff_absorption.GetInt() != 0 )
+				if ( asw_marine_ff_absorption.GetInt() != 0 )
 				{
 					float flNewDamage = info.GetDamage() * GetFFAbsorptionScale();
 					newInfo.SetDamage(flNewDamage);
@@ -1467,14 +1454,18 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 
 	// don't kill the marine in one hit unless he's on 1 health
 	bool bKillProtection = false;
-	if (asw_marine_death_protection.GetBool() && !(ASWGameRules() && ASWGameRules()->IsHardcoreMode()))	// no 1 hit protection in hardcore mode
+	if ( asw_marine_death_protection.GetBool() )	// no 1 hit protection in hardcore mode
 	{
-		if (newInfo.GetDamageType() != DMG_CRUSH && newInfo.GetDamageType() != DMG_FALL
-				&& newInfo.GetDamageType() != DMG_INFEST && GetHealth() > 1)
+		if ( newInfo.GetDamageType() != DMG_CRUSH && newInfo.GetDamageType() != DMG_FALL
+			&& newInfo.GetDamageType() != DMG_INFEST && GetHealth() > 1 )
 		{
-			if (newInfo.GetDamage() >= GetHealth())
+			if ( newInfo.GetDamage() >= GetHealth() )
 				bKillProtection = true;
 		}
+
+		// no protection when the blast damage was 3 times higher than marine's health
+		if ( newInfo.GetDamageType() == DMG_BLAST && newInfo.GetDamage() >= GetHealth() * 3 )
+			bKillProtection = false;
 	}
 
 	CBaseEntity* pInflictor = newInfo.GetInflictor();
@@ -1493,23 +1484,33 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 
 	// reduce damage thanks to leadership
 	// see if we pass the chance
-	float fChance = MarineSkills()->GetHighestSkillValueNearby(GetAbsOrigin(),
+	CASW_Marine *pLeader = MarineSkills()->CheckSkillChanceNearby( this, GetAbsOrigin(),
 		asw_leadership_radius.GetFloat(),
 		ASW_MARINE_SKILL_LEADERSHIP, ASW_MARINE_SUBSKILL_LEADERSHIP_DAMAGE_RESIST );
-	static int iLeadershipResCount = 0;
-	if (random->RandomFloat() < fChance)
+	if ( pLeader )
 	{
-		float fNewDamage = newInfo.GetDamage() * 0.5f;
-		if (fNewDamage <= 0)
-			return 0;
-		newInfo.SetDamage(fNewDamage);
-		
-		iLeadershipResCount++;
+		CASW_Marine_Resource *pLeaderMR = pLeader->GetMarineResource();
+		Assert( pLeaderMR );
 
-		if (asw_debug_marine_damage.GetBool())
-		{			
-			Msg("  Damage reduced by nearby leadership to %f (leadership resistance applied %d times so far)\n", fNewDamage, iLeadershipResCount);
+		CBaseEntity *pHelpHelpImBeingSupressed = ( CBaseEntity * )te->GetSuppressHost();
+		te->SetSuppressHost( NULL );
+
+		DispatchParticleEffectLink( "leadership_proc_resist", PATTACH_POINT_FOLLOW, pLeader, this, pLeader->LookupAttachment( "officer_antenna_end" ) );
+		EmitSound( "ASW_Leadership.Resist" );
+
+		te->SetSuppressHost( pHelpHelpImBeingSupressed );
+
+		float fNewDamage = newInfo.GetDamage() * asw_leadership_resist_scale.GetFloat();
+
+		if ( pLeaderMR )
+		{
+			pLeaderMR->m_iLeadershipProcsResist++;
+			pLeaderMR->m_iLeadershipDamageResist += newInfo.GetDamage() - MAX( fNewDamage, 0 );
 		}
+
+		if ( fNewDamage <= 0 )
+			return 0;
+		newInfo.SetDamage( fNewDamage );
 	}
 
 	if ( pAttacker )
@@ -1538,13 +1539,13 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 		ApplyPassiveArmorEffects( newInfo );
 
 		// reduce damage and shock alien if we have electrified armour on
-		if ( newInfo.GetDamageType() & DMG_SLASH )
+		if ( newInfo.GetDamageType() & ( DMG_SLASH | DMG_CLUB ) )
 		{
 			if ( IsElectrifiedArmorActive() )
 			{
-				if ( pAttacker->IsAlienClassType() )
+				if ( pAttacker->IsInhabitableNPC() )
 				{
-					CASW_Alien* pAlien = assert_cast<CASW_Alien*>(pAttacker);
+					CASW_Inhabitable_NPC *pAlien = assert_cast< CASW_Inhabitable_NPC * >( pAttacker );
 
 					const float flDamageReturn = 20.0f;
 					Vector vecToTarget = pAlien->WorldSpaceCenter() - WorldSpaceCenter();
@@ -1631,8 +1632,10 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 
 	int iPreDamageHealth = GetHealth();
 	CASW_GameStats.Event_MarineTookDamage( this, newInfo );
-	int result = BaseClass::OnTakeDamage_Alive(newInfo);
+	int result = BaseClass::OnTakeDamage_Alive( newInfo );
 	int iDamageTaken = MAX( iPreDamageHealth, 0 ) - MAX( GetHealth(), 0 );
+	if ( asw_god_effects.GetBool() )
+		SetHealth( iPreDamageHealth );
 
 	if (asw_debug_marine_damage.GetBool() && result > 0)
 		Msg("  Marine took final damage: %f of type %d\n", newInfo.GetDamage(), newInfo.GetDamageType());
@@ -1727,6 +1730,7 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 			CASW_ViewNPCRecipientFilter user( this );
 			UserMessageBegin( user, "Damage" );
 			WRITE_SHORT( clamp( (int)newInfo.GetDamage(), 0, 32000 ) );
+			WRITE_ENTITY( entindex() );
 			WRITE_LONG( newInfo.GetDamageType() );
 			// Tell the client whether they should show it in the indicator
 			if ( !(newInfo.GetDamageType() & (DMG_DROWN | DMG_FALL | DMG_BURN | DMG_INFEST | DMG_RADIATION) ) )
@@ -1740,6 +1744,12 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 				WRITE_BOOL( false );
 			}
 			MessageEnd();
+		}
+		if ( ( ASWDeathmatchMode() || !bFriendlyFire ) && ( info.GetDamageType() & DMG_SHOCK ) && m_bTeslable )
+		{
+			ElectroStun( asw_stun_grenade_time.GetFloat() );
+
+			m_fNoDamageDecal = true;
 		}
 		if (info.GetDamageType() & DMG_BLURPOISON)
 		{
@@ -1769,7 +1779,7 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 			}
 
 			// this is the sound that's played for the local player only
-			CASW_ViewNPCRecipientFilter localfilter( this );
+			CASW_ViewNPCRecipientFilter localfilter( this, false );
 			localfilter.MakeReliable();
 
 			// this is the sound that's played for all other players, but the local player
@@ -1895,7 +1905,18 @@ int CASW_Marine::OnTakeDamage_Alive( const CTakeDamageInfo &info )
 				GetMarineSpeech()->PersonalChatter(CHATTER_PAIN_SMALL);
 
 			m_fNextPainSoundTime = gpGlobals->curtime + fPainInterval;
-		}		
+		}
+
+		if ( asw_marine_damage_force_scale.GetFloat() != 0 )
+		{
+			// make sure it's not too big of an acceleration or it'll just be ignored
+			Vector vecImpulse = newInfo.GetDamageForce() * asw_marine_damage_force_scale.GetFloat();
+			float flSpeed = vecImpulse.Length();
+			if ( flSpeed > k_flMaxEntitySpeed )
+				vecImpulse *= k_flMaxEntitySpeed / flSpeed;
+
+			ApplyAbsVelocityImpulse( vecImpulse );
+		}
 	}
 
 	return result;
@@ -2000,31 +2021,6 @@ void CASW_Marine::HurtAlien(CBaseEntity *pAlien, const CTakeDamageInfo &info)
 	m_flLastHurtAlienTime = gpGlobals->curtime;
 	
 	CASW_Weapon *pWeapon = GetActiveASWWeapon();
-	/*
-	if ( pWeapon && pAlien )
-	{
-		IASW_Spawnable_NPC *pNPC = dynamic_cast<IASW_Spawnable_NPC*>(pAlien);
-		if ( pNPC && !(info.GetDamageType() & (DMG_BURN | DMG_BLAST | DMG_SHOCK | DMG_DIRECT) ) )
-		{
-			// TODO: Make sure flamer and stun grenades still work
-			/*
-			float flIgniteChance = 0;
-			CALL_ATTRIB_HOOK_FLOAT_ON_OTHER( pWeapon, flIgniteChance, mod_ignite );
-			if ( RandomFloat() < flIgniteChance )
-			{
-				pNPC->ASW_Ignite(5.0f, 0, info.GetAttacker());
-			}
-
-			float flElectroChance = 0;
-			CALL_ATTRIB_HOOK_FLOAT_ON_OTHER( pWeapon, flElectroChance, mod_electro_stun );
-			if ( RandomFloat() < flElectroChance )
-			{
-				pNPC->ElectroStun( 5.0f );
-			}
-			//
-		}
-	}
-	*/
 	// don't do any chatter effects if this alien is being hurt by a burn DoT
 	CBaseEntity* pInflictor = info.GetInflictor();
 	if ( pInflictor && pInflictor->Classify() == CLASS_ASW_BURNING )
@@ -2143,8 +2139,29 @@ void CASW_Marine::PostThink()
 	{
 		StudioFrameAdvance();
 	}
-		
+
 	ASWThinkEffects();
+
+
+	// stop electro stunning if we're slowed
+	if ( m_bElectroStunned && m_lifeState != LIFE_DYING )
+	{
+		if ( m_flElectroStunSlowMoveTime < gpGlobals->curtime )
+		{
+			m_bElectroStunned = false;
+		}
+		else
+		{
+			if ( gpGlobals->curtime >= m_fNextStunSound )
+			{
+				m_fNextStunSound = gpGlobals->curtime + RandomFloat( 0.2f, 0.5f );
+
+				EmitSound( "ASW_Tesla_Laser.Damage" );
+			}
+		}
+	}
+
+	UpdateThawRate();
 
 	if ( NeedToUpdateSquad() )
 	{
@@ -2190,6 +2207,15 @@ void CASW_Marine::PostThink()
 void CASW_Marine::ASWThinkEffects()
 {
 	float fDeltaTime = gpGlobals->curtime - m_fLastASWThink;
+
+	if ( IsInVehicle() )
+	{
+		Vector origin;
+		QAngle angles;
+		GetASWVehicle()->ASWGetSeatPosition( m_iVehicleSeat, origin, angles );
+		SetAbsOrigin( origin );
+		SetAbsAngles( angles );
+	}
 
 	if ( gpGlobals->curtime > m_flNextPositionHistoryTime )
 	{
@@ -2278,7 +2304,7 @@ void CASW_Marine::ASWThinkEffects()
 					if ( IsElectrifiedArmorActive() )
 					{
 						// Do some serious hurt to that bug each time he bites!
-						CureInfestation( NULL, 0.4f );
+						CureInfestation( NULL, NULL, 0.4f );
 					}
 
 					m_iInfestCycle = 0;
@@ -2315,31 +2341,35 @@ void CASW_Marine::ASWThinkEffects()
 							UTIL_ASW_DroneBleed( WorldSpaceCenter(), Vector(0, 0, 1), 4 );
 						}
 
-						if (m_hInfestationCurer.Get() && m_hInfestationCurer->GetMarineResource())
+						IGameEvent *event = gameeventmanager->CreateEvent( "marine_infested_cured" );
+						if ( event )
+						{
+							CASW_Player *pPlayer = NULL;
+							if ( m_hInfestationCurer.Get() && m_hInfestationCurer->IsInhabited() )
+							{
+								pPlayer = m_hInfestationCurer->GetCommander();
+							}
+
+							event->SetInt( "entindex", entindex() );
+							event->SetInt( "userid", pPlayer ? pPlayer->GetUserID() : 0 );
+							event->SetInt( "marine", m_hInfestationCurer ? m_hInfestationCurer->entindex() : -1 );
+							event->SetInt( "weapon", m_hInfestationCureWeapon ? m_hInfestationCureWeapon->entindex() : -1 );
+							gameeventmanager->FireEvent( event );
+						}
+
+						if ( m_hInfestationCurer.Get() && m_hInfestationCurer->GetMarineResource() )
 						{
 							if ( m_hInfestationCurer->GetCommander() && m_hInfestationCurer->IsInhabited() )
 							{
 								m_hInfestationCurer->GetCommander()->AwardAchievement( ACHIEVEMENT_ASW_INFESTATION_CURING );
 							}
 							m_hInfestationCurer->GetMarineResource()->m_iCuredInfestation++;
-							m_hInfestationCurer = NULL;
 						}
 
-						IGameEvent * event = gameeventmanager->CreateEvent( "marine_infested_cured" );
-						if ( event )
-						{
-							CASW_Player *pPlayer = NULL;
-							if ( m_hInfestationCurer.Get() )
-							{
-								pPlayer = m_hInfestationCurer->GetCommander();
-							}
-
-							event->SetInt( "entindex", entindex() );
-							event->SetInt( "userid", ( pPlayer ? pPlayer->GetUserID() : 0 ) );
-							gameeventmanager->FireEvent( event );
-						}
+						m_hInfestationCurer = NULL;
+						m_hInfestationCureWeapon = NULL;
 					}
-				}				
+				}
 			}
 		}
 	}
@@ -2808,14 +2838,14 @@ void CASW_Marine::Weapon_Equip_Post( CBaseCombatWeapon *pWeapon)
 	// If gun doesn't use clips, just give ammo
 	if (pWeapon->GetMaxClip1() == -1)
 	{
-		GiveAmmo(pWeapon->GetDefaultClip1(), pWeapon->m_iPrimaryAmmoType); 
+		GiveAmmo( pWeapon->GetDefaultClip1(), pWeapon->m_iPrimaryAmmoType, true );
 	}
 	// If default ammo given is greater than clip
 	// size, fill clips and give extra ammo
 	else if (pWeapon->GetDefaultClip1() >  pWeapon->GetMaxClip1() )
 	{
 		pWeapon->m_iClip1 = pWeapon->GetMaxClip1();
-		GiveAmmo( (pWeapon->GetDefaultClip1() - pWeapon->GetMaxClip1()), pWeapon->m_iPrimaryAmmoType); 
+		GiveAmmo( ( pWeapon->GetDefaultClip1() - pWeapon->GetMaxClip1() ), pWeapon->m_iPrimaryAmmoType, true );
 	}
 
 	// ----------------------
@@ -2824,14 +2854,14 @@ void CASW_Marine::Weapon_Equip_Post( CBaseCombatWeapon *pWeapon)
 	// If gun doesn't use clips, just give ammo
 	if (pWeapon->GetMaxClip2() == -1)
 	{
-		GiveAmmo(pWeapon->GetDefaultClip2(), pWeapon->m_iSecondaryAmmoType); 
+		GiveAmmo( pWeapon->GetDefaultClip2(), pWeapon->m_iSecondaryAmmoType, true );
 	}
 	// If default ammo given is greater than clip
 	// size, fill clips and give extra ammo
 	else if ( pWeapon->GetDefaultClip2() > pWeapon->GetMaxClip2() )
 	{
 		pWeapon->m_iClip2 = pWeapon->GetMaxClip2();
-		GiveAmmo( (pWeapon->GetDefaultClip2() - pWeapon->GetMaxClip2()), pWeapon->m_iSecondaryAmmoType); 
+		GiveAmmo( ( pWeapon->GetDefaultClip2() - pWeapon->GetMaxClip2() ), pWeapon->m_iSecondaryAmmoType, true );
 	}
 
 	pWeapon->Equip( this );
@@ -3148,7 +3178,7 @@ bool CASW_Marine::RefillHealGun(CBaseEntity *pWeaponPickup)
 bool CASW_Marine::DropWeapon(int iWeaponIndex, bool bNoSwap)
 {
 	CASW_Weapon* pWeapon = GetASWWeapon(iWeaponIndex);
-	if (!pWeapon)
+	if ( !pWeapon || !pWeapon->CanHolster() )
 		return false;
 
 	RemoveWeaponPowerup( pWeapon );
@@ -3535,12 +3565,12 @@ const char* CASW_Marine::Script_GetMarineName()
 	if ( !GetMarineResource() )
 		return "";
 
-	char *shortName = GetMarineResource()->GetProfile()->m_ShortName;
-	char *name = new char[14];
-	V_StrSlice( shortName, 10, V_strlen(shortName), name, 14 );
-	name[0] = toupper( name[0] );
+	wchar_t wszName[256];
+	TryLocalize( GetMarineResource()->GetProfile()->m_ShortName, wszName, sizeof( wszName ) );
+	static char s_szName[256];
+	V_UnicodeToUTF8( wszName, s_szName, sizeof( s_szName ) );
 
-	return name;
+	return s_szName;
 }
 
 void CASW_Marine::Script_Speak( const char *pszConcept, float delay, const char *pszCriteria )
@@ -3553,6 +3583,16 @@ void CASW_Marine::Script_Speak( const char *pszConcept, float delay, const char 
 
 	AIConcept_t concept( pszConcept );
 	QueueSpeak( concept, this, delay, criteria );
+}
+
+void CASW_Marine::SetMarineRolls( bool bRolls )
+{
+	m_bRolls = bRolls;
+}
+
+void CASW_Marine::SetSpawnZombineOnDeath( bool bSpawn )
+{
+	m_bSpawnZombineOnDeath = bSpawn;
 }
 
 // healing
@@ -3604,18 +3644,9 @@ void CASW_Marine::AddSlowHeal( int iHealAmount, float flHealRateScale, CASW_Mari
 		}
 
 		// healing puts out fires
-		if (IsOnFire())
+		if ( IsOnFire() )
 		{
-			Extinguish();
-			/*
-			CEntityFlame *pFireChild = dynamic_cast<CEntityFlame *>( GetEffectEntity() );
-			if ( pFireChild )
-			{
-				SetEffectEntity( NULL );
-				UTIL_Remove( pFireChild );				
-				Extinguish();
-			}
-			*/
+			Extinguish( pMedic, pHealingWeapon );
 		}
 
 		// count heal for stats
@@ -3623,14 +3654,16 @@ void CASW_Marine::AddSlowHeal( int iHealAmount, float flHealRateScale, CASW_Mari
 			GetMarineResource()->m_iHealCount++;
 
 		// Fire event
-		IGameEvent * event = gameeventmanager->CreateEvent("marine_healed");
+		IGameEvent *event = gameeventmanager->CreateEvent( "marine_healed" );
 		if (event)
 		{
-			event->SetInt("medic_entindex", (pMedic ? pMedic->entindex() : -1));
-			event->SetInt("patient_entindex", entindex());
-			event->SetInt("amount_healed", iHealAmount);
-			event->SetString("weapon_class", (pHealingWeapon ? pHealingWeapon->GetClassname() : ""));
-			gameeventmanager->FireEvent(event);
+			event->SetInt( "medic_entindex", ( pMedic ? pMedic->entindex() : -1 ) );
+			event->SetInt( "patient_entindex", entindex() );
+			event->SetInt( "amount_healed", iHealAmount );
+			event->SetInt( "amount", iMedicMedalHealed );
+			event->SetInt( "weapon", pHealingWeapon ? pHealingWeapon->entindex() : -1 );
+			event->SetString( "weapon_class", ( pHealingWeapon ? pHealingWeapon->GetClassname() : "" ) );
+			gameeventmanager->FireEvent( event );
 		}
 
 		// Fire heal event for stat tracking
@@ -3740,7 +3773,7 @@ void CASW_Marine::BecomeInfested(CASW_Alien* pAlien)
 	m_bPlayedCureScream = false;
 }
 
-void CASW_Marine::CureInfestation(CASW_Marine *pHealer, float fCureFraction)
+void CASW_Marine::CureInfestation(CASW_Marine *pHealer, CBaseEntity *pWeapon, float fCureFraction)
 {
 	if ( !GetMarineResource() )
 		return;
@@ -3749,7 +3782,10 @@ void CASW_Marine::CureInfestation(CASW_Marine *pHealer, float fCureFraction)
 	{
 		m_fInfestedTime = m_fInfestedTime * fCureFraction;
 		if ( pHealer )
-			m_hInfestationCurer = pHealer;	
+		{
+			m_hInfestationCurer = pHealer;
+			m_hInfestationCureWeapon = pWeapon;
+		}
 
 		if ( m_fInfestedTime < 0.0f )
 		{
@@ -3770,12 +3806,15 @@ void CASW_Marine::ScriptBecomeInfested()
 
 void CASW_Marine::ScriptCureInfestation()
 {
-	CureInfestation( NULL, 0 );
+	CureInfestation( NULL, NULL, 0 );
 }
 
 // if we died from infestation, then gib
 bool CASW_Marine::ShouldGib( const CTakeDamageInfo &info )
 {
+	if ( m_bSpawnZombineOnDeath )
+		return false;
+	
 	if (info.GetDamageType() & DMG_INFEST || info.GetDamageType() & DMG_BLAST)
 		return true;
 
@@ -3800,25 +3839,25 @@ bool CASW_Marine::CorpseGib( const CTakeDamageInfo &info )
 // called when marine dies from parasites or from an explosion
 bool  CASW_Marine::Event_Gibbed( const CTakeDamageInfo &info )
 {
-	Vector force = Vector(0, 0, 0);
+	Vector force = Vector( 0, 0, 0 );
 	Vector origin = GetAbsOrigin();
-	short death_type = RIP_PARASITE;
+	eRip_Type death_type = RIP_PARASITE;
 
 	if ( info.GetDamageType() & DMG_INFEST )
 	{
 		if ( asw_debug_marine_damage.GetBool() )
 		{
-			Msg("marine infest gibbed at loc %f, %f, %f\n", GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z);
+			Msg( "marine infest gibbed at loc %f, %f, %f\n", GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z );
 		}
 
-		if ( asw_debug_marine_damage.GetBool())
+		if ( asw_debug_marine_damage.GetBool() )
 		{
-			NDebugOverlay::EntityBounds(this, 255,0,0, 255, 15.0f);
+			NDebugOverlay::EntityBounds( this, 255, 0, 0, 255, 15.0f );
 		}
 
 		ASWFailAdvice()->OnMarineInfestedGibbed();
 
-		int iNumParasites = 3 + RandomInt(0,2);
+		int iNumParasites = 3 + RandomInt( 0, 2 );
 		QAngle angParasiteFacing[5];
 		float fJumpDistance[5];
 		// for some reason if we calculate these inside the loop, the random numbers all come out the same.  Worrying.
@@ -3835,7 +3874,7 @@ bool  CASW_Marine::Event_Gibbed( const CTakeDamageInfo &info )
 
 		for ( int i = 0; i < iNumParasites; i++ )
 		{
-			bool bBlocked = true;			
+			bool bBlocked = true;
 			int k = 0;
 
 			Vector vecSpawnPos = GetAbsOrigin();
@@ -3843,7 +3882,7 @@ bool  CASW_Marine::Event_Gibbed( const CTakeDamageInfo &info )
 			vecSpawnPos.x += sinf( fCircleDegree ) * RandomFloat( 3.0f, 20.0f );
 			vecSpawnPos.y += cosf( fCircleDegree ) * RandomFloat( 3.0f, 20.0f );
 			vecSpawnPos.z += RandomFloat( 20.0f, 40.0f );
-			
+
 			while ( bBlocked && k < 6 )
 			{
 				if ( k > 0 )
@@ -3851,16 +3890,16 @@ bool  CASW_Marine::Event_Gibbed( const CTakeDamageInfo &info )
 					// Scooch it up
 					vecSpawnPos.z += NAI_Hull::Maxs( HULL_TINY ).z - NAI_Hull::Mins( HULL_TINY ).z;
 				}
-						
+
 				// check if there's room at this position
 				trace_t tr;
-				UTIL_TraceHull( vecSpawnPos, vecSpawnPos + Vector( 0.0f, 0.0f, 1.0f ), 
-					NAI_Hull::Mins(HULL_TINY) + Vector( -4.0f, -4.0f, -4.0f ),NAI_Hull::Maxs(HULL_TINY) + Vector( 4.0f, 4.0f, 4.0f ),
-					MASK_NPCSOLID, this, ASW_COLLISION_GROUP_PARASITE, &tr );	
+				UTIL_TraceHull( vecSpawnPos, vecSpawnPos + Vector( 0.0f, 0.0f, 1.0f ),
+					NAI_Hull::Mins( HULL_TINY ) + Vector( -4.0f, -4.0f, -4.0f ), NAI_Hull::Maxs( HULL_TINY ) + Vector( 4.0f, 4.0f, 4.0f ),
+					MASK_NPCSOLID, this, ASW_COLLISION_GROUP_PARASITE, &tr );
 
 				if ( asw_debug_marine_damage.GetBool() )
 				{
-					NDebugOverlay::Box(vecSpawnPos, NAI_Hull::Mins(HULL_TINY),NAI_Hull::Maxs(HULL_TINY), 255,255,0,255,15.0f);
+					NDebugOverlay::Box( vecSpawnPos, NAI_Hull::Mins( HULL_TINY ), NAI_Hull::Maxs( HULL_TINY ), 255, 255, 0, 255, 15.0f );
 				}
 
 				if ( tr.fraction == 1.0 )
@@ -3868,52 +3907,57 @@ bool  CASW_Marine::Event_Gibbed( const CTakeDamageInfo &info )
 					bBlocked = false;
 				}
 
-				k++;				
+				k++;
 			}
 
-			if (bBlocked)
+			if ( bBlocked )
 				continue;	// couldn't find room for parasites
 
 			if ( asw_debug_marine_damage.GetBool() )
 			{
-				Msg("Found an unblocked pos for this entity, trying to spawn it there %f, %f, %f\n", vecSpawnPos.x, 
-					vecSpawnPos.y, vecSpawnPos.z);
+				Msg( "Found an unblocked pos for this entity, trying to spawn it there %f, %f, %f\n", vecSpawnPos.x,
+					vecSpawnPos.y, vecSpawnPos.z );
 			}
 
-			CASW_Parasite *pParasite = assert_cast< CASW_Parasite* >( CreateNoSpawn( "asw_parasite", vecSpawnPos, angParasiteFacing[i], this ) );
+			CASW_Parasite *pParasite = assert_cast< CASW_Parasite * >( CreateNoSpawn( "asw_parasite", vecSpawnPos, angParasiteFacing[i], this ) );
 			if ( pParasite )
 			{
 				PhysDisableEntityCollisions( pParasite, this );
 				DispatchSpawn( pParasite );
-				pParasite->SetSleepState(AISS_WAITING_FOR_INPUT);
-				pParasite->SetJumpFromEgg(true, fJumpDistance[i]);
+				pParasite->SetSleepState( AISS_WAITING_FOR_INPUT );
+				pParasite->SetJumpFromEgg( true, fJumpDistance[i] );
 				pParasite->Wake();
 			}
 		}
 	}
-	else if (info.GetDamageType() & DMG_BLAST)
+	else if ( info.GetDamageType() & DMG_BLAST )
 	{
 		death_type = RIP_EXPLOSION;
-		force = CalcDeathForceVector(info);
+		force = CalcDeathForceVector( info );
 	}
 
-	CASW_Marine_Profile* pProfile = GetMarineProfile();
+	CASW_Marine_Profile *pProfile = GetMarineProfile();
 
 	CRecipientFilter filter;
 	filter.AddAllPlayers();
 
-	UserMessageBegin(filter, "ASWRipRagdoll");
-		WRITE_BYTE(death_type);
-		WRITE_VEC3COORD( origin );
-		WRITE_VEC3COORD( force );
-		WRITE_BYTE( pProfile->m_ProfileIndex );
+	UserMessageBegin( filter, "ASWRipRagdoll" );
+		WRITE_UBITLONG( death_type, 2 );
+		WRITE_UBITLONG( pProfile->m_ProfileIndex, 6 );
+		WRITE_ANGLE( GetAbsAngles()[YAW] );
+		WRITE_FLOAT( origin.x );
+		WRITE_FLOAT( origin.y );
+		WRITE_FLOAT( origin.z );
+		WRITE_FLOAT( force.x );
+		WRITE_FLOAT( force.y );
+		WRITE_FLOAT( force.z );
 	MessageEnd();
 
 	AddEffects( EF_NODRAW ); // make the model invisible.
 	SetSolid( SOLID_NONE );
 	// reactivedrop: changed from 2 seconds to 0.1, to prevent crashes on fast 
 	// respawn in DeathMatch
-	SetNextThink( gpGlobals->curtime + 0.1f ); 
+	SetNextThink( gpGlobals->curtime + 0.1f );
 	SetThink( &CASW_Marine::SUB_Remove );
 	return CorpseGib( info );
 }
@@ -3930,6 +3974,15 @@ CRagdollProp* CASW_Marine::GetRagdollProp()
 
 void CASW_Marine::Event_Killed( const CTakeDamageInfo &info )
 {
+	if ( IsInhabited() )
+	{
+		CSingleUserRecipientFilter filter( GetCommander() );
+		filter.MakeReliable();
+		UserMessageBegin( filter, "RDCauseOfDeath" );
+			WRITE_SHORT( GetCauseOfDeath( this, info ) );
+		MessageEnd();
+	}
+
 	bool bAllDead = false;
 
 	if ( ASWGameRules() && ASWGameRules()->GetMissionManager() )
@@ -3969,7 +4022,7 @@ void CASW_Marine::Event_Killed( const CTakeDamageInfo &info )
 		CASW_Player *pPlayer = GetCommander();
 		if ( pPlayer && pPlayer->GetNPC() == this )
 		{
-			if ( UTIL_ASW_NumCommandedMarines( pPlayer ) >= 1 )
+			if ( !ASWDeathmatchMode() && UTIL_ASW_NumCommandedMarines( pPlayer ) >= 1 )
 			{
 				IGameEvent *event = gameeventmanager->CreateEvent( "player_should_switch" );
 				if ( event )
@@ -4176,6 +4229,34 @@ void CASW_Marine::Event_Killed( const CTakeDamageInfo &info )
 			}
 		}
 	}
+
+	CBaseEntity *pAttacker = info.GetAttacker();
+	CASW_Inhabitable_NPC* pAttackerNPC = dynamic_cast< CASW_Inhabitable_NPC* >( pAttacker );
+	m_bSpawnZombineOnDeath = m_bSpawnZombineOnDeath ||
+							( pAttackerNPC && pAttackerNPC->m_bSpawnZombineOnMarineKill ) ||
+							( pAttackerNPC && pAttackerNPC->Classify() != CLASS_ASW_MARINE && rd_marine_spawn_zombine_on_death_chance.GetFloat() > RandomFloat() );
+
+	if ( m_bSpawnZombineOnDeath )
+	{
+		CNPC_Zombine* pZombine = dynamic_cast< CNPC_Zombine* >( CreateEntityByName( "npc_zombine" ) );
+
+		if ( !pZombine )
+		{
+			Warning( "Unable to create npc_zombine from dying marine.\n" );
+		}
+		else
+		{
+			pZombine->SetAbsOrigin( GetAbsOrigin() + Vector( 0.0, 0.0, 10.0 ) ); // spawns in the ground, raise height by 10
+			pZombine->SetAbsAngles( GetAbsAngles() );
+
+			pZombine->Spawn();
+
+			pZombine->SetModel( "models/zombie/fallen_marine.mdl" );
+			pZombine->m_nSkin = GetSkin();
+			pZombine->SetRenderColor( GetRenderColor().r, GetRenderColor().g, GetRenderColor().b );	
+		}
+	}
+
 	BaseClass::Event_Killed( info );
 
 	if ( asw_debug_marine_chatter.GetBool() )
@@ -4207,7 +4288,9 @@ void CASW_Marine::Event_Killed( const CTakeDamageInfo &info )
 			}
 			if ( !bTech && pGameResource->CountAllAliveMarines() > 0 )
 			{
-				ASWGameRules()->ScheduleTechFailureRestart( gpGlobals->curtime + 1.5f );
+				float flDelay = gEntList.FindEntityByClassname( NULL, "asw_weapon_hack_tool" ) ? 5.0f : 1.5f;
+				CASW_Tech_Marine_Req *pReq = assert_cast< CASW_Tech_Marine_Req * >( gEntList.FindEntityByClassname( NULL, "asw_tech_marine_req" ) );
+				ASWGameRules()->ScheduleTechFailureRestart( gpGlobals->curtime + flDelay, pReq ? pReq->m_szStatsMusicFailure : NULL_STRING );
 			}
 		}
 	}
@@ -4216,9 +4299,7 @@ void CASW_Marine::Event_Killed( const CTakeDamageInfo &info )
 	if ( ASWDeathmatchMode() )
 		ASWDeathmatchMode()->OnMarineKilled( info, this );
 
-
 	// print a message if marine was killed by another marine
-	CBaseEntity *pAttacker = info.GetAttacker();
 	if ( pAttacker && pAttacker->Classify() == CLASS_ASW_MARINE )
 	{
 		CASW_Marine *pOtherMarine = assert_cast< CASW_Marine * >( pAttacker );
@@ -4345,61 +4426,75 @@ IASW_Vehicle* CASW_Marine::GetASWVehicle()
 }
 
 // make the marine start driving a particular vehicle
-void CASW_Marine::StartDriving(IASW_Vehicle* pVehicle)
+void CASW_Marine::EnterVehicle( IASW_Vehicle *pVehicle, int iSeat )
 {
-	if (!pVehicle || IsDriving() || IsInVehicle() || pVehicle->ASWGetDriver()!=NULL)
+	if ( !pVehicle || IsDriving() || IsInVehicle() || ( iSeat < 0 ? pVehicle->ASWGetDriver() : pVehicle->ASWGetPassenger( iSeat ) ) )
 		return;
 
-	CBaseEntity* pEnt = pVehicle->GetEntity();
-	if (!pEnt)
+	CBaseEntity *pEnt = pVehicle->GetEntity();
+	if ( !pEnt )
 		return;
 
-	//Must be able to stow our weapon
-	CBaseCombatWeapon *pWeapon = GetActiveWeapon();	
-	if ( ( pWeapon != NULL ) && ( pWeapon->Holster( NULL ) == false ) )
-		return;
+	m_flPreventLaserSightTime = -1.0f;
 
-	pVehicle->ASWSetDriver(this);
-	pVehicle->ASWStartEngine();
+	if ( iSeat < 0 )
+	{
+		pVehicle->ASWSetDriver( this );
+		pVehicle->ASWStartEngine();
+	}
+	else
+	{
+		pVehicle->ASWSetPassenger( iSeat, this );
+	}
 
-	m_bDriving = true;
+	m_iVehicleSeat = iSeat;
 	m_bIsInVehicle = true;
 	m_hASWVehicle = pEnt;
 
-	AddEffects( EF_NODRAW );
+	Vector origin;
+	QAngle angles;
+	pVehicle->ASWGetSeatPosition( iSeat, origin, angles );
+	Teleport( &origin, &angles, &vec3_origin );
+	SetParent( pEnt );
+
 	SetCollisionGroup( COLLISION_GROUP_IN_VEHICLE );
 	m_takedamage = DAMAGE_NO;
 }
 
-void CASW_Marine::StopDriving(IASW_Vehicle* pVehicle)
+void CASW_Marine::ExitVehicle( IASW_Vehicle *pVehicle )
 {
-	if (!pVehicle || !IsDriving())
+	if ( !pVehicle || !IsInVehicle() )
 		return;
 
-	CBaseEntity* pEnt = pVehicle->GetEntity();
-	if (!pEnt)
+	CBaseEntity *pEnt = pVehicle->GetEntity();
+	if ( !pEnt )
 		return;
 
 	// try and place the marine outside the vehicle
-	Vector v = pEnt->GetAbsOrigin() - UTIL_YawToVector(pEnt->GetAbsAngles().y) * 50;
+	Vector v = pEnt->GetAbsOrigin() - UTIL_YawToVector( pEnt->GetAbsAngles().y ) * 60;
 	trace_t tr;
 	Ray_t ray;
-	ray.Init( v + Vector(0,0,1), v, CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs() );
+	ray.Init( v + Vector( 0, 0, 30 ), v, CollisionProp()->OBBMins(), CollisionProp()->OBBMaxs() );
 	UTIL_TraceRay( ray, MASK_PLAYERSOLID, this, COLLISION_GROUP_PLAYER_MOVEMENT, &tr );
-	if ( tr.fraction < 1.0 )
+	if ( tr.startsolid )
 		return;	// blocked
-	SetAbsOrigin(v);
+	SetParent( NULL );
+	Teleport( &tr.endpos, NULL, NULL );
 
-	// todo: get weapon out again?
+	m_flPreventLaserSightTime = 0.0f;
 
-	pVehicle->ASWStopEngine();
-	pVehicle->ASWSetDriver(NULL);
+	if ( m_iVehicleSeat < 0 )
+	{
+		pVehicle->ASWStopEngine();
+		pVehicle->ASWSetDriver( NULL );
+	}
+	else
+	{
+		pVehicle->ASWSetPassenger( m_iVehicleSeat, NULL );
+	}
 
-	m_bDriving = false;
 	m_bIsInVehicle = false;
 	m_hASWVehicle = NULL;
-
-	
 
 	RemoveEffects( EF_NODRAW );
 	SetCollisionGroup( COLLISION_GROUP_PLAYER );
@@ -4470,8 +4565,8 @@ void CASW_Marine::PhysicsShove()
 
 CASW_Marine_Resource* CASW_Marine::GetMarineResource() const
 {
-	Assert( !ASWGameRules() || ASWGameRules()->GetGameState() == ASW_GS_NONE || m_MarineResource );
-	return assert_cast<CASW_Marine_Resource*>(m_MarineResource.Get());
+	Assert( !ASWGameRules() || ASWGameRules()->GetGameState() == ASW_GS_NONE || m_MarineResource || m_nMarineProfile != -1 );
+	return m_MarineResource.Get();
 }
 
 void CASW_Marine::Suicide()
@@ -4500,6 +4595,15 @@ void CASW_Marine::Suicide()
 	//SetNextThink(gpGlobals->curtime + 2.0f);
 }
 
+bool CASW_Marine::CanBecomeRagdoll()
+{
+	if ( m_bSpawnZombineOnDeath )
+		return false;
+
+	return BaseClass::CanBecomeRagdoll();
+}
+
+// called from BaseClass::Event_Killed
 bool CASW_Marine::BecomeRagdollOnClient( const Vector &force )
 {
 	if ( !CanBecomeRagdoll() ) 
@@ -4545,7 +4649,7 @@ void CASW_Marine::SelectModelFromProfile()
 	CASW_Marine_Profile *pProfile = GetMarineProfile();
 	if (pProfile)
 	{
-		SetModelName(MAKE_STRING(pProfile->m_ModelName));
+		SetModelName( MAKE_STRING( pProfile->m_ModelName ) );
 		m_nSkin = pProfile->m_SkinNum;
 		//Msg("%s Setting skin number to %d\n", pProfile->m_ShortName, m_nSkin);
 	}
@@ -4553,27 +4657,6 @@ void CASW_Marine::SelectModelFromProfile()
 	{
 		SetModelName( AllocPooledString( ASW_DEFAULT_MARINE_MODEL ) );
 		//Msg("Warning (SelectModelFromProfile) couldn't get model from profile as profile doesn't exist yet\n");
-	}
-}
-
-void CASW_Marine::SetModelFromProfile()
-{
-	CASW_Marine_Profile *pProfile = GetMarineProfile();
-	if (pProfile)
-	{
-		SetModelName(MAKE_STRING(pProfile->m_ModelName));
-		SetModel(pProfile->m_ModelName);
-		m_nSkin = pProfile->m_SkinNum;
-		//set the backpack bodygroup
-		SetBodygroup ( 1, m_nSkin );
-		
-		//Msg("%s Setting skin number to %d\n", pProfile->m_ShortName, m_nSkin);
-	}
-	else
-	{
-		SetModelName( AllocPooledString( ASW_DEFAULT_MARINE_MODEL ) );
-		SetModel(ASW_DEFAULT_MARINE_MODEL);
-		Msg("Warning (SetModelFromProfile) couldn't get model from profile as profile doesn't exist yet\n");
 	}
 }
 
@@ -4969,14 +5052,16 @@ void CASW_Marine::Ignite( float flFlameLifetime, bool bNPCOnly, float flSize, bo
 	return;	// use ASW_Ignite instead;
 }
 
-void CASW_Marine::Extinguish()
+void CASW_Marine::Extinguish( CBaseEntity *pHealer, CBaseEntity *pWeapon )
 {
 	if ( m_bOnFire )
 	{
-		IGameEvent * event = gameeventmanager->CreateEvent( "marine_extinguished" );
+		IGameEvent *event = gameeventmanager->CreateEvent( "marine_extinguished" );
 		if ( event )
 		{
 			event->SetInt( "entindex", entindex() );
+			event->SetInt( "healer", pHealer ? pHealer->entindex() : -1 );
+			event->SetInt( "weapon", pWeapon ? pWeapon->entindex() : -1 );
 			gameeventmanager->FireEvent( event );
 		}
 	}
@@ -4985,10 +5070,17 @@ void CASW_Marine::Extinguish()
 
 	if ( ASWBurning() )
 	{
-		ASWBurning()->Extinguish(this);
+		ASWBurning()->Extinguish( this );
 	}
 
 	RemoveFlag( FL_ONFIRE );
+}
+
+void CASW_Marine::Extinguish()
+{
+	Assert( !"should be calling version of extinguish with arguments" );
+
+	Extinguish( NULL, NULL );
 }
 
 bool CASW_Marine::AllowedToIgnite( void ) 
@@ -5059,12 +5151,7 @@ float CASW_Marine::GetReceivedDamageScale( CBaseEntity *pAttacker )
 		CASW_Marine *pMarine = CASW_Marine::AsMarine( pAttacker );
 		if (pMarine)
 		{
-			if (ASWGameRules() && ASWGameRules()->IsHardcoreMode())
-			{
-				// full damage in hardcore mode
-				flScale = 1;
-			}
-			else if (asw_marine_ff.GetInt() == 0)		// FF Guard
+			if (asw_marine_ff.GetInt() == 0)		// FF Guard
 			{
 				flScale = 0.01f;
 				pMarine->ActivateFriendlyFireGuard(this);
@@ -5275,17 +5362,6 @@ bool CASW_Marine::IsOutOfAmmo()
 
 void CASW_Marine::OnWeaponOutOfAmmo(bool bChatter)
 {
-//	CASW_Weapon *cur_weapon = GetActiveASWWeapon();
-// 	if ( cur_weapon )
-// 	{
-// 		if ( !stricmp(cur_weapon->GetPickupClass(), "asw_pickup_rifle") ||
-// 			!stricmp(cur_weapon->GetPickupClass(), "asw_pickup_prifle") )
-// 		{
-// 			this->GiveAmmo( 1000, cur_weapon->GetPrimaryAmmoType() );
-// 			return;
-// 		}
-// 	}
-
 	if ( bChatter && GetMarineSpeech() && rd_notify_about_out_of_ammo.GetBool() )
 	{
 		GetMarineSpeech()->Chatter(CHATTER_NO_AMMO);
@@ -5420,7 +5496,7 @@ void CASW_Marine::Stumble( CBaseEntity *pSource, const Vector &vecStumbleDir, bo
 	if ( pSource->Classify() == CLASS_ASW_SHIELDBUG )		// don't stumble from shieldbugs, they do knockdowns instead
 		return;
 
-	if ( pSource->Classify() == CLASS_ANTLION )		// don't stumble from npc_antlionguard, they do knockdowns instead
+	if ( pSource->Classify() == CLASS_ASW_ANTLIONGUARD )		// don't stumble from npc_antlionguard, they do knockdowns instead
 		return;
 
 	// reactivedrop: the reason we use ClassMatches() here is because uber drones do
@@ -5634,10 +5710,10 @@ bool CASW_Marine::TeleportStuckMarine()
 	VectorNormalize( vToPrev );
 
 	Vector vOldPos = GetAbsOrigin();
-	bool bSuccess = UTIL_FindClosestPassableSpace( this, vToPrev, MASK_PLAYERSOLID, NULL, FL_AXIS_DIRECTION_NZ );
-	if ( bSuccess )
+	if ( UTIL_FindClosestPassableSpace( this, vToPrev, MASK_PLAYERSOLID, NULL, FL_AXIS_DIRECTION_NZ ) )
 	{
 		DevMsg( "Unstuck marine from (%.2f %.2f %.2f) to (%.2f %.2f %.2f).\n", vOldPos.x, vOldPos.y, vOldPos.z, GetAbsOrigin().x, GetAbsOrigin().y, GetAbsOrigin().z );
+		return true;
 	}
 
 	trace_t tr;
@@ -5647,10 +5723,10 @@ bool CASW_Marine::TeleportStuckMarine()
 	if ( ( tr.contents & MASK_PLAYERSOLID ) && tr.m_pEnt )
 	{
 		// still stuck
-		return TeleportToFreeNode();
+		return TeleportToFreeNode( NULL, rd_stuck_teleport_distance.GetFloat() );
 	}
 
-	return bSuccess;
+	return false;
 }
 
 bool CASW_Marine::TeleportToFreeNode( CASW_Marine *pTarget, float fNearestDist )
@@ -5686,7 +5762,7 @@ bool CASW_Marine::TeleportToFreeNode( CASW_Marine *pTarget, float fNearestDist )
 				CollisionProp()->OBBMaxs(),
 				MASK_PLAYERSOLID,
 				this,
-				COLLISION_GROUP_NONE,
+				COLLISION_GROUP_PLAYER_MOVEMENT,
 				&tr );
 			if ( tr.fraction != 1.0 )
 			{
@@ -5698,9 +5774,9 @@ bool CASW_Marine::TeleportToFreeNode( CASW_Marine *pTarget, float fNearestDist )
 				// make sure we have line of sight
 				UTIL_TraceLine( pTarget->GetAbsOrigin() + Vector( 0, 0, 40 ),
 					vecPos + Vector( 0, 0, 40 ),
-					MASK_PLAYERSOLID_BRUSHONLY,
+					MASK_PLAYERSOLID,
 					this,
-					COLLISION_GROUP_NONE,
+					COLLISION_GROUP_PLAYER_MOVEMENT,
 					&tr );
 				if ( tr.fraction != 1.0 )
 				{
@@ -5885,4 +5961,131 @@ void CASW_Marine::StrafePush()
 	Vector forward;
 	AngleVectors(EyeAngles(), &forward);
 	SetAbsVelocity(rda_marine_strafe_push_hor_velocity.GetInt() * forward + Vector(0, 0, rda_marine_strafe_push_vert_velocity.GetInt()));
+}
+
+void CASW_Marine::InputAddPoints( inputdata_t &inputdata )
+{
+	CASW_Marine_Resource *pMR = GetMarineResource();
+	Assert( pMR );
+	if ( !pMR )
+	{
+		Warning( "Cannot AddPoints: cannot find marine resource\n" );
+		return;
+	}
+
+	if ( inputdata.value.Int() < 0 )
+	{
+		Warning( "Cannot AddPoints with negative value. (%d)\n", inputdata.value.Int() );
+		return;
+	}
+
+	if ( pMR->m_iScore < 0 )
+	{
+		Warning( "Cannot AddPoints on this map: overview not tagged with 'points' or mission not yet started.\n" );
+		return;
+	}
+
+	int64_t iTotal = int64_t( pMR->m_iScore ) + int64_t( inputdata.value.Int() );
+	if ( iTotal < 0 || iTotal > INT32_MAX )
+	{
+		Warning( "AddPoints would overflow by %d - clamping.\n", int( iTotal - INT32_MAX ) );
+		iTotal = INT32_MAX;
+	}
+
+	pMR->m_TimelineScore.RecordValue( iTotal - pMR->m_iScore );
+	pMR->m_iScore = iTotal;
+
+	m_TotalPoints.Set( pMR->m_iScore, inputdata.pActivator, inputdata.pCaller );
+}
+
+CON_COMMAND_F( rd_test_marine_gib, "spawn marine gibs at the currently targeted point", FCVAR_CHEAT )
+{
+	CASW_Player *pPlayer = ToASW_Player( UTIL_GetCommandClient() );
+	if ( !pPlayer )
+	{
+		Warning( "Cannot rd_test_marine_gib from server console\n" );
+		return;
+	}
+
+	CASW_Inhabitable_NPC *pNPC = pPlayer->GetViewNPC();
+	if ( !pNPC )
+	{
+		return;
+	}
+
+	int iType = RIP_EXPLOSION;
+	int iProfile = 0;
+	float flVelocityMultiplier = 1.0f;
+
+	if ( CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC ) )
+	{
+		iProfile = pMarine->GetMarineProfile()->m_ProfileIndex;
+	}
+
+	for ( int i = 1; i < args.ArgC(); i++ )
+	{
+		const char *szArg = args.Arg( i );
+		if ( float flMult = atof( szArg ) )
+		{
+			flVelocityMultiplier = flMult;
+		}
+		else if ( FStrEq( szArg, "parasite" ) )
+		{
+			iType = RIP_PARASITE;
+		}
+		else if ( FStrEq( szArg, "sarge" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_SARGE;
+		}
+		else if ( FStrEq( szArg, "wildcat" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_WILDCAT;
+		}
+		else if ( FStrEq( szArg, "faith" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_FAITH;
+		}
+		else if ( FStrEq( szArg, "crash" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_CRASH;
+		}
+		else if ( FStrEq( szArg, "jaeger" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_JAEGER;
+		}
+		else if ( FStrEq( szArg, "wolfe" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_WOLFE;
+		}
+		else if ( FStrEq( szArg, "bastille" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_BASTILLE;
+		}
+		else if ( FStrEq( szArg, "vegas" ) )
+		{
+			iProfile = ASW_MARINE_PROFILE_VEGAS;
+		}
+		else
+		{
+			Warning( "Unhandled param '%s'\n", szArg );
+		}
+	}
+
+	Vector vecCrosshair = pPlayer->GetCrosshairTracePos();
+	Vector vecForce = ( vecCrosshair - pNPC->GetAbsOrigin() ) * flVelocityMultiplier;
+
+	NDebugOverlay::Cross3D( vecCrosshair, 8, 255, 255, 255, false, 1.0f );
+
+	CSingleUserRecipientFilter filter( pPlayer );
+	UserMessageBegin( filter, "ASWRipRagdoll" );
+		WRITE_UBITLONG( iType, 2 );
+		WRITE_UBITLONG( iProfile, 6 );
+		WRITE_ANGLE( pNPC->GetAbsAngles()[YAW] );
+		WRITE_FLOAT( vecCrosshair.x );
+		WRITE_FLOAT( vecCrosshair.y );
+		WRITE_FLOAT( vecCrosshair.z );
+		WRITE_FLOAT( vecForce.x );
+		WRITE_FLOAT( vecForce.y );
+		WRITE_FLOAT( vecForce.z );
+	MessageEnd();
 }

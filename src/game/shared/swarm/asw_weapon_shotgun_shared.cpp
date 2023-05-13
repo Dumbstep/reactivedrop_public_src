@@ -18,6 +18,7 @@
 #include "shot_manipulator.h"
 #include "asw_marine_speech.h"
 #include "asw_weapon_ammo_bag_shared.h"
+#include "asw_gamerules.h"
 #endif
 #include "asw_marine_skills.h"
 #include "asw_marine_profile.h"
@@ -52,6 +53,7 @@ PRECACHE_WEAPON_REGISTER(asw_weapon_shotgun);
 extern ConVar asw_weapon_max_shooting_distance;
 extern ConVar asw_weapon_force_scale;
 #ifndef CLIENT_DLL
+ConVar sk_npc_dmg_buckshot( "sk_npc_dmg_buckshot", "3", FCVAR_CHEAT );
 extern ConVar asw_debug_marine_damage;
 extern ConVar asw_DebugAutoAim;
 
@@ -59,6 +61,56 @@ BEGIN_DATADESC( CASW_Weapon_Shotgun )
 	
 END_DATADESC()
 
+acttable_t	CASW_Weapon_Shotgun::m_acttable[] = 
+{
+	{ ACT_IDLE,						ACT_IDLE_SMG1,					true },	// FIXME: hook to shotgun unique
+
+	{ ACT_RANGE_ATTACK1,			ACT_RANGE_ATTACK_SHOTGUN,			true },
+	{ ACT_RELOAD,					ACT_RELOAD_SHOTGUN,					false },
+	{ ACT_WALK,						ACT_WALK_RIFLE,						true },
+	{ ACT_IDLE_ANGRY,				ACT_IDLE_ANGRY_SHOTGUN,				true },
+
+// Readiness activities (not aiming)
+	{ ACT_IDLE_RELAXED,				ACT_IDLE_SHOTGUN_RELAXED,		false },//never aims
+	{ ACT_IDLE_STIMULATED,			ACT_IDLE_SHOTGUN_STIMULATED,	false },
+	{ ACT_IDLE_AGITATED,			ACT_IDLE_SHOTGUN_AGITATED,		false },//always aims
+
+	{ ACT_WALK_RELAXED,				ACT_WALK_RIFLE_RELAXED,			false },//never aims
+	{ ACT_WALK_STIMULATED,			ACT_WALK_RIFLE_STIMULATED,		false },
+	{ ACT_WALK_AGITATED,			ACT_WALK_AIM_RIFLE,				false },//always aims
+
+	{ ACT_RUN_RELAXED,				ACT_RUN_RIFLE_RELAXED,			false },//never aims
+	{ ACT_RUN_STIMULATED,			ACT_RUN_RIFLE_STIMULATED,		false },
+	{ ACT_RUN_AGITATED,				ACT_RUN_AIM_RIFLE,				false },//always aims
+
+// Readiness activities (aiming)
+	{ ACT_IDLE_AIM_RELAXED,			ACT_IDLE_SMG1_RELAXED,			false },//never aims	
+	{ ACT_IDLE_AIM_STIMULATED,		ACT_IDLE_AIM_RIFLE_STIMULATED,	false },
+	{ ACT_IDLE_AIM_AGITATED,		ACT_IDLE_ANGRY_SMG1,			false },//always aims
+
+	{ ACT_WALK_AIM_RELAXED,			ACT_WALK_RIFLE_RELAXED,			false },//never aims
+	{ ACT_WALK_AIM_STIMULATED,		ACT_WALK_AIM_RIFLE_STIMULATED,	false },
+	{ ACT_WALK_AIM_AGITATED,		ACT_WALK_AIM_RIFLE,				false },//always aims
+
+	{ ACT_RUN_AIM_RELAXED,			ACT_RUN_RIFLE_RELAXED,			false },//never aims
+	{ ACT_RUN_AIM_STIMULATED,		ACT_RUN_AIM_RIFLE_STIMULATED,	false },
+	{ ACT_RUN_AIM_AGITATED,			ACT_RUN_AIM_RIFLE,				false },//always aims
+//End readiness activities
+
+	{ ACT_WALK_AIM,					ACT_WALK_AIM_SHOTGUN,				true },
+	{ ACT_WALK_CROUCH,				ACT_WALK_CROUCH_RIFLE,				true },
+	{ ACT_WALK_CROUCH_AIM,			ACT_WALK_CROUCH_AIM_RIFLE,			true },
+	{ ACT_RUN,						ACT_RUN_RIFLE,						true },
+	{ ACT_RUN_AIM,					ACT_RUN_AIM_SHOTGUN,				true },
+	{ ACT_RUN_CROUCH,				ACT_RUN_CROUCH_RIFLE,				true },
+	{ ACT_RUN_CROUCH_AIM,			ACT_RUN_CROUCH_AIM_RIFLE,			true },
+	{ ACT_GESTURE_RANGE_ATTACK1,	ACT_GESTURE_RANGE_ATTACK_SHOTGUN,	true },
+	{ ACT_RANGE_ATTACK1_LOW,		ACT_RANGE_ATTACK_SHOTGUN_LOW,		true },
+	{ ACT_RELOAD_LOW,				ACT_RELOAD_SHOTGUN_LOW,				false },
+	{ ACT_GESTURE_RELOAD,			ACT_GESTURE_RELOAD_SHOTGUN,			false },
+};
+
+IMPLEMENT_ACTTABLE( CASW_Weapon_Shotgun );
 #endif /* not client */
 
 ConVar rd_shotgun_fire_rate( "rd_shotgun_fire_rate", "0", FCVAR_REPLICATED | FCVAR_CHEAT, "Fire rate of shotgun", true, 0, false, 0 );
@@ -97,20 +149,21 @@ Activity CASW_Weapon_Shotgun::GetPrimaryAttackActivity( void )
 void CASW_Weapon_Shotgun::PrimaryAttack( void )
 {
 	// If my clip is empty (and I use clips) start reload
-	if ( UsesClipsForAmmo1() && !m_iClip1 ) 
+	if ( UsesClipsForAmmo1() && !m_iClip1 )
 	{
 		Reload();
 		return;
 	}
 
 	CASW_Player *pPlayer = GetCommander();
-	CASW_Marine *pMarine = GetMarine();
+	CBaseCombatCharacter *pOwner = GetOwner();
+	CASW_Inhabitable_NPC *pNPC = pOwner && pOwner->IsInhabitableNPC() ? assert_cast< CASW_Inhabitable_NPC * >( pOwner ) : NULL;
 
-	if (pMarine)		// firing from a marine
+	if ( pNPC )
 	{
 		// MUST call sound before removing a round from the clip of a CMachineGun
-		WeaponSound(SINGLE);
-		if (m_iClip1 <= AmmoClickPoint())
+		WeaponSound( SINGLE );
+		if ( m_iClip1 <= AmmoClickPoint() )
 		{
 			LowAmmoSound();
 		}
@@ -118,15 +171,15 @@ void CASW_Weapon_Shotgun::PrimaryAttack( void )
 		m_bIsFiring = true;
 
 		// tell the marine to tell its weapon to draw the muzzle flash
-		pMarine->DoMuzzleFlash();
+		pNPC->DoMuzzleFlash();
 
 		// sets the animation on the weapon model iteself
 		SendWeaponAnim( GetPrimaryAttackActivity() );
 
 #ifdef GAME_DLL	// check for turning on lag compensation
-		if ( pPlayer && pMarine->IsInhabited() )
+		if ( pPlayer && pNPC->IsInhabited() )
 		{
-			if (!m_bShotDelayed)
+			if ( !m_bShotDelayed )
 			{
 				CASW_Lag_Compensation::RequestLagCompensation( pPlayer, pPlayer->GetCurrentUserCommand() );
 			}
@@ -137,56 +190,55 @@ void CASW_Weapon_Shotgun::PrimaryAttack( void )
 		}
 #endif
 
-		Vector vecSrc = pMarine->Weapon_ShootPosition( );
+		Vector vecSrc = pNPC->Weapon_ShootPosition();
 		// hull trace out to this shoot position, so we can be sure we're not firing from over an alien's head
 		trace_t tr;
-		CTraceFilterSimple tracefilter(pMarine, COLLISION_GROUP_NONE);
-		Vector vecMarineMiddle(pMarine->GetAbsOrigin());
+		CTraceFilterSimple tracefilter( pNPC, COLLISION_GROUP_NONE );
+		Vector vecMarineMiddle( pNPC->GetAbsOrigin() );
 		vecMarineMiddle.z = vecSrc.z;
 		AI_TraceHull( vecMarineMiddle, vecSrc, Vector( -10, -10, -20 ), Vector( 10, 10, 10 ), MASK_SHOT, &tracefilter, &tr );
 		vecSrc = tr.endpos;
 
 		Vector vecAiming = vec3_origin;
-		if ( pPlayer && pMarine->IsInhabited() )
+		CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC );
+		if ( pPlayer && pMarine && pMarine->IsInhabited() )
 		{
-			vecAiming = pPlayer->GetAutoaimVectorForMarine(pMarine, GetAutoAimAmount(), GetVerticalAdjustOnlyAutoAimAmount());	// 45 degrees = 0.707106781187
+			vecAiming = pPlayer->GetAutoaimVectorForMarine( pMarine, GetAutoAimAmount(), GetVerticalAdjustOnlyAutoAimAmount() );	// 45 degrees = 0.707106781187
 		}
 		else
 		{
 #ifndef CLIENT_DLL
-			vecAiming = pMarine->GetActualShootTrajectory( vecSrc );
+			vecAiming = pNPC->GetActualShootTrajectory( vecSrc );
 #endif
 		}
 
 #ifndef CLIENT_DLL
-		if (asw_DebugAutoAim.GetBool())
+		if ( asw_DebugAutoAim.GetBool() )
 		{
-			NDebugOverlay::Line(vecSrc, vecSrc + vecAiming * asw_weapon_max_shooting_distance.GetFloat(), 64, 0, 64, false, 120.0);
+			NDebugOverlay::Line( vecSrc, vecSrc + vecAiming * asw_weapon_max_shooting_distance.GetFloat(), 64, 0, 64, false, 120.0 );
 		}
 #endif
 		int iPellets = GetNumPellets();
-		for (int i=0;i<iPellets;i++)
-		{
-			FireBulletsInfo_t info( 1, vecSrc, vecAiming, GetAngularBulletSpread(), asw_weapon_max_shooting_distance.GetFloat(), m_iPrimaryAmmoType );
-			info.m_pAttacker = pMarine;
-			info.m_iTracerFreq = 1;
-			info.m_nFlags = FIRE_BULLETS_NO_PIERCING_SPARK | FIRE_BULLETS_HULL | FIRE_BULLETS_ANGULAR_SPREAD;
-			info.m_flDamage = GetWeaponDamage();
-			info.m_flDamageForceScale = asw_weapon_force_scale.GetFloat();
+		FireBulletsInfo_t info( iPellets, vecSrc, vecAiming, GetAngularBulletSpread(), asw_weapon_max_shooting_distance.GetFloat(), m_iPrimaryAmmoType );
+		info.m_pAttacker = pNPC;
+		info.m_iTracerFreq = 1;
+		info.m_nFlags = FIRE_BULLETS_NO_PIERCING_SPARK | FIRE_BULLETS_HULL | FIRE_BULLETS_ANGULAR_SPREAD;
+		info.m_flDamage = GetWeaponDamage();
+		info.m_flDamageForceScale = asw_weapon_force_scale.GetFloat();
 #ifndef CLIENT_DLL
-			if (asw_debug_marine_damage.GetBool())
-				Msg("Weapon dmg = %f\n", info.m_flDamage);
-			info.m_flDamage *= pMarine->GetMarineResource()->OnFired_GetDamageScale();
+		if ( asw_debug_marine_damage.GetBool() )
+			Msg( "Weapon dmg = %f\n", info.m_flDamage );
+		if ( pMarine && pMarine->GetMarineResource() )
+			pMarine->GetMarineResource()->OnFired_ScaleDamage( info );
 #endif
 
-			FireShotgunPellet( pMarine, info, i );
-		}
+		FireShotgunPellet( pNPC, info, 0 );
 
 		// increment shooting stats
 #ifndef CLIENT_DLL
-		if ( pMarine->GetMarineResource() )
+		if ( pMarine && pMarine->GetMarineResource() )
 		{
-			pMarine->GetMarineResource()->UsedWeapon(this, 1);
+			pMarine->GetMarineResource()->UsedWeapon( this, 1 );
 			pMarine->OnWeaponFired( this, GetNumPellets() );
 		}
 #endif
@@ -194,27 +246,27 @@ void CASW_Weapon_Shotgun::PrimaryAttack( void )
 		// decrement ammo
 		m_iClip1 -= 1;
 #ifdef GAME_DLL
-		if ( m_iClip1 <= 0 && pMarine->GetAmmoCount(m_iPrimaryAmmoType) <= 0 )
+		if ( m_iClip1 <= 0 && pMarine && pMarine->GetAmmoCount( m_iPrimaryAmmoType ) <= 0 )
 		{
 			// check he doesn't have ammo in an ammo bay
-			CASW_Weapon_Ammo_Bag* pAmmoBag = NULL;
-			CASW_Weapon* pWeapon = pMarine->GetASWWeapon(0);
+			CASW_Weapon_Ammo_Bag *pAmmoBag = NULL;
+			CASW_Weapon *pWeapon = pMarine->GetASWWeapon( 0 );
 			if ( pWeapon && pWeapon->Classify() == CLASS_ASW_AMMO_BAG )
-				pAmmoBag = assert_cast<CASW_Weapon_Ammo_Bag*>(pWeapon);
+				pAmmoBag = assert_cast< CASW_Weapon_Ammo_Bag * >( pWeapon );
 
-			if (!pAmmoBag)
+			if ( !pAmmoBag )
 			{
-				pWeapon = pMarine->GetASWWeapon(1);
+				pWeapon = pMarine->GetASWWeapon( 1 );
 				if ( pWeapon && pWeapon->Classify() == CLASS_ASW_AMMO_BAG )
-					pAmmoBag = assert_cast<CASW_Weapon_Ammo_Bag*>(pWeapon);
+					pAmmoBag = assert_cast< CASW_Weapon_Ammo_Bag * >( pWeapon );
 			}
-			if ( !pAmmoBag || !pAmmoBag->CanGiveAmmoToWeapon(this) )
-				pMarine->OnWeaponOutOfAmmo(true);
+			if ( !pAmmoBag || !pAmmoBag->CanGiveAmmoToWeapon( this ) )
+				pMarine->OnWeaponOutOfAmmo( true );
 		}
 #endif
 	}
-	
-	if (m_iClip1 > 0)		// only force the fire wait time if we have ammo for another shot
+
+	if ( m_iClip1 > 0 )		// only force the fire wait time if we have ammo for another shot
 		m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
 	else
 		m_flNextPrimaryAttack = gpGlobals->curtime;
@@ -242,9 +294,12 @@ void CASW_Weapon_Shotgun::DelayedAttack()
 	m_bShotDelayed = false;
 }
 
-void CASW_Weapon_Shotgun::FireShotgunPellet( CASW_Marine *pMarine, const FireBulletsInfo_t &info, int iSeed )
+void CASW_Weapon_Shotgun::FireShotgunPellet( CASW_Inhabitable_NPC *pNPC, const FireBulletsInfo_t &info, int iSeed )
 {
-	pMarine->FirePenetratingBullets( info, 0, 1.0f, iSeed, false );
+	if ( CASW_Marine *pMarine = CASW_Marine::AsMarine( pNPC ) )
+		pMarine->FirePenetratingBullets( info, 0, 1.0f, iSeed, false );
+	else
+		pNPC->FireBullets( info );
 }
 
 void CASW_Weapon_Shotgun::Precache()
@@ -302,6 +357,12 @@ float CASW_Weapon_Shotgun::GetWeaponDamage()
 	{
 		flDamage += MarineSkills()->GetSkillBasedValueByMarine(GetMarine(), ASW_MARINE_SKILL_ACCURACY, ASW_MARINE_SUBSKILL_ACCURACY_SHOTGUN_DMG);
 	}
+#ifdef GAME_DLL
+	else if ( ASWGameRules() )
+	{
+		flDamage = ASWGameRules()->ModifyAlienDamageBySkillLevel( sk_npc_dmg_buckshot.GetFloat() );
+	}
+#endif
 
 	//CALL_ATTRIB_HOOK_FLOAT( flDamage, mod_damage_done );
 

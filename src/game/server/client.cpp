@@ -39,6 +39,7 @@
 #ifdef INFESTED_DLL
 #include "asw_player.h"
 #include "asw_marine.h"
+#include "asw_equipment_list.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -49,6 +50,7 @@ extern int giPrecacheGrunt;
 extern bool IsInCommentaryMode( void );
 
 ConVar *sv_cheats = NULL;
+ConVar rd_check_clientdll_consistency( "rd_check_clientdll_consistency", RD_IS_RELEASE ? "1" : "0", FCVAR_NOTIFY, "If 1, client.dll must match on the client and server. Default is 0 on beta, 1 on other branches." );
 
 #define P_MAX_LEN 127 //used in CheckChatText and Host_Say to limit p pointer where pszFormat + pszPrefix + pszLocation + p as main text and few more symbols define the full text string. should be under 256
 //also seems not to be really usefull without client adjustment m_pInput->SetMaximumCharCount( 127 ); in hud_basechat.cpp
@@ -347,27 +349,27 @@ void ClientPrecache( void )
 		char pBuf[MAX_PATH];
 		for ( int i = 0; i < CPU_LEVEL_PC_COUNT; ++i )
 		{
-			Q_snprintf( pBuf, sizeof(pBuf), "cfg/cpu_level_%d_pc.ekv", i );
+			Q_snprintf( pBuf, sizeof( pBuf ), "cfg/cpu_level_%d_pc.ekv", i );
 			engine->ForceExactFile( pBuf );
-			Q_snprintf( pBuf, sizeof(pBuf), "cfg/cpu_level_%d_pc_ss.ekv", i );
+			Q_snprintf( pBuf, sizeof( pBuf ), "cfg/cpu_level_%d_pc_ss.ekv", i );
 			engine->ForceExactFile( pBuf );
 		}
 
 		for ( int i = 0; i < GPU_LEVEL_PC_COUNT; ++i )
 		{
-			Q_snprintf( pBuf, sizeof(pBuf), "cfg/gpu_level_%d_pc.ekv", i );
+			Q_snprintf( pBuf, sizeof( pBuf ), "cfg/gpu_level_%d_pc.ekv", i );
 			engine->ForceExactFile( pBuf );
 		}
 
 		for ( int i = 0; i < MEM_LEVEL_PC_COUNT; ++i )
 		{
-			Q_snprintf( pBuf, sizeof(pBuf), "cfg/mem_level_%d_pc.ekv", i );
+			Q_snprintf( pBuf, sizeof( pBuf ), "cfg/mem_level_%d_pc.ekv", i );
 			engine->ForceExactFile( pBuf );
 		}
 
 		for ( int i = 0; i < GPU_MEM_LEVEL_PC_COUNT; ++i )
 		{
-			Q_snprintf( pBuf, sizeof(pBuf), "cfg/gpu_mem_level_%d_pc.ekv", i );
+			Q_snprintf( pBuf, sizeof( pBuf ), "cfg/gpu_mem_level_%d_pc.ekv", i );
 			engine->ForceExactFile( pBuf );
 		}
 	}
@@ -380,63 +382,10 @@ void ClientPrecache( void )
 		engine->ForceExactFile( "cfg/cpu_level_360_ss.ekv" );
 	}
 
-	// BenLubar: not particularly worried about wallhacks in a top-down game.
-	// additionally, allowing these files to differ gives us some freedom for
-	// updating game instructor stuff in a hotfix.
-	//// Game Instructor lessons - don't want people making simple scripted wall hacks
-	//engine->ForceExactFile( "scripts/instructor_lessons.txt" );
-	//engine->ForceExactFile( "scripts/mod_lessons.txt" );
-
-	// weapon scripts
-	engine->ForceExactFile( "scripts/asw_weapon_ammo_bag.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_ammo_satchel.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_autogun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_blink.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_buff_grenade.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_chainsaw.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_electrified_armor.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_fire_extinguisher.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_fist.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_flamer.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_flares.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_flashlight.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_freeze_grenades.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_gas_grenades.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_grenades.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_grenade_launcher.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_deagle.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_heal_grenade.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_heal_gun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_healamp_gun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_heavy_rifle.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_hornet_barrage.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_jump_jet.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_laser_mines.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_medical_satchel.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_medkit.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_medrifle.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_mines.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_minigun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_mining_laser.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_night_vision.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_normal_armor.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_pdw.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_pistol.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_prifle.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_railgun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_rifle.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_sentry.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_sentry_cannon.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_sentry_flamer.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_sentry_freeze.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_shotgun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_smart_bomb.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_sniper_rifle.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_stim.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_tesla_gun.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_tesla_trap.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_vindicator.txt" );
-	engine->ForceExactFile( "scripts/asw_weapon_welder.txt" );
+	if ( rd_check_clientdll_consistency.GetBool() )
+	{
+		engine->ForceExactFile( "bin/client.dll" );
+	}
 }
 
 CON_COMMAND_F( cast_ray, "Tests collision detection", FCVAR_CHEAT )

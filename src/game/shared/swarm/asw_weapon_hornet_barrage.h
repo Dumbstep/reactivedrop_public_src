@@ -29,13 +29,13 @@ public:
 
 #ifndef CLIENT_DLL
 	DECLARE_DATADESC();
-
-	virtual const char* GetPickupClass() { return "asw_pickup_mines"; }	
 #else
-	
+	virtual void ClientThink() override;
 #endif
 	int GetRocketsToFire() { return m_iRocketsToFire.Get(); }
 	float GetNextLaunchTime() { return m_flNextLaunchTime.Get(); }
+	const char *GetEquipSound() override { return "ASW_Weapon.AttachmentEquipSmall"; }
+	virtual bool ViewModelIsMarineAttachment() const { return true; }
 	virtual void FireRocket();
 	virtual bool IsOffensiveWeapon() { return false; }
 	virtual bool OffhandActivate();

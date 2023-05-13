@@ -10,6 +10,7 @@ class CASW_Inhabitable_NPC;
 class CASW_Player;
 class CASW_Marine;
 class CASW_WeaponInfo;
+class CASW_EquipItem;
 
 class CASW_Weapon : public CBaseCombatWeapon, public IASW_Server_Usable_Entity
 {
@@ -23,11 +24,11 @@ public:
 	CASW_Weapon();
 	virtual ~CASW_Weapon();	
 	virtual void Precache();
+	virtual bool KeyValue( const char *szKeyName, const char *szValue );
 	bool DestroyIfEmpty( bool bDestroyWhenActive, bool bCheckSecondaryAmmo=false );
 
 	virtual void ItemPostFrame(void);
 	virtual void ItemBusyFrame(void);
-	virtual const char* GetPickupClass() { return "asw_pickup_rifle"; }
 
 	virtual void SetClip1(int i) { m_iClip1 = i; }
 	virtual void SetClip2(int i) { m_iClip2 = i; }
@@ -45,10 +46,16 @@ public:
 	virtual void SecondaryAttack();
 	virtual bool SecondaryAttackUsesPrimaryAmmo() { return false; }
 	virtual bool SecondaryAttackEqualsPrimary() { return false; }
+	virtual bool HasBuckshotSecondaryAttack() { return false; }
 	virtual bool IsPredicted( void ) const;
+	virtual bool ViewModelIsMarineAttachment() const { return false; }
+	virtual bool ViewModelHidesMarineBodyGroup1() const { return false; }
+	// note: these only work for player, not spectator
 	void PlaySoundDirectlyToOwner( const char *szSoundName );
 	void PlaySoundToOthers( const char *szSoundName );
-	
+
+	int GetMinBurst() override { return IsRapidFire() ? 2 : 1; }
+	int GetMaxBurst() override { return IsRapidFire() ? 5 : 1; }
 	virtual float	GetFireRate( void );
 	virtual bool HasAmmo();
 	virtual bool PrimaryAmmoLoaded( void );
@@ -64,6 +71,7 @@ public:
 	virtual void ClearIsFiring();
 	virtual void GetButtons(bool& bAttack1, bool& bAttack2, bool& bReload, bool& bOldReload, bool& bOldAttack1 );
 	bool Holster( CBaseCombatWeapon *pSwitchingTo );
+	virtual const char *GetEquipSound();
 	virtual void Equip(CBaseCombatCharacter *pOwner);
 	virtual void			SetWeaponVisible( bool visible );
 	virtual void ApplyWeaponSwitchTime(float fSwitchDelay);
@@ -75,10 +83,12 @@ public:
 	virtual bool ASWCanBeSelected() { return true; }
 	virtual bool ShouldFlareAutoaim() { return false; }
 	virtual int GetEquipmentListIndex() { return m_iEquipmentListIndex; }
-	const CASW_WeaponInfo* GetWeaponInfo() const;
+	const CASW_EquipItem *GetEquipItem() const;
+	const CASW_WeaponInfo *GetWeaponInfo() const;
 	virtual bool OffhandActivate() { return false; };
 	virtual bool WantsOffhandPostFrame() { return m_bShotDelayed; }
 	virtual bool SendWeaponAnim( int iActivity );
+	virtual bool ShouldPlayFiringAnimations() { return true; }
 	virtual int WeaponRangeAttack1Condition( float flDot, float flDist );
 	virtual bool IsOffensiveWeapon() { return true; }		// is this weapon an offensive gun type weapon (as opposed to a utility item)
 	virtual bool IsRapidFire() { return true; }
@@ -170,13 +180,26 @@ public:
 	virtual void NPCStoppedUsing( CASW_Inhabitable_NPC *pNPC ) { }
 	virtual bool NeedsLOSCheck() { return true; }
 
+	virtual const char *GetPrintName() const override;
+	virtual int GetMaxClip1() const override;
+	virtual int GetMaxClip2() const override;
+	virtual int GetDefaultClip1() const override;
+	virtual int GetDefaultClip2() const override;
+
 	virtual int DisplayClip1() { return Clip1(); }
 	virtual int DisplayMaxClip1() { return GetMaxClip1(); }
 	virtual int DisplayClip2() { return Clip2(); }
 	virtual int DisplayMaxClip2() { return GetMaxClip2(); }
+	virtual const char *GetMagazineGibModelName() const { return NULL; }
+	virtual int GetMagazineGibModelSkin() const { return 0; }
+
+	CNetworkHandle( CASW_Player, m_hOriginalOwnerPlayer );
+	CNetworkVar( int, m_iInventoryEquipSlot );
+	bool IsInventoryEquipSlotValid() const;
 
 protected:
 	int m_iEquipmentListIndex;
+	CASW_EquipItem *m_pEquipItem;
 };
 
 

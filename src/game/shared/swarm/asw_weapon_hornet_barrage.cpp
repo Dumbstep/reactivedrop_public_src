@@ -69,6 +69,15 @@ void CASW_Weapon_Hornet_Barrage::Precache()
 	PrecacheScriptSound( "ASW_Hornet_Barrage.Fire" );
 }
 
+#ifdef CLIENT_DLL
+void CASW_Weapon_Hornet_Barrage::ClientThink()
+{
+	BaseClass::ClientThink();
+
+	SetBodygroup( 0, GetRocketsToFire() > 0 ? 1 : 0 );
+}
+#endif
+
 bool CASW_Weapon_Hornet_Barrage::OffhandActivate()
 {
 	if (!GetMarine() || GetMarine()->GetFlags() & FL_FROZEN)	// don't allow this if the marine is frozen
@@ -134,20 +143,12 @@ void CASW_Weapon_Hornet_Barrage::ItemPostFrame( void )
 
 void CASW_Weapon_Hornet_Barrage::SetRocketsToFire()
 {
-	CASW_Marine *pMarine = GetMarine();
-	if ( !pMarine )
-		return;
-
-	m_iRocketsToFire = MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_HORNET_COUNT );
+	m_iRocketsToFire = MarineSkills()->GetSkillBasedValueByMarine( GetMarine(), ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_HORNET_COUNT );
 }
 
 float CASW_Weapon_Hornet_Barrage::GetRocketFireInterval()
 {
-	CASW_Marine *pMarine = GetMarine();
-	if ( !pMarine )
-		return 0.5f;
-
-	return MarineSkills()->GetSkillBasedValueByMarine(pMarine, ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_HORNET_INTERVAL );
+	return MarineSkills()->GetSkillBasedValueByMarine( GetMarine(), ASW_MARINE_SKILL_GRENADES, ASW_MARINE_SUBSKILL_GRENADE_HORNET_INTERVAL );
 }
 
 void CASW_Weapon_Hornet_Barrage::FireRocket()
@@ -165,7 +166,7 @@ void CASW_Weapon_Hornet_Barrage::FireRocket()
 	// tell the marine to tell its weapon to draw the muzzle flash
 	pMarine->DoMuzzleFlash();
 
-	pMarine->DoAnimationEvent( PLAYERANIMEVENT_FIRE_GUN_PRIMARY );
+	pMarine->DoAnimationEvent( PLAYERANIMEVENT_FIRE_GUN_TERTIARY );
 
 	
 	m_iRocketsToFire = m_iRocketsToFire.Get() - 1;

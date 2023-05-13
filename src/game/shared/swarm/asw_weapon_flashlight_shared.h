@@ -38,6 +38,7 @@ public:
 	virtual Class_T		Classify( void ) { return (Class_T) CLASS_ASW_FLASHLIGHT; }
 	virtual void	HandleFireOnEmpty() { return PrimaryAttack();  }
 
+	virtual bool ViewModelIsMarineAttachment() const { return true; }
 	Activity		GetPrimaryAttackActivity( void ) { return ACT_VM_PRIMARYATTACK; }
 //	virtual int		ASW_SelectWeaponActivity(int idealActivity) { return idealActivity; }
 	virtual int		AmmoClickPoint() { return 0; }
@@ -56,12 +57,13 @@ public:
 		// todo: stop AI attacking with this?
 		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
 
-		virtual const char* GetPickupClass() { return "asw_pickup_flashlight"; }
-
 		// for toggling the flashlight effect when we take/drop this weapon
+		const char *GetEquipSound() override { return "ASW_Weapon.AttachmentEquipSmall"; }
 		virtual void MarineDropped(CASW_Marine* pMarine);
-		virtual void Equip( CBaseCombatCharacter *pOwner );		
-	#endif	
+		virtual void Equip( CBaseCombatCharacter *pOwner );
+	#else
+		virtual void ClientThink() override;
+	#endif
 };
 
 

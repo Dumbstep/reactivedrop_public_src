@@ -9,6 +9,7 @@
 #include "gameui/swarm/basemodui.h"
 #include "inputsystem/iinputsystem.h"
 #include <vgui/IInput.h>
+#include "rd_steam_input.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -36,6 +37,8 @@ TabbedGridDetails::TabbedGridDetails() : BaseClass( NULL, "TabbedGridDetails" )
 	m_pTabStrip = new vgui::Panel( this, "TabStrip" );
 	m_pTabLeftHint = new vgui::Label( this, "TabLeftHint", "#GameUI_Icons_LEFT_BUMPER" );
 	m_pTabRightHint = new vgui::Label( this, "TabRightHint", "#GameUI_Icons_RIGHT_BUMPER" );
+
+	m_pLastTabConVar = NULL;
 }
 
 void TabbedGridDetails::ApplySchemeSettings( vgui::IScheme *pScheme )
@@ -67,7 +70,7 @@ void TabbedGridDetails::PerformLayout()
 		return;
 	}
 
-	bool bHaveGamepad = g_pInputSystem->GetJoystickCount() > 0 && m_Tabs.Count() > 1;
+	bool bHaveGamepad = g_RD_Steam_Input.GetJoystickCount() > 0 && m_Tabs.Count() > 1;
 	m_pTabLeftHint->SetVisible( bHaveGamepad );
 	m_pTabRightHint->SetVisible( bHaveGamepad );
 
@@ -75,6 +78,13 @@ void TabbedGridDetails::PerformLayout()
 	int hx, hy;
 	m_pTabLeftHint->GetPos( hx, hy );
 	m_pTabStrip->GetPos( x, y );
+
+	if ( hx < 0 )
+	{
+		x -= hx;
+		hx = 0;
+		m_pTabLeftHint->SetPos( hx, hy );
+	}
 
 	hx = x - ( hx + m_pTabLeftHint->GetWide() );
 
@@ -107,25 +117,6 @@ void TabbedGridDetails::OnCommand( const char *command )
 		{
 			MarkForDeletion();
 		}
-	}
-	else if ( !V_stricmp( command, "ApplyCurrentEntry" ) )
-	{
-		if ( !m_hCurrentTab || m_hOverridePanel )
-		{
-			BaseModUI::CBaseModPanel::GetSingleton().PlayUISound( BaseModUI::UISOUND_INVALID );
-			return;
-		}
-
-		Assert( m_hCurrentTab->m_pGrid );
-
-		if ( !m_hCurrentTab->m_pGrid->m_hCurrentEntry )
-		{
-			BaseModUI::CBaseModPanel::GetSingleton().PlayUISound( BaseModUI::UISOUND_INVALID );
-			return;
-		}
-
-		BaseModUI::CBaseModPanel::GetSingleton().PlayUISound( BaseModUI::UISOUND_ACCEPT );
-		m_hCurrentTab->m_pGrid->m_hCurrentEntry->ApplyEntry();
 	}
 	else if ( !V_stricmp( command, "PrevPage" ) )
 	{
@@ -223,6 +214,12 @@ void TabbedGridDetails::OnKeyCodePressed( vgui::KeyCode keycode )
 		m_hOverridePanel->OnKeyCodePressed( keycode );
 		s_bForwarded = false;
 	}
+	else if ( m_hCurrentTab && m_hCurrentTab->m_pGrid->m_hCurrentEntry )
+	{
+		s_bForwarded = true;
+		m_hCurrentTab->m_pGrid->m_hCurrentEntry->OnKeyCodePressed( keycode );
+		s_bForwarded = false;
+	}
 
 	int lastUser = GetJoystickForCode( keycode );
 	BaseModUI::CBaseModPanel::GetSingleton().SetLastActiveUserId( lastUser );
@@ -231,9 +228,6 @@ void TabbedGridDetails::OnKeyCodePressed( vgui::KeyCode keycode )
 
 	switch ( code )
 	{
-	case KEY_XBUTTON_A:
-		OnCommand( "ApplyCurrentEntry" );
-		break;
 	case KEY_XBUTTON_B:
 		OnCommand( "BackButton" );
 		break;
@@ -274,6 +268,13 @@ void TabbedGridDetails::ShowFullScreen()
 	}
 
 	SetVisible( true );
+}
+
+void TabbedGridDetails::RememberTabIndex( ConVar *pCVar )
+{
+	ActivateTab( m_Tabs[clamp<int>( pCVar->GetInt(), 0, m_Tabs.Count() - 1 )] );
+
+	m_pLastTabConVar = pCVar;
 }
 
 void TabbedGridDetails::AddTab( TGD_Tab *pTab )
@@ -348,6 +349,12 @@ void TabbedGridDetails::ActivateTab( TGD_Tab *pTab )
 
 	if ( pTab )
 	{
+		if ( m_pLastTabConVar )
+		{
+			m_pLastTabConVar->SetValue( m_Tabs.Find( pTab ) );
+			engine->ClientCmd_Unrestricted( "host_writeconfig\n" );
+		}
+
 		pTab->ActivateTab();
 	}
 }
@@ -499,6 +506,14 @@ void TGD_Grid::PerformLayout()
 {
 	BaseClass::PerformLayout();
 
+	int x, y;
+	GetPos( x, y );
+	if ( x < 0 )
+	{
+		SetWide( GetWide() + x * 2 );
+		SetPos( 0, y );
+	}
+
 	if ( m_Entries.Count() == 0 )
 	{
 		m_pScrollBar->SetVisible( false );
@@ -509,6 +524,7 @@ void TGD_Grid::PerformLayout()
 	int totalTall = GetTall();
 
 	int eachWide, eachTall;
+	m_Entries[0]->MakeReadyForUse();
 	m_Entries[0]->GetSize( eachWide, eachTall );
 
 	int perRow = MAX( totalWide / eachWide, 1 );
@@ -527,6 +543,7 @@ void TGD_Grid::PerformLayout()
 
 	FOR_EACH_VEC( m_Entries, i )
 	{
+		m_Entries[i]->MakeReadyForUse();
 		Assert( m_Entries[i]->GetWide() == eachWide );
 		Assert( m_Entries[i]->GetTall() == eachTall );
 
@@ -788,6 +805,25 @@ void TGD_Entry::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_pFocusHolder->SetTall( GetTall() );
 }
 
+void TGD_Entry::OnKeyCodePressed( vgui::KeyCode keycode )
+{
+	int lastUser = GetJoystickForCode( keycode );
+	BaseModUI::CBaseModPanel::GetSingleton().SetLastActiveUserId( lastUser );
+
+	vgui::KeyCode code = GetBaseButtonCode( keycode );
+
+	switch ( code )
+	{
+	case KEY_XBUTTON_A:
+		BaseModUI::CBaseModPanel::GetSingleton().PlayUISound( BaseModUI::UISOUND_ACCEPT );
+		ApplyEntry();
+		break;
+	default:
+		BaseClass::OnKeyCodePressed( keycode );
+		break;
+	}
+}
+
 TGD_Details::TGD_Details( TGD_Tab *pTab )
 	: BaseClass( pTab->m_pParent, "Details" )
 {
@@ -801,6 +837,20 @@ void TGD_Details::ApplySchemeSettings( vgui::IScheme *pScheme )
 	LoadControlSettings( "Resource/UI/TGD_Details.res" );
 
 	BaseClass::ApplySchemeSettings( pScheme );
+}
+
+void TGD_Details::PerformLayout()
+{
+	BaseClass::PerformLayout();
+
+	int x, y;
+	GetPos( x, y );
+	int overhang = x + GetWide() - ScreenWidth();
+	if ( overhang > 0 )
+	{
+		x -= overhang;
+		SetPos( x, y );
+	}
 }
 
 TGD_Entry *TGD_Details::GetCurrentEntry()

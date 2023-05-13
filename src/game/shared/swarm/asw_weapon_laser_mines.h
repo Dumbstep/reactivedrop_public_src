@@ -30,6 +30,8 @@ public:
 	bool	Reload();
 	void	ItemPostFrame();
 	virtual bool ShouldMarineMoveSlow() { return false; }	// firing mines doesn't slow the marine down
+	bool	ValidateThrow( int nMineNumber, int nMinesPerShot, Vector vecSrc, Vector vecAiming, float flSpread, bool& bOnGround, CBaseEntity* pParent, trace_t& tr, Vector& vecMineAiming );
+	int		GetThrownMineCount( int nMinesPerShot, Vector vecSrc, Vector vecAiming, float flSpread );
 	
 	Activity	GetPrimaryAttackActivity( void );
 
@@ -51,8 +53,6 @@ public:
 		DECLARE_DATADESC();
 
 		int		CapabilitiesGet( void ) { return bits_CAP_WEAPON_RANGE_ATTACK1; }
-
-		virtual const char* GetPickupClass() { return "asw_pickup_laser_mines"; }		
 	#else
 	
 	#endif

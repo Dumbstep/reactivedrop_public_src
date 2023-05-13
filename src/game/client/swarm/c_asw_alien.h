@@ -3,14 +3,11 @@
 
 #include "asw_alien_shared.h"
 #include "c_asw_inhabitable_npc.h"
-#include "iasw_client_aim_target.h"
 #include "asw_shareddefs.h"
-#include "glow_outline_effect.h"
-#include "object_motion_blur_effect.h"
 
 class CNewParticleEffect;
 
-class C_ASW_Alien : public C_ASW_Inhabitable_NPC, public IASW_Client_Aim_Target
+class C_ASW_Alien : public C_ASW_Inhabitable_NPC
 {
 public:
 	DECLARE_CLASS( C_ASW_Alien, C_ASW_Inhabitable_NPC );
@@ -19,9 +16,11 @@ public:
 
 					C_ASW_Alien();
 	virtual			~C_ASW_Alien();
-		
+
+	virtual void ClientThink();
 	virtual void PostDataUpdate( DataUpdateType_t updateType );
 
+	virtual bool IsAlien( void ) const { return true; }
 	virtual bool IsAlienClassType( void ) const { return true; }
 
 	// death;
@@ -48,29 +47,6 @@ public:
 	virtual void DoAlienFootstep( Vector &vecOrigin, float fvol );	
 	bool m_bStepSideLeft;
 
-	// stun
-	CNetworkVar(bool, m_bElectroStunned);
-	float m_fNextElectroStunEffect;
-
-	// electro shocked
-	//CNetworkVar(bool, m_bElectroShockSmall);
-	//CNetworkVar(bool, m_bElectroShockBig);
-	// fire
-	CNetworkVar(bool, m_bOnFire);
-	bool m_bClientOnFire;
-	CUtlReference<CNewParticleEffect> m_pBurningEffect;
-	virtual void UpdateFireEmitters();
-	virtual void UpdateOnRemove();
-
-	// aim target interface
-	IMPLEMENT_AUTO_LIST_GET();
-	
-	virtual float GetRadius() { return 23; }
-	virtual bool IsAimTarget() { return GetHealth() > 0; }
-	virtual const Vector& GetAimTargetPos(const Vector &vecFiringSrc, bool bWeaponPrefersFlatAiming) { return m_vecLastRenderedPos; }
-	virtual const Vector& GetAimTargetRadiusPos(const Vector &vecFiringSrc) { return m_vecAutoTargetRadiusPos; }
-	virtual Vector GetLocalAutoTargetRadiusPos();
-
 	// custom shadow
 	virtual bool GetShadowCastDirection( Vector *pDirection, ShadowType_t shadowType ) const;
 	ShadowType_t ShadowCastType();
@@ -80,17 +56,6 @@ public:
 	int m_iLastCustomFrame;
 
 	int m_nLastSetModel;
-	virtual void ASWUpdateClientSideAnimation();
-	virtual void ClientThink();
-
-	// storing our location for autoaim
-	Vector m_vecLastRenderedPos;
-	Vector m_vecAutoTargetRadiusPos;
-
-	// health
-	virtual int	GetHealth() const { return m_iHealth; }
-	int GetMaxHealth( void ) const { return m_iMaxHealth; }
-	int  m_iMaxHealth;
 
 	virtual float	GetInterpolationAmount( int flags );
 
@@ -104,6 +69,7 @@ public:
 	CMotionBlurObject m_MotionBlurObject;
 
 	//CASWHud3DMarineNames pHealthBar;
+	int  m_iMaxHealth;
 	bool m_bIsDraw = true;
 	virtual void PaintHealthBar(class CASWHud3DMarineNames *pSurface);
 	virtual bool AlienOnScreen();
